@@ -10,13 +10,16 @@ import MobileApps from "@/components/mobile-apps"
 import InspirationQuote from "@/components/inspiration-quote"
 import Faq from "@/components/faq"
 import Footer from "@/components/footer"
+import { Suspense } from "react";
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-background/80">
       <Header />
       <Hero />
-      <SignupSection />
+      <Suspense fallback={null}>
+        <SignupSection />
+      </Suspense>
       <Features />
       <HowItWorks />
       {/* <Testimonials /> */} {/* This component usage will be removed */}
