@@ -1,0 +1,356 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 260 30% 98%;
+    --foreground: 260 10% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 260 10% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 260 10% 15%;
+
+    --primary: 0 100% 27%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 340 20% 95%;
+    --secondary-foreground: 340 10% 15%;
+
+    --muted: 260 10% 95%;
+    --muted-foreground: 260 5% 45%;
+
+    --accent: 340 40% 90%;
+    --accent-foreground: 340 10% 15%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 260 20% 92%;
+    --input: 260 20% 92%;
+    --ring: 0 100% 27%;
+
+    --radius: 0.75rem;
+
+    --chart-1: 0 100% 27%;
+    --chart-2: 340 40% 60%;
+    --chart-3: 260 40% 60%;
+    --chart-4: 40 60% 60%;
+  }
+
+  .dark {
+    --background: 260 25% 10%;
+    --foreground: 260 10% 98%;
+
+    --card: 260 25% 12%;
+    --card-foreground: 260 10% 98%;
+
+    --popover: 260 25% 12%;
+    --popover-foreground: 260 10% 98%;
+
+    --primary: 0 100% 35%;
+    --primary-foreground: 260 10% 98%;
+
+    --secondary: 340 30% 15%;
+    --secondary-foreground: 340 10% 98%;
+
+    --muted: 260 20% 20%;
+    --muted-foreground: 260 10% 70%;
+
+    --accent: 340 30% 20%;
+    --accent-foreground: 340 10% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 260 20% 25%;
+    --input: 260 20% 25%;
+    --ring: 0 100% 35%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Reduce motion for better performance on mobile */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  .premium-gradient {
+    background: linear-gradient(135deg, rgba(139, 0, 0, 0.1) 0%, rgba(255, 255, 255, 0.9) 100%);
+  }
+}
+
+@layer utilities {
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-15px);
+    }
+  }
+
+  @keyframes pulse-slow {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.7;
+      transform: scale(1.02);
+    }
+  }
+
+  @keyframes bounce-slow {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes gradient-x {
+    0%,
+    100% {
+      background-size: 200% 200%;
+      background-position: left center;
+    }
+    50% {
+      background-size: 200% 200%;
+      background-position: right center;
+    }
+  }
+
+  /* Optimized animations for mobile */
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @media (max-width: 768px) {
+    .animate-float {
+      animation: float 8s ease-in-out infinite;
+    }
+  }
+
+  .animate-float-delayed {
+    animation: float 6s ease-in-out infinite;
+    animation-delay: 2s;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 4s ease-in-out infinite;
+  }
+
+  @media (max-width: 768px) {
+    .animate-pulse-slow {
+      animation: pulse-slow 6s ease-in-out infinite;
+    }
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 4s ease-in-out infinite;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce-slow 3s ease-in-out infinite;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.8s ease-out forwards;
+  }
+
+  @media (max-width: 768px) {
+    .animate-fade-in-up {
+      animation: fade-in-up 0.6s ease-out forwards;
+    }
+  }
+
+  .animate-gradient-x {
+    animation: gradient-x 3s ease infinite;
+  }
+
+  .delay-200 {
+    animation-delay: 0.2s;
+  }
+
+  .delay-400 {
+    animation-delay: 0.4s;
+  }
+
+  .delay-600 {
+    animation-delay: 0.6s;
+  }
+
+  .delay-800 {
+    animation-delay: 0.8s;
+  }
+
+  .delay-1000 {
+    animation-delay: 1s;
+  }
+
+  .delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .delay-3000 {
+    animation-delay: 3s;
+  }
+
+  .delay-4000 {
+    animation-delay: 4s;
+  }
+
+  /* Mobile-specific optimizations */
+  @media (max-width: 768px) {
+    .delay-200 {
+      animation-delay: 0.1s;
+    }
+
+    .delay-400 {
+      animation-delay: 0.2s;
+    }
+
+    .delay-600 {
+      animation-delay: 0.3s;
+    }
+
+    .delay-800 {
+      animation-delay: 0.4s;
+    }
+  }
+
+  /* Ensure modals appear above bottom navigation */
+  [data-radix-dialog-overlay] {
+    z-index: 100000 !important;
+  }
+
+  [data-radix-dialog-content] {
+    z-index: 100001 !important;
+  }
+
+  /* Payment modal specific styles */
+  .payment-modal-overlay {
+    z-index: 100000 !important;
+  }
+
+  .payment-modal-content {
+    z-index: 100001 !important;
+    margin-bottom: 0 !important;
+  }
+
+  /* Mobile safe area for payment modal */
+  @media (max-width: 768px) {
+    [data-radix-dialog-content] {
+      max-height: calc(100vh - 60px) !important;
+      margin-bottom: 0 !important;
+      top: 30px !important;
+    }
+
+    .payment-modal-content {
+      padding-bottom: 20px;
+    }
+
+    .mb-safe {
+      margin-bottom: env(safe-area-inset-bottom, 20px);
+    }
+  }
+
+  /* Loading screen specific animations - ONLY THESE ARE NEW */
+  .loading-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animation-delay-150 {
+    animation-delay: 150ms;
+  }
+
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  @keyframes bounce {
+    0%,
+    80%,
+    100% {
+      transform: scale(0);
+    }
+    40% {
+      transform: scale(1);
+    }
+  }
+
+  .animate-bounce-dot {
+    animation: bounce 1.4s infinite ease-in-out both;
+  }
+}
+
+/* Critical CSS for above-the-fold content */
+.hero-critical {
+  contain: layout style paint;
+}
+
+/* Optimize images for mobile */
+@media (max-width: 768px) {
+  img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}

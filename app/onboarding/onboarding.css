@@ -1,0 +1,45 @@
+/* Critical CSS for above-the-fold content */
+.lotus-petal {
+  transform-origin: center;
+  transition: transform 0.5s ease-out, fill 0.5s ease-out;
+}
+
+.lotus-petal-open {
+  transform: rotate(0deg) translateY(-20px);
+  fill: #fbbf24;
+}
+
+.lotus-petal-closed {
+  transform: rotate(0deg) translateY(0);
+  fill: #fef3c7;
+}
+
+.stage-indicator {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.completion-overlay {
+  animation: scaleIn 0.5s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
