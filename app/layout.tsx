@@ -13,12 +13,39 @@ const fontSans = FontSans({
   variable: "--font-sans",
 })
 
-export const metadata: Metadata = {
-  title: "DharmaSaathi - Where Spiritual Seekers Find Love",
-  description:
-    "A global spiritual matrimony platform connecting like-minded souls on their journey from drama to dharma.",
-  generator: "v0.dev",
-}
+export const metadata = {
+  title: "Join DharmaSaathi — From Drama to Dharma",
+  description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+  metadataBase: new URL("https://dharmasaathi.com"),
+  openGraph: {
+    title: "Join DharmaSaathi — From Drama to Dharma",
+    description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+    url: "https://dharmasaathi.com/",
+    siteName: "DharmaSaathi",
+    images: [
+      {
+        url: "/thumbnail.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Join DharmaSaathi — From Drama to Dharma",
+      },
+    ],
+    locale: "en_IN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Join DharmaSaathi — From Drama to Dharma",
+    description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+    images: [
+      {
+        url: "/thumbnail.jpg",
+        alt: "Join DharmaSaathi — From Drama to Dharma",
+      },
+    ],
+    site: "@dharmasaathi"
+  },
+};
 
 export default function RootLayout({
   children,
@@ -27,7 +54,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head />
+      <head>
+        <link rel="icon" href="/favicon.png" type="image/png" />
+      </head>
       <body className={cn("min-h-screen bg-background font-sans antialiased", fontSans.variable)}>
         <ErrorBoundary>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
