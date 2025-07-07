@@ -42,6 +42,32 @@ function Views() {
 export default function DashboardPage() {
   const { user, loading } = useAuth()
 
+  // Ensure user row exists
+  useEffect(() => {
+    async function ensureProfile() {
+      if (!user) return
+
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!existingUser) {
+        await supabase.from('users').insert({
+          id: user.id,
+          email: user.email,
+          phone: user.user_metadata?.phone || null,
+          first_name: user.user_metadata?.first_name || null,
+          last_name: user.user_metadata?.last_name || null,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+
+    ensureProfile()
+  }, [user])
+
   // If no user, redirect to home
   useEffect(() => {
     if (!loading && !user) {

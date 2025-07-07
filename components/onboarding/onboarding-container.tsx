@@ -14,7 +14,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import FullScreenLoading from "@/components/full-screen-loading"
 
 // Dynamic imports for stages
-import SeedStage from "./stages/seed-stage"
 import StemStage from "./stages/stem-stage"
 import LeavesStage from "./stages/leaves-stage"
 import PetalsStage from "./stages/petals-stage"
@@ -176,16 +175,14 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       })
 
       // Fallback heuristic based on data completeness
-      if (!user?.phone_confirmed_at && !profile.mobile_verified) {
+      if (!profile.gender || !profile.birthdate || !profile.height_ft || !profile.height_in) {
         setStage(1)
-      } else if (!profile.gender || !profile.birthdate || !profile.height_ft || !profile.height_in) {
-        setStage(2)
       } else if (!profile.education || !profile.profession) {
-        setStage(3)
+        setStage(2)
       } else if (!profile.diet) {
-        setStage(4)
+        setStage(3)
       } else if (!profile.ideal_partner_notes) {
-        setStage(5)
+        setStage(4)
       }
     }
   }, [profile, user])
@@ -326,7 +323,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       }
 
       // Move to next stage or complete
-      if (stage < 5) {
+      if (stage < 4) {
         setStage(stage + 1)
       } else {
         // Mark onboarding as complete and set verification status to pending
@@ -354,12 +351,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
 
   const validateStageData = (stageData: Partial<OnboardingData>, currentStage: number) => {
     switch (currentStage) {
-      case 1: // Mobile Verification Stage
-        if (!stageData.mobile_verified) {
-          throw new Error("Please verify your mobile number before proceeding.")
-        }
-        break
-      case 2:
+      case 1:
         // Validate gender
         if (stageData.gender !== undefined && !validateEnumField("gender", stageData.gender)) {
           throw new Error(
@@ -382,12 +374,12 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           throw new Error("Please fill in all required fields before proceeding.")
         }
         break
-      case 3:
+      case 2:
         if (!stageData.education || !stageData.profession) {
           throw new Error("Please fill in all required fields before proceeding.")
         }
         break
-      case 4:
+      case 3:
         // Validate enum fields
         if (stageData.diet !== undefined && !validateEnumField("diet", stageData.diet)) {
           throw new Error(
@@ -423,7 +415,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           throw new Error("Please select your diet preference before proceeding.")
         }
         break
-      case 5:
+      case 4:
         // Only require about_me, ideal_partner_notes is optional
         // Note: The full bloom stage sends ideal_partner_notes
         if (!stageData.about_me && !stageData.ideal_partner_notes) {
@@ -451,7 +443,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
 
     try {
       // For skip, we don't save any data, just move to the next stage
-      if (stage < 5) {
+      if (stage < 4) {
         setStage(stage + 1)
       } else {
         // If skipping the final stage, still mark onboarding as complete
@@ -506,7 +498,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-4xl">
           {/* Progress bar */}
-          <ProgressBar currentStage={stage} totalStages={5} stageName={stageNames[stage - 1]} />
+          <ProgressBar currentStage={stage} totalStages={4} stageName={stageNames[stage - 1]} />
 
           {/* Error message */}
           {error && (
@@ -519,16 +511,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-white/20 max-w-2xl mx-auto">
             {/* Render current stage based on state */}
             {stage === 1 && (
-              <SeedStage
-                formData={formData}
-                onChange={handleFormChange}
-                onNext={handleSaveAndNext}
-                isLoading={isLoading}
-                user={user}
-                error={error}
-              />
-            )}
-            {stage === 2 && (
               <StemStage
                 formData={formData}
                 onChange={handleFormChange}
@@ -537,7 +519,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
                 error={error}
               />
             )}
-            {stage === 3 && (
+            {stage === 2 && (
               <LeavesStage
                 formData={formData}
                 onChange={handleFormChange}
@@ -546,7 +528,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
                 error={error}
               />
             )}
-            {stage === 4 && (
+            {stage === 3 && (
               <PetalsStage
                 formData={formData}
                 onChange={handleFormChange}
@@ -555,7 +537,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
                 error={error}
               />
             )}
-            {stage === 5 && (
+            {stage === 4 && (
               <FullBloomStage
                 formData={formData}
                 onChange={handleFormChange}
@@ -570,7 +552,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           <div className="max-w-2xl mx-auto">
             <NavigationButtons
               currentStage={stage}
-              totalStages={5}
+              totalStages={4}
               onBack={handleBack}
               onNext={() => handleSaveAndNext({})}
               onSkip={handleSkip}
