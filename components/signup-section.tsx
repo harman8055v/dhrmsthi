@@ -73,9 +73,7 @@ export default function SignupSection() {
     }
 
     const cleanPhone = formData.phone.replace(/[^\d+]/g, "")
-    if (!cleanPhone) {
-      newErrors.phone = "Phone number is required"
-    } else if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+    if (cleanPhone && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
       newErrors.phone = "Please enter a valid phone number"
     }
 
@@ -117,7 +115,7 @@ export default function SignupSection() {
           data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            phone: formData.phone,
+            phone: formData.phone || null,
           },
         },
       })
@@ -278,7 +276,7 @@ export default function SignupSection() {
 
                   <div>
                     <Label htmlFor="phone" className="text-gray-700 font-medium">
-                      Mobile Number *
+                      Phone Number (optional)
                     </Label>
                     <div className="relative mt-1">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

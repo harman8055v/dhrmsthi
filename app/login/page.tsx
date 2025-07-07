@@ -38,24 +38,6 @@ export default function LoginPage() {
       if (signInError) throw signInError
 
       if (data.user) {
-        // Check if user has a profile
-        const { data: profile } = await supabase
-          .from("users")
-          .select("id")
-          .eq("id", data.user.id)
-          .single()
-
-        if (!profile) {
-          // Create minimal profile if it doesn't exist
-          await supabase.from("users").insert({
-            id: data.user.id,
-            email: data.user.email,
-            onboarding_completed: true,
-            is_onboarded: true,
-          })
-        }
-
-        // Redirect to dashboard
         router.push("/dashboard")
       }
     } catch (error: any) {
