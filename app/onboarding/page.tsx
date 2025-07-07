@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { waitForAuthReady } from "@/lib/auth-utils"
 import { debugLog } from "@/lib/logger"
 import OnboardingContainer from "@/components/onboarding/onboarding-container"
 import LoadingScreen from "@/components/onboarding/loading-screen"
@@ -20,33 +21,34 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function getUser() {
       try {
-        // Get the current user session
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError) {
-          console.error("Auth error:", userError)
+        // Wait for auth to be ready (with retry/backoff)
+        let authUser
+        try {
+          const { user: readyUser } = await waitForAuthReady(supabase)
+          authUser = readyUser
+        } catch (err) {
+          console.error("Auth error:", err)
           setError("Authentication error. Please try signing in again.")
           setTimeout(() => router.push("/"), 3000)
           return
         }
 
-        if (!user) {
+        if (!authUser) {
           debugLog("No authenticated user found, redirecting to homepage")
           router.push("/")
           return
         }
 
-        debugLog("Authenticated user found:", user.id)
-        setUser(user)
+        debugLog("Authenticated user found:", authUser.id)
+        setUser(authUser)
+
+        const currentUser = authUser
 
         // Fetch user profile data using user ID
         const { data: profileData, error: profileError } = await supabase
           .from("users")
           .select("*")
-          .eq("id", user.id)
+          .eq("id", authUser.id)
           .maybeSingle()
 
         if (profileError) {
@@ -64,12 +66,12 @@ export default function OnboardingPage() {
         if (!profileData) {
           // No profile found, create a minimal one with required fields
           debugLog("No profile found, creating new profile")
-          const newProfile: Partial<OnboardingProfile> = {
-            id: user.id,
-            phone: user.phone || '',
-            email: user.email || undefined,
-            mobile_verified: !!user.phone_confirmed_at,
-            email_verified: !!user.email_confirmed_at,
+          const newProfile: any = {
+            id: currentUser.id,
+            phone: currentUser.phone || '',
+            email: currentUser.email || undefined,
+            mobile_verified: !!currentUser.phone_confirmed_at,
+            email_verified: !!currentUser.email_confirmed_at,
             onboarding_completed: false,
             // Initialize all enum fields as null
             gender: null,
@@ -85,23 +87,12 @@ export default function OnboardingPage() {
             temple_visit_freq: null,
             vanaprastha_interest: null,
             artha_vs_moksha: null,
+            // Initialize arrays
             spiritual_org: [],
             daily_practices: [],
             user_photos: [],
-            preferred_age_min: null,
-            preferred_age_max: null,
-            preferred_diet: [],
-            preferred_spiritual_orgs: [],
-            preferred_practices: [],
-            ideal_partner_notes: null,
-            favorite_spiritual_quote: null,
-            // Initialize counters
-            super_likes_count: 5,
-            swipe_count: 50,
-            message_highlights_count: 3,
-            
-            // Default profile quality score
-            profile_score: 5,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           }
 
           // Try to insert the new profile
@@ -149,11 +140,11 @@ export default function OnboardingPage() {
 
           // Ensure verification status is set based on auth status if not already set
           if (profileData.email_verified === null || profileData.email_verified === undefined) {
-            profileData.email_verified = !!user.email_confirmed_at
+            profileData.email_verified = !!currentUser.email_confirmed_at
           }
 
           if (profileData.mobile_verified === null || profileData.mobile_verified === undefined) {
-            profileData.mobile_verified = !!user.phone_confirmed_at
+            profileData.mobile_verified = !!currentUser.phone_confirmed_at
           }
 
           setProfile(profileData)

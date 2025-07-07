@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Loader2, Upload, X, Quote } from "lucide-react"
 import Image from "next/image"
 import type { OnboardingData } from "@/lib/types/onboarding"
+import { supabase } from "@/lib/supabase"
 
 interface FullBloomStageProps {
   formData: OnboardingData
@@ -38,10 +39,17 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
   }
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newPhotos = Array.from(e.target.files)
       if (photoUrls.length + photos.length + newPhotos.length <= 6) {
+        // Check file sizes
+        const maxSize = 5 * 1024 * 1024 // 5MB
+        const oversizedFiles = newPhotos.filter(file => file.size > maxSize)
+        if (oversizedFiles.length > 0) {
+          alert(`Some files are too large. Maximum size is 5MB per photo.`)
+          return
+        }
         setPhotos((prev) => [...prev, ...newPhotos])
       } else {
         alert("You can upload a maximum of 6 photos")
@@ -64,19 +72,56 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     const uploadedUrls = [...photoUrls]
 
     try {
-      for (const photo of photos) {
-        // Simulate upload delay
-        await new Promise((resolve) => setTimeout(resolve, 500))
+      const {
+        data: { user },
+        error: authErr,
+      } = await supabase.auth.getUser()
 
-        // Simulate URL generation
-        const url = URL.createObjectURL(photo)
-        uploadedUrls.push(url)
+      if (authErr || !user) {
+        throw new Error("Authentication required for uploading photos")
+      }
+
+      for (const photo of photos) {
+        const fileExt = photo.name.split(".").pop() || "jpg"
+        const fileName = `${crypto.randomUUID()}.${fileExt}`
+        const filePath = `${user.id}/${fileName}`
+
+        const { error: uploadErr } = await supabase.storage
+          .from("user-photos")
+          .upload(filePath, photo, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: photo.type,
+          })
+
+        if (uploadErr) {
+          console.error(`Failed to upload ${photo.name}:`, uploadErr)
+          throw new Error(`Failed to upload ${photo.name}: ${uploadErr.message || 'Unknown error'}`)
+        }
+
+        // For public bucket:
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("user-photos").getPublicUrl(filePath)
+
+        uploadedUrls.push(publicUrl)
+        
+        // Alternative for private bucket (creates signed URL valid for 1 year):
+        // const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        //   .from("user-photos")
+        //   .createSignedUrl(filePath, 365 * 24 * 60 * 60) // 1 year
+        // 
+        // if (signedUrlError) throw signedUrlError
+        // uploadedUrls.push(signedUrlData.signedUrl)
       }
 
       return uploadedUrls
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error uploading photos:", error)
-      return photoUrls
+      // Show user-friendly error message
+      const errorMessage = error?.message || 'Failed to upload photos. Please try again.'
+      setErrors({ user_photos: errorMessage })
+      throw error
     } finally {
       setUploading(false)
     }
@@ -88,6 +133,12 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     if (!localFormData.about_me.trim()) {
       newErrors.about_me = "Please tell us about yourself"
     }
+
+    // Make photos optional during development/testing
+    // Uncomment the following to require photos:
+    // if (photoUrls.length + photos.length < 1) {
+    //   newErrors.user_photos = "Please upload at least 1 photo"
+    // }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -101,7 +152,20 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
 
     try {
-      const uploadedPhotoUrls = await uploadPhotos()
+      // Skip photo upload if no photos selected (for testing)
+      let uploadedPhotoUrls = photoUrls
+      
+      if (photos.length > 0) {
+        try {
+          uploadedPhotoUrls = await uploadPhotos()
+        } catch (uploadError: any) {
+          console.error("Photo upload failed:", uploadError)
+          // For now, allow continuing without photos during development
+          if (!confirm("Photo upload failed. Continue without uploading new photos?")) {
+            return
+          }
+        }
+      }
 
       const dataToSave: Partial<OnboardingData> = {
         about_me: localFormData.about_me.trim() || null,
@@ -112,9 +176,9 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
 
       // Pass the data directly to onNext, which will handle saving and moving to the next stage
       onNext(dataToSave)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting form:", error)
-      // You might want to set a local error state here if photo upload fails
+      setErrors({ general: error?.message || "Failed to save profile. Please try again." })
     }
   }
 
@@ -200,7 +264,7 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
 
         {/* Photo Upload */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-foreground">Upload Photos (Max 6)</label>
+          <label className="block text-sm font-medium text-foreground">Upload Photos (Optional, Max 6)</label>
 
           {/* Photo Grid */}
           <div className="grid grid-cols-3 gap-2 mb-4">
@@ -249,9 +313,9 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
         </div>
 
         {/* Display any server errors */}
-        {error && (
+        {(error || errors.user_photos || errors.general) && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
+            <p className="text-red-700 text-sm">{error || errors.user_photos || errors.general}</p>
           </div>
         )}
 

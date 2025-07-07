@@ -17,7 +17,7 @@ interface PetalsStageProps {
 }
 
 export default function PetalsStage({ formData, onChange, onNext, isLoading, error }: PetalsStageProps) {
-  // Destructure with null defaults
+  // Destructure with null defaults and ensure arrays
   const {
     spiritual_org = [],
     daily_practices = [],
@@ -26,6 +26,10 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
     vanaprastha_interest = null,
     artha_vs_moksha = null,
   } = formData
+  
+  // Ensure spiritual_org and daily_practices are always arrays
+  const safeSpiritual = Array.isArray(spiritual_org) ? spiritual_org : []
+  const safePractices = Array.isArray(daily_practices) ? daily_practices : []
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -70,8 +74,8 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
     e.preventDefault()
     if (validateForm()) {
       const dataToSave: Partial<OnboardingData> = {
-        spiritual_org,
-        daily_practices,
+        spiritual_org: formData.spiritual_org || [],
+        daily_practices: formData.daily_practices || [],
         diet,
         temple_visit_freq,
         vanaprastha_interest,
@@ -83,6 +87,8 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
 
   const handleSkip = () => {
     const dataToSave: Partial<OnboardingData> = {
+      spiritual_org: formData.spiritual_org || [],
+      daily_practices: formData.daily_practices || [],
       diet: null,
       temple_visit_freq: null,
       vanaprastha_interest: null,
@@ -122,16 +128,16 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
                 type="button"
                 onClick={() => handleMultiSelect("spiritual_org", org)}
                 className={`px-3 py-1 text-sm rounded-full ${
-                  spiritual_org.includes(org) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  safeSpiritual.includes(org) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                 }`}
               >
                 {org}
               </button>
             ))}
           </div>
-          {spiritual_org.length > 0 && (
+          {safeSpiritual.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {spiritual_org.map((org) => (
+              {safeSpiritual.map((org) => (
                 <span
                   key={org}
                   className="inline-flex items-center bg-accent text-accent-foreground px-2 py-1 rounded-md text-xs"
@@ -162,7 +168,7 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
                 type="button"
                 onClick={() => handleMultiSelect("daily_practices", practice)}
                 className={`px-3 py-1 text-sm rounded-full ${
-                  daily_practices.includes(practice)
+                  safePractices.includes(practice)
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground"
                 }`}
@@ -171,9 +177,9 @@ export default function PetalsStage({ formData, onChange, onNext, isLoading, err
               </button>
             ))}
           </div>
-          {Array.isArray(daily_practices) && daily_practices.length > 0 && (
+          {safePractices.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {daily_practices.map((practice) => (
+              {safePractices.map((practice) => (
                 <span
                   key={practice}
                   className="inline-flex items-center bg-accent text-accent-foreground px-2 py-1 rounded-md text-xs"

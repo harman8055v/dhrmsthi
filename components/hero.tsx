@@ -4,22 +4,16 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Heart, Sparkles, Shield, ArrowRight, Compass } from "lucide-react"
 import Image from "next/image"
-import AuthDialog from "./auth-dialog"
+import { useRouter } from "next/navigation"
 
 export default function Hero() {
-  const [isAuthOpen, setIsAuthOpen] = useState(false)
-  const [authMode, setAuthMode] = useState<"signup" | "login">("signup")
+  const router = useRouter()
   const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
     // Trigger animations after component mounts
     setIsLoaded(true)
   }, [])
-
-  const openAuth = (mode: "signup" | "login") => {
-    setAuthMode(mode)
-    setIsAuthOpen(true)
-  }
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId)
@@ -109,7 +103,7 @@ export default function Hero() {
                 className={`flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start transition-all duration-700 delay-600 ${isLoaded ? "animate-fade-in-up" : "opacity-0"}`}
               >
                 <Button
-                  onClick={() => scrollToSection("signup")}
+                  onClick={() => router.push('/signup')}
                   size="lg"
                   className="bg-gradient-to-r from-brand-700 to-primary hover:from-brand-800 hover:to-primary/90 text-white font-semibold px-6 md:px-8 py-3 md:py-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 group w-full sm:w-auto"
                 >
@@ -201,9 +195,6 @@ export default function Hero() {
           </div>
         </div>
       </section>
-
-      {/* Auth Dialog */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode={authMode} />
     </>
   )
 }

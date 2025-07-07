@@ -18,6 +18,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 import Image from "next/image"
+import { useDashboardView } from "@/contexts/DashboardViewContext"
 
 interface MobileNavProps {
   userProfile?: any
@@ -28,6 +29,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
   const [tappedItem, setTappedItem] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
+  const dashboardCtx = useDashboardView()
 
   const isVerified = isUserVerified(userProfile)
   const showHeader = !(pathname === "/dashboard" && isVerified)
@@ -37,10 +39,19 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     router.push("/")
   }
 
-  const handleNavItemClick = (href: string) => {
+  const handleNavItemClick = (href: string, viewKey: string) => {
     setTappedItem(href)
     setTimeout(() => setTappedItem(null), 200)
-    router.push(href)
+
+    if (dashboardCtx) {
+      dashboardCtx.setActiveView(viewKey as any)
+      // Optionally update the URL hash so users can deep link without causing full navigation
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", `#${viewKey}`)
+      }
+    } else {
+      router.push(href)
+    }
   }
 
   const navItems = [
@@ -48,6 +59,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       icon: Home,
       label: "Home",
       href: "/dashboard",
+      view: "home",
       active: pathname === "/dashboard",
       color: "text-blue-500",
     },
@@ -55,6 +67,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       icon: Heart,
       label: "Matches",
       href: "/dashboard/matches",
+      view: "matches",
       active: pathname === "/dashboard/matches",
       color: "text-pink-500",
     },
@@ -62,6 +75,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       icon: MessageCircle,
       label: "Messages",
       href: "/dashboard/messages",
+      view: "messages",
       active: pathname === "/dashboard/messages",
       color: "text-green-500",
     },
@@ -69,6 +83,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       icon: ShoppingBag,
       label: "Store",
       href: "/dashboard/store",
+      view: "store",
       active: pathname === "/dashboard/store",
       color: "text-purple-500",
     },
@@ -76,6 +91,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       icon: User,
       label: "Profile",
       href: "/dashboard/profile",
+      view: "profile",
       active: pathname === "/dashboard/profile",
       color: "text-orange-500",
     },
@@ -207,10 +223,14 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
           {navItems.map((item) => (
             <button
               key={item.href}
-              onClick={() => handleNavItemClick(item.href)}
+              onClick={() => handleNavItemClick(item.href, item.view)}
               className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-200 ${
                 tappedItem === item.href ? "scale-95" : ""
-              } ${item.active ? "text-orange-600 bg-orange-50" : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/50"}`}
+              } ${
+                dashboardCtx ?
+                  (dashboardCtx.activeView === item.view ? "text-orange-600 bg-orange-50" : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/50")
+                  : (item.active ? "text-orange-600 bg-orange-50" : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/50")
+              }`}
             >
               <item.icon className="w-6 h-6" />
               <span className="text-xs font-medium">{item.label}</span>

@@ -192,16 +192,40 @@ export const userService = {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
 
+      // 1. Check for duplicate phone or email on another account
+      if (profileData.phone || profileData.email) {
+        const filters: string[] = []
+        if (profileData.phone) filters.push(`phone.eq.${profileData.phone}`)
+        if (profileData.email) filters.push(`email.eq.${profileData.email}`)
+
+        if (filters.length > 0) {
+          const { data: existing } = await supabase
+            .from('users')
+            .select('id')
+            .or(filters.join(','))
+            .neq('id', user.id)
+            .maybeSingle()
+
+          if (existing) {
+            throw new DataServiceError('Phone or email already exists with another user', 'DUPLICATE')
+          }
+        }
+      }
+
+      // 2. Safe upsert scoped by ID only
       const { data, error } = await supabase
         .from('users')
-        .upsert({
-          id: user.id,
-          ...profileData,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'id',
-          ignoreDuplicates: false
-        })
+        .upsert(
+          {
+            id: user.id,
+            ...profileData,
+            updated_at: new Date().toISOString()
+          },
+          {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          }
+        )
         .select()
         .single()
 

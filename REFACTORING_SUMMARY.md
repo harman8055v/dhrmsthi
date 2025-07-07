@@ -40,7 +40,6 @@ export interface UserProfile {
   preferred_age_max?: number
   preferred_diet?: string[]
   preferred_spiritual_orgs?: string[]
-  preferred_practices?: string[]
   ideal_partner_notes?: string
   
   // Profile images

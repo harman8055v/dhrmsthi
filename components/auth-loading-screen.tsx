@@ -54,36 +54,10 @@ export default function AuthLoadingScreen({ userId, isNewUser }: AuthLoadingScre
     const completeTimer = setTimeout(async () => {
       setIsComplete(true)
 
-      if (userId) {
-        try {
-          // Check onboarding status
-          const { data: profile } = await supabase
-            .from("users")
-            .select("onboarding_completed")
-            .eq("id", userId)
-            .single()
-
-          // Redirect based on onboarding status
-          setTimeout(() => {
-            if (profile?.onboarding_completed) {
-              router.push("/dashboard")
-            } else {
-              router.push("/onboarding")
-            }
-          }, 1000)
-        } catch (error) {
-          console.error("Error checking profile:", error)
-          // Fallback redirect
-          setTimeout(() => {
-            router.push(isNewUser ? "/onboarding" : "/dashboard")
-          }, 1000)
-        }
-      } else {
-        // Fallback if no userId
-        setTimeout(() => {
-          router.push(isNewUser ? "/onboarding" : "/dashboard")
-        }, 1000)
-      }
+      // Always redirect to dashboard after auth
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 1000)
     }, 5000)
 
     return () => {

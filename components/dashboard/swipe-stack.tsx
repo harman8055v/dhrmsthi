@@ -61,6 +61,11 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   // Fetch swipe stats and profiles on mount
   useEffect(() => {
+    if (initialProfiles && initialProfiles.length > 0) {
+      setLoading(false)
+      return
+    }
+
     console.log("SwipeStack useEffect running")
     fetchData()
   }, [])

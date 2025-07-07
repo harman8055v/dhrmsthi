@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { debugLog } from "@/lib/logger"
@@ -28,56 +28,127 @@ interface OnboardingContainerProps {
 
 // Removes keys with null/undefined or blank-string values
 function sanitizePayload<T extends Record<string, any>>(data: T): Partial<T> {
-  return Object.entries(data).reduce(
-    (acc, [key, val]) => {
-      if (val === null || val === undefined) return acc
-      if (typeof val === "string" && val.trim() === "") return acc
-      acc[key as keyof T] = val
-      return acc
-    },
-    {} as Partial<T>,
-  )
+  const cleaned: Partial<T> = {}
+  for (const [key, value] of Object.entries(data)) {
+    // Include any value that is not null, undefined, or empty string
+    if (value !== null && value !== undefined && value !== '') {
+      cleaned[key as keyof T] = value
+    }
+  }
+  return cleaned
+}
+
+// Default form data
+const DEFAULT_FORM_DATA: OnboardingData = {
+  phone: '',
+  email_verified: false,
+  mobile_verified: false,
+  gender: null,
+  birthdate: null,
+  height_ft: null,
+  height_in: null,
+  country_id: null,
+  state_id: null,
+  city_id: null,
+  education: null,
+  profession: null,
+  annual_income: null,
+  marital_status: null,
+  diet: null,
+  temple_visit_freq: null,
+  vanaprastha_interest: null,
+  artha_vs_moksha: null,
+  spiritual_org: [],
+  daily_practices: [],
+  user_photos: [],
+  ideal_partner_notes: null,
+  favorite_spiritual_quote: null,
+  about_me: null,
 }
 
 export default function OnboardingContainer({ user, profile, setProfile }: OnboardingContainerProps) {
-  const [stage, setStage] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
-  const [showCompletion, setShowCompletion] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const [stage, setStage] = useState(1)
+  const [formData, setFormData] = useState<OnboardingData>(DEFAULT_FORM_DATA)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showCompletion, setShowCompletion] = useState(false)
+  const autosaveTimer = useRef<NodeJS.Timeout | null>(null)
 
-  // Initialize form state with null for all enum/text fields and [] for arrays
-  const [formData, setFormData] = useState<OnboardingData>({
-    phone: user?.phone || profile?.phone || '',
-    email_verified: false,
-    mobile_verified: false,
-    gender: null,
-    birthdate: null,
-    height_ft: null,
-    height_in: null,
-    country_id: null,
-    state_id: null,
-    city_id: null,
-    education: null,
-    profession: null,
-    annual_income: null,
-    marital_status: null,
-    diet: null,
-    temple_visit_freq: null,
-    vanaprastha_interest: null,
-    artha_vs_moksha: null,
-    spiritual_org: [],
-    daily_practices: [],
-    user_photos: [],
-    ideal_partner_notes: null,
-    favorite_spiritual_quote: null,
-    about_me: null,
-  })
+  // Early return if user already completed onboarding
+  if (profile && (profile.onboarding_completed === true || (profile as any).is_onboarded === true)) {
+    console.log("User already completed onboarding, redirecting to dashboard")
+    router.push("/dashboard")
+    return null
+  }
+
+  // ---------------- Debounced autosave ----------------
+  useEffect(() => {
+    if (!user?.id) return
+
+    // Clear previous timer
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current)
+    }
+
+    autosaveTimer.current = setTimeout(async () => {
+      try {
+        // Only autosave for current stage data
+        const payload = sanitizePayload(formData)
+        if (Object.keys(payload).length > 0) {
+          await submitUserProfile(payload)
+        }
+      } catch (err) {
+        // Silently log – autosave failures shouldn't break UX
+        console.warn("[Onboarding] Autosave failed", err)
+      }
+    }, 1500) // 1.5s debounce
+
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData])
+
+  // ------------------------------------------------------------
+  // Local-storage helpers for draft recovery
+  // ------------------------------------------------------------
+  const STORAGE_KEY = user ? `onboarding-${user.id}` : null
+
+  // Attempt to load saved draft once (after first render when user available)
+  useEffect(() => {
+    if (!STORAGE_KEY) return
+
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY)
+      if (cached) {
+        const parsed = JSON.parse(cached) as { formData: OnboardingData; stage: number }
+        if (parsed?.formData) setFormData(parsed.formData)
+        if (parsed?.stage) setStage(parsed.stage)
+      }
+    } catch (err) {
+      console.warn("[Onboarding] Failed to parse cached form data", err)
+    }
+    // run only once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [STORAGE_KEY])
+
+  // Persist draft to localStorage whenever formData or stage changes
+  useEffect(() => {
+    if (!STORAGE_KEY) return
+    try {
+      const payload = JSON.stringify({ formData, stage })
+      localStorage.setItem(STORAGE_KEY, payload)
+    } catch (err) {
+      // silent – localStorage might be full / unsupported
+    }
+  }, [formData, stage, STORAGE_KEY])
 
   // Initialize form data from existing profile
   useEffect(() => {
     if (profile) {
       setFormData({
+        ...DEFAULT_FORM_DATA,
         phone: user?.phone || profile.phone || '',
         email_verified: !!user?.email_confirmed_at || profile.email_verified || false,
         mobile_verified: !!user?.phone_confirmed_at || profile.mobile_verified || false,
@@ -104,7 +175,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         about_me: profile.about_me || null,
       })
 
-      // Determine current stage based on completed data
+      // Fallback heuristic based on data completeness
       if (!user?.phone_confirmed_at && !profile.mobile_verified) {
         setStage(1)
       } else if (!profile.gender || !profile.birthdate || !profile.height_ft || !profile.height_in) {
@@ -135,55 +206,60 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       console.log("Profile data to submit:", profileData)
       console.log("User phone from auth:", user.phone)
       console.log("User email from auth:", user.email)
-
-      // Prepare the complete profile data for upsert
-      // Only include phone if it's being updated and different from existing user phone
-      const completeProfileData = {
-        id: user.id, // Always include the user ID for upsert
-        ...profileData,
-        updated_at: new Date().toISOString(),
+      
+      // Debug: List all keys being submitted
+      console.log("Keys being submitted:", Object.keys(profileData))
+      
+      // Debug: Check for any preferred_ fields
+      const preferredFields = Object.keys(profileData).filter(key => key.startsWith('preferred_'))
+      if (preferredFields.length > 0) {
+        console.warn("Found preferred_ fields in payload:", preferredFields)
+        // Remove any preferred_ fields that shouldn't be there
+        preferredFields.forEach(field => {
+          delete (profileData as any)[field]
+        })
       }
 
-              // Include phone number in profile data as requested
-        if (user.phone && !completeProfileData.phone) {
-          completeProfileData.phone = user.phone
-        }
+      // Combine incoming fields with bookkeeping columns
+      const timestamp = new Date().toISOString()
+      const payload = {
+        id: user.id,
+        updated_at: timestamp,
+        ...profileData,
+      }
 
-              // Use upsert to handle both insert and update cases
-        const { data, error: upsertError } = await supabase
+      // Perform update scoped to current user ID (RLS compliant)
+      let { data, error } = await supabase
+        .from("users")
+        .update(payload)
+        .eq("id", user.id)
+        .select()
+        .single()
+      // Fallback: onboarding_stage column might not exist yet in DB
+      if (error && error.message?.includes("onboarding_stage")) {
+        const { onboarding_stage, ...withoutStage } = payload as any
+        ;({ data, error } = await supabase
           .from("users")
-          .upsert({
-            email: user.email,
-            phone: user.phone,
-            created_at: new Date().toISOString(),
-            ...completeProfileData
-          }, {
-            onConflict: "id",
-            ignoreDuplicates: false,
-          })
+          .update(withoutStage)
+          .eq("id", user.id)
           .select()
-          .single()
+          .single())
+      }
 
-              if (upsertError) {
-          console.error("Upsert error details:", {
-            message: upsertError.message,
-            details: upsertError.details,
-            hint: upsertError.hint,
-            code: upsertError.code,
-          })
-          
-          // Handle specific phone constraint error
-          if (upsertError.message.includes('phone_key') || 
-              upsertError.message.includes('users_v2_phone_key') || 
-              (upsertError.code === '23505' && upsertError.message.includes('phone'))) {
-            throw new Error(`This phone number is already registered. If this is your number, please contact support or try logging in instead.`)
-          }
-          
-          throw new Error(`Failed to save profile: ${upsertError.message}`)
+      if (error) {
+        console.error("Profile upsert error:", error)
+
+        if (error.message?.includes("phone")) {
+          throw new Error("This phone number already exists. Please login or contact support.")
         }
 
-      console.log("Profile upserted successfully:", data)
-      return data
+        throw new Error(`Failed to save profile: ${error.message}`)
+      }
+
+      const result = data
+       
+      console.log("Profile saved successfully:", result)
+      return result
     } catch (error) {
       console.error("Error in submitUserProfile:", error)
       throw error
@@ -255,7 +331,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       } else {
         // Mark onboarding as complete and set verification status to pending
         const completionData = {
-          onboarding_completed: true,
+          is_onboarded: true,
           verification_status: "pending" as const,
         }
 
@@ -269,6 +345,8 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     } catch (err) {
       console.error("Error saving stage data:", err)
       setError((err as Error).message)
+      setIsLoading(false)
+      return
     } finally {
       setIsLoading(false)
     }
@@ -351,6 +429,10 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         if (!stageData.about_me && !stageData.ideal_partner_notes) {
           throw new Error("Please fill in at least the 'About Me' section before proceeding.")
         }
+
+        if ((stageData.user_photos ?? profile.user_photos)?.length < 3) {
+          throw new Error("Please upload at least 3 photos to complete your profile.")
+        }
         break
     }
     return true
@@ -374,7 +456,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       } else {
         // If skipping the final stage, still mark onboarding as complete
         const completionData = {
-          onboarding_completed: true,
+          is_onboarded: true,
           verification_status: "pending" as const,
         }
 

@@ -6,12 +6,9 @@ import { Menu, X } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
-import AuthDialog from "./auth-dialog"
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isAuthOpen, setIsAuthOpen] = useState(false)
-  const [authMode, setAuthMode] = useState<"signup" | "login">("login")
   const router = useRouter()
   const pathname = usePathname()
 
@@ -39,11 +36,7 @@ export default function Header() {
     }
   }
 
-  const openAuth = (mode: "signup" | "login") => {
-    setAuthMode(mode)
-    setIsAuthOpen(true)
-    setIsMenuOpen(false)
-  }
+
 
   return (
     <>
@@ -90,13 +83,13 @@ export default function Header() {
             <div className="hidden md:flex items-center space-x-4">
               <Button
                 variant="ghost"
-                onClick={() => openAuth("login")}
+                onClick={() => router.push('/login')}
                 className="hover:bg-brand-50 hover:text-brand-600 transition-all duration-200 transform hover:scale-105"
               >
                 Login
               </Button>
               <Button
-                onClick={() => scrollToSection("signup")}
+                onClick={() => router.push('/signup')}
                 className="bg-gradient-to-r from-brand-600 to-primary hover:from-brand-700 hover:to-primary/90 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
               >
                 Join Now
@@ -146,13 +139,13 @@ export default function Header() {
                 <div className="flex flex-col space-y-2 pt-4 border-t">
                   <Button
                     variant="ghost"
-                    onClick={() => openAuth("login")}
+                    onClick={() => router.push('/login')}
                     className="justify-start hover:bg-brand-50 hover:text-brand-600"
                   >
                     Login
                   </Button>
                   <Button
-                    onClick={() => scrollToSection("signup")}
+                    onClick={() => router.push('/signup')}
                     className="bg-gradient-to-r from-brand-600 to-primary hover:from-brand-700 hover:to-primary/90 text-white"
                   >
                     Join Now
@@ -163,9 +156,6 @@ export default function Header() {
           )}
         </div>
       </header>
-
-      {/* Auth Dialog */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode={authMode} />
     </>
   )
 }

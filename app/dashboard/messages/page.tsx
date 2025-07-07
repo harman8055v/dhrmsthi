@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { MessageCircle, MapPin, Calendar, Clock, Shield, Users, Heart } from "lucide-react"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { isUserVerified } from "@/lib/utils"
+import { DEMO_MODE, demoConversations, demoUserProfile } from "@/lib/demo-data"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 interface Conversation {
@@ -37,11 +38,18 @@ interface Conversation {
 export default function MessagesPage() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [profile, setProfile] = useState<any>(null)
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>(DEMO_MODE ? demoConversations : [])
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      setUser({ id: "demo-user" } as any)
+      setProfile(demoUserProfile)
+      setLoading(false)
+      return
+    }
+
     async function getUser() {
       try {
         const {

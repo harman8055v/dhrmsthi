@@ -88,13 +88,6 @@ export default function StorePage() {
 
       if (error) {
         console.error("Error fetching user profile:", error)
-        router.push("/onboarding")
-        return
-      }
-
-      // If user hasn't completed onboarding, redirect to onboarding
-      if (!profileData?.onboarding_completed) {
-        router.push("/onboarding")
         return
       }
 

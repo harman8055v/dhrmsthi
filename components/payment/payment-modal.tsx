@@ -11,7 +11,7 @@ interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
   item: {
-    type: "plan" | "superlike" | "highlight"
+    type: "plan" | "super_likes" | "highlights"
     name: string
     price: number
     description: string

@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Heart, Sparkles, ArrowRight, Phone, Mail, User, Lock, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Heart, Sparkles, ArrowRight, Phone, Mail, User, Loader2, Lock, Eye, EyeOff } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useRouter, useSearchParams } from "next/navigation"
 import AuthDialog from "./auth-dialog"
@@ -16,16 +16,18 @@ interface FormData {
   firstName: string
   lastName: string
   email: string
-  mobileNumber: string
+  phone: string
   password: string
+  confirmPassword: string
 }
 
 interface FormErrors {
   firstName?: string
   lastName?: string
   email?: string
-  mobileNumber?: string
+  phone?: string
   password?: string
+  confirmPassword?: string
   general?: string
 }
 
@@ -34,13 +36,16 @@ export default function SignupSection() {
     firstName: "",
     lastName: "",
     email: "",
-    mobileNumber: "",
+    phone: "",
     password: "",
+    confirmPassword: "",
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [referralCode, setReferralCode] = useState<string>("")
   const router = useRouter()
@@ -48,22 +53,15 @@ export default function SignupSection() {
 
   // Capture referral code from URL parameters
   useEffect(() => {
-    const refParam = searchParams.get('ref')
+    const refParam = searchParams?.get('ref')
     if (refParam) {
       setReferralCode(refParam)
       console.log("Referral code captured:", refParam)
     }
   }, [searchParams])
 
-  const validateMobileNumber = (mobile: string): boolean => {
-    const cleanMobile = mobile.replace(/[^\d+]/g, "")
-    if (!cleanMobile) return false
-    const mobileRegex = /^[+]?[1-9]\d{9,14}$/
-    return mobileRegex.test(cleanMobile)
-  }
-
-  const formatMobileNumber = (mobile: string): string => {
-    let cleaned = mobile.replace(/[^\d+]/g, "")
+  const formatPhoneNumber = (phone: string): string => {
+    let cleaned = phone.replace(/[^\d+]/g, "")
     if (!cleaned.startsWith("+") && cleaned.length === 10 && cleaned.match(/^[6-9]/)) {
       cleaned = "+91" + cleaned
     }
@@ -92,18 +90,23 @@ export default function SignupSection() {
       newErrors.email = "Please enter a valid email address"
     }
 
-    if (!formData.mobileNumber.trim()) {
-      newErrors.mobileNumber = "Mobile number is required"
-    } else if (!validateMobileNumber(formData.mobileNumber)) {
-      newErrors.mobileNumber = "Please enter a valid mobile number"
+    const cleanPhone = formData.phone.replace(/[^\d+]/g, "")
+    if (!cleanPhone) {
+      newErrors.phone = "Phone number is required"
+    } else if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      newErrors.phone = "Please enter a valid phone number"
     }
 
     if (!formData.password) {
       newErrors.password = "Password is required"
-    } else if (formData.password.length < 8) {
-      newErrors.password = "Password must be at least 8 characters"
-    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-      newErrors.password = "Password must contain uppercase, lowercase, and number"
+    } else if (formData.password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters"
+    }
+
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = "Please confirm your password"
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords don't match"
     }
 
     setErrors(newErrors)
@@ -113,8 +116,8 @@ export default function SignupSection() {
   const handleChange = (field: keyof FormData, value: string) => {
     let processedValue = value
 
-    if (field === "mobileNumber") {
-      processedValue = formatMobileNumber(value)
+    if (field === "phone") {
+      processedValue = formatPhoneNumber(value)
     }
 
     setFormData((prev) => ({ ...prev, [field]: processedValue }))
@@ -131,87 +134,79 @@ export default function SignupSection() {
     setErrors({})
 
     try {
+      // Sign up with email and password
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
-        options: {
-          data: {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            full_name: `${formData.firstName} ${formData.lastName}`,
-            phone: formData.mobileNumber,
-          },
-        },
       })
 
       if (authError) throw authError
 
       if (authData.user) {
-        try {
-          const profileData = {
+        // Create minimal profile
+        const { error: profileError } = await supabase
+          .from("users")
+          .insert({
             id: authData.user.id,
             email: formData.email,
+            phone: formData.phone,
             first_name: formData.firstName,
             last_name: formData.lastName,
             full_name: `${formData.firstName} ${formData.lastName}`,
-            phone: formData.mobileNumber,
-            email_verified: !!authData.user.email_confirmed_at,
-            verification_status: "pending", // Default to unverified
-            onboarding_completed: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
+            onboarding_completed: true,
+            is_onboarded: true,
+          })
 
-          const { error: profileError } = await supabase.from("users").insert(profileData).select()
+        if (profileError) {
+          console.error("Profile creation error:", profileError)
+          throw new Error("Failed to create profile")
+        }
 
-          if (profileError) {
-            console.error("Profile creation error:", profileError)
+        // Process referral if present
+        if (referralCode) {
+          try {
+            await fetch("/api/referrals/signup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                newUserId: authData.user.id,
+                referralCode: referralCode,
+              }),
+            })
+          } catch (error) {
+            console.error("Referral processing failed:", error)
           }
-
-          // Process referral if referral code exists
-          if (referralCode) {
-            try {
-              console.log("Processing referral with code:", referralCode)
-              const response = await fetch('/api/referrals/signup', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  newUserId: authData.user.id,
-                  referralCode: referralCode
-                })
-              })
-              
-              const result = await response.json()
-              
-              if (response.ok && result.success) {
-                console.log("Referral processed successfully:", result.message)
-              } else {
-                console.warn("Referral processing issue:", result.message || result.error)
-              }
-            } catch (referralError) {
-              console.error("Referral processing failed:", referralError)
-            }
-          }
-        } catch (profileError) {
-          console.error("Profile creation failed:", profileError)
         }
 
         setIsSuccess(true)
-        setTimeout(() => {
-          router.push("/onboarding")
-        }, 4000) // Increased duration for better UX
+
+        // Sign in immediately after profile creation
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        })
+
+        if (!signInError) {
+          // Direct navigation to dashboard - no fancy loading screens
+          window.location.replace("/dashboard")
+        } else {
+          // If sign-in fails, at least they have an account
+          alert("Account created! Please sign in manually.")
+          window.location.replace("/login")
+        }
       }
+
     } catch (error: any) {
-      console.error("Sign up error:", error)
-      setIsLoading(false) // Reset loading state on error
+      console.error("Signup error:", error)
+      setIsLoading(false)
       if (error.message?.includes("already registered")) {
-        setErrors({ email: "This email is already registered. Please try signing in instead." })
-      } else if (error.message?.includes("phone")) {
-        setErrors({ mobileNumber: "This mobile number is already registered." })
+        setErrors({ general: "This email is already registered. Please sign in instead." })
       } else {
-        setErrors({ general: error.message || "An error occurred during sign up. Please try again." })
+        setErrors({ general: error.message || "Failed to create account. Please try again." })
+      }
+    } finally {
+      if (!isSuccess) {
+        setIsLoading(false)
       }
     }
   }
@@ -220,22 +215,7 @@ export default function SignupSection() {
     setIsAuthOpen(true)
   }
 
-  // Show full-screen loading when successful
-  if (isSuccess) {
-    return (
-      <FullScreenLoading
-        title="Welcome to DharmaSaathi! 🌸"
-        subtitle="Your spiritual journey begins now"
-        messages={[
-          "Creating your sacred profile...",
-          "Connecting you with divine souls...",
-          "Preparing your spiritual dashboard...",
-          "Ready to find your dharma partner!",
-        ]}
-        duration={4000}
-      />
-    )
-  }
+  // Don't show any loading screen - we redirect immediately
 
   return (
     <>
@@ -373,7 +353,7 @@ export default function SignupSection() {
                   </div>
 
                   <div>
-                    <Label htmlFor="mobileNumber" className="text-gray-700 font-medium">
+                    <Label htmlFor="phone" className="text-gray-700 font-medium">
                       Mobile Number *
                     </Label>
                     <div className="relative mt-1">
@@ -381,17 +361,16 @@ export default function SignupSection() {
                         <Phone className="h-4 w-4 text-gray-400" />
                       </div>
                       <Input
-                        id="mobileNumber"
+                        id="phone"
                         type="tel"
-                        value={formData.mobileNumber}
-                        onChange={(e) => handleChange("mobileNumber", e.target.value)}
-                        className={`pl-10 ${errors.mobileNumber ? "border-red-500" : ""}`}
+                        value={formData.phone}
+                        onChange={(e) => handleChange("phone", e.target.value)}
+                        className={`pl-10 ${errors.phone ? "border-red-500" : ""}`}
                         placeholder="+91 98765 43210"
                         disabled={isLoading}
                       />
                     </div>
-                    {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                    <p className="mt-1 text-xs text-gray-500">Include country code (e.g., +91 for India)</p>
+                    {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
                   </div>
 
                   <div>
@@ -408,59 +387,99 @@ export default function SignupSection() {
                         value={formData.password}
                         onChange={(e) => handleChange("password", e.target.value)}
                         className={`pl-10 pr-10 ${errors.password ? "border-red-500" : ""}`}
-                        placeholder="Create password"
+                        placeholder="Min 6 characters"
                         disabled={isLoading}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
                       >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-gray-400" />
+                        )}
                       </button>
                     </div>
                     {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
-                    <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="confirmPassword" className="text-gray-700 font-medium">
+                      Confirm Password *
+                    </Label>
+                    <div className="relative mt-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Lock className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={formData.confirmPassword}
+                        onChange={(e) => handleChange("confirmPassword", e.target.value)}
+                        className={`pl-10 pr-10 ${errors.confirmPassword ? "border-red-500" : ""}`}
+                        placeholder="Confirm password"
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                    {errors.confirmPassword && <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>}
                   </div>
 
                   <Button
                     type="submit"
+                    className="w-full bg-gradient-to-r from-primary to-primary/90 hover:to-primary text-white shadow-lg"
+                    size="lg"
                     disabled={isLoading}
-                    className="w-full bg-gradient-to-r from-brand-700 to-primary hover:from-brand-800 hover:to-primary/90 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
                     {isLoading ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Creating Account...
                       </>
                     ) : (
                       <>
-                        Create Account
-                        <ArrowRight className="w-4 h-4 ml-2" />
+                        <Heart className="mr-2 h-4 w-4" />
+                        Create My Account
                       </>
                     )}
                   </Button>
-                </form>
 
-                <div className="text-center mt-6">
-                  <p className="text-sm text-gray-600">
-                    Already have an account?{" "}
-                    <button
-                      onClick={openLoginDialog}
-                      className="text-brand-600 hover:text-brand-700 font-medium transition-colors hover:underline"
-                    >
-                      Sign in here
-                    </button>
-                  </p>
-                </div>
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Already have an account?{" "}
+                      <button
+                        type="button"
+                        onClick={openLoginDialog}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Sign in
+                      </button>
+                    </p>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Auth Dialog for Login */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode="login" />
+      <AuthDialog 
+        isOpen={isAuthOpen} 
+        onClose={() => setIsAuthOpen(false)} 
+        defaultMode="login" 
+      />
     </>
   )
 }

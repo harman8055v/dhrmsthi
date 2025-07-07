@@ -115,7 +115,12 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       })
 
       if (error) {
-        console.error("OTP verification error:", error)
+        console.error("OTP verification error:", {
+          message: error.message,
+          details: (error as any).details,
+          hint: (error as any).hint,
+          code: (error as any).code,
+        })
         setLocalError(error.message || "Invalid OTP. Please try again.")
         return
       }

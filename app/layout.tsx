@@ -1,6 +1,7 @@
 import type React from "react"
 import "@/app/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProvider } from "@/contexts/AuthContext"
 import { ToastProvider } from "@/components/toast-manager"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Toaster } from "@/components/ui/sonner"
@@ -59,12 +60,14 @@ export default function RootLayout({
       </head>
       <body className={cn("min-h-screen bg-background font-sans antialiased", fontSans.variable)}>
         <ErrorBoundary>
+          <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
             <ToastProvider>
               {children}
               <Toaster position="top-right" richColors />
             </ToastProvider>
           </ThemeProvider>
+          </AuthProvider>
         </ErrorBoundary>
       </body>
     </html>
