@@ -1,10 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Phone, CheckCircle, AlertCircle } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import PhoneInput from "@/components/ui/phone-input"
+import { formatPhoneE164, isValidPhoneE164 } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import type { User } from "@supabase/supabase-js"
 import type { OnboardingData } from "@/lib/types/onboarding"
@@ -19,7 +21,7 @@ interface SeedStageProps {
 }
 
 export default function SeedStage({ formData, onChange, onNext, isLoading, user, error }: SeedStageProps) {
-  const [mobileNumber, setMobileNumber] = useState(formData.phone || user?.phone || "")
+  const [mobileNumber, setMobileNumber] = useState<string>(formData.phone || user?.phone || "")
   const [otp, setOtp] = useState("")
   const [otpSent, setOtpSent] = useState(false)
   const [verifying, setVerifying] = useState(false)
@@ -27,15 +29,24 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
   const [localError, setLocalError] = useState<string | null>(null)
   const [countdown, setCountdown] = useState(0)
 
+  // If we came directly from the signup page (no auth user yet) but already have a phone number,
+  // an OTP was just sent. Skip the send step and show the OTP input immediately.
+  useEffect(() => {
+    if (!user && !otpSent && mobileNumber) {
+      setOtpSent(true)
+      setCountdown(60)
+    }
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Check if mobile is already verified
   const isAlreadyVerified = formData.mobile_verified || !!user?.phone_confirmed_at
 
   // Prefill mobile number from user data if available
   useEffect(() => {
     if (user?.phone) {
-      const cleanNumber = user.phone.replace("+91", "").replace(/\D/g, "")
-      setMobileNumber(cleanNumber)
-      // Update form data with the phone number
+      setMobileNumber(user.phone)
       onChange({ phone: user.phone })
     }
   }, [user?.phone, onChange])
@@ -52,11 +63,8 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       setLocalError("Please enter your mobile number")
       return
     }
-
-    // Basic mobile number validation
-    const cleanNumber = mobileNumber.replace(/\D/g, "")
-    if (cleanNumber.length < 10) {
-      setLocalError("Please enter a valid mobile number")
+    if (!isValidPhoneE164(mobileNumber)) {
+      setLocalError("Please enter a valid mobile number in international format")
       return
     }
 
@@ -64,14 +72,30 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
     setLocalError(null)
 
     try {
-      // Format the number for international format
-      const formattedNumber = cleanNumber.startsWith("91") ? `+${cleanNumber}` : `+91${cleanNumber}`
+      const formattedNumber = formatPhoneE164(mobileNumber)
 
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formattedNumber,
-      })
+      let error: any = null
+      if (user) {
+        // If already signed in (email+password), attach phone to this user
+        const { error: updErr } = await supabase.auth.updateUser({
+          phone: formattedNumber,
+        })
+        error = updErr
+      } else {
+        // If not signed in, this is a pure phone signup
+        const { error: signErr } = await supabase.auth.signInWithOtp({
+          phone: formattedNumber,
+          options: { shouldCreateUser: true },
+        })
+        error = signErr
+      }
 
-      if (error) {
+      // Ignore duplicate/exists errors
+      if (
+        error &&
+        !error.message?.includes("already registered") &&
+        !error.message?.includes("exists")
+      ) {
         console.error("OTP send error:", error)
         setLocalError(error.message || "Failed to send OTP. Please try again.")
         return
@@ -105,22 +129,77 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
     setLocalError(null)
 
     try {
-      const cleanNumber = mobileNumber.replace(/\D/g, "")
-      const formattedNumber = cleanNumber.startsWith("91") ? `+${cleanNumber}` : `+91${cleanNumber}`
+      const formattedNumber = formatPhoneE164(mobileNumber)
 
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         phone: formattedNumber,
         token: otp,
         type: "sms",
       })
 
-      if (error) {
+      if (error && !error.message?.includes("already confirmed")) {
         console.error("OTP verification error:", error)
         setLocalError(error.message || "Invalid OTP. Please try again.")
         return
       }
 
-      // OTP verified successfully
+      // Treat duplicate confirmation as success
+
+      // OTP verified successfully – fetch the fresh auth user (has the final UID)
+      const {
+        data: { user: freshUser },
+        error: userErr,
+      } = await supabase.auth.getUser()
+
+      if (userErr || !freshUser) {
+        console.error('Failed to read current auth user after OTP verify', userErr)
+        setLocalError('Unexpected auth error. Please refresh and try again.')
+        return
+      }
+
+      // 1️⃣ Pull any buffered signup data from localStorage (set during initial form)
+      let buffered: Record<string, any> = {}
+      try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem('signupData') : null
+        if (raw) buffered = JSON.parse(raw)
+      } catch (e) {
+        console.warn('Failed to parse buffered signup data', e)
+      }
+
+      // 2️⃣ Build initial profile payload
+      const initialPayload = {
+        id: freshUser.id,
+        phone: formattedNumber,
+        mobile_verified: true,
+        email: buffered.email || null,
+        full_name: buffered.full_name || null,
+        first_name: buffered.first_name || null,
+        last_name: buffered.last_name || null,
+        gender: buffered.gender || null,
+        birthdate: buffered.birthdate || null,
+        // mark onboarding not done yet – rest of stages will update
+        is_onboarded: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      // 3️⃣ Upsert row in public.users
+      const { error: upsertErr } = await supabase
+        .from('users')
+        .upsert(initialPayload, { onConflict: 'id', ignoreDuplicates: false })
+        .single()
+
+      if (upsertErr && !upsertErr.message?.includes('duplicate')) {
+        console.error('Initial profile upsert error:', upsertErr)
+        setLocalError('Failed to create profile. Please try again.')
+        return
+      }
+
+      // 4️⃣ Clear buffered data
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('signupData')
+      }
+
       const verificationData = {
         phone: formattedNumber,
         mobile_verified: true,
@@ -178,28 +257,15 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       {!otpSent ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="mobile" className="flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              Mobile Number
-            </Label>
-            <div className="flex">
-              <span className="inline-flex items-center px-3 text-sm text-gray-500 bg-gray-50 border border-r-0 border-gray-300 rounded-l-md">
-                +91
-              </span>
-              <Input
-                id="mobile"
-                type="tel"
-                value={mobileNumber.replace("+91", "")}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/\D/g, "").slice(0, 10)
-                  setMobileNumber(value)
-                  setLocalError(null)
-                }}
-                placeholder="Enter your mobile number"
-                className="rounded-l-none"
-                maxLength={10}
-              />
-            </div>
+            <Label>Mobile Number</Label>
+            <PhoneInput
+              value={mobileNumber}
+              onChange={(val) => {
+                setMobileNumber(val)
+                setLocalError(null)
+              }}
+              disabled={sendingOtp}
+            />
           </div>
 
           {(localError || error) && (
@@ -223,7 +289,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       ) : (
         <div className="space-y-4">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-700 text-sm">OTP sent to +91{mobileNumber.replace("+91", "")}</p>
+            <p className="text-blue-700 text-sm">OTP sent to {formatPhoneE164(mobileNumber)}</p>
           </div>
 
           <div className="space-y-2">

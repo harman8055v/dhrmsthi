@@ -2,117 +2,92 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { debugLog } from "@/lib/logger"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Heart, User } from "lucide-react"
-import { ReferralProgram } from "@/components/dashboard/referral-program"
-import MobileNav from "@/components/dashboard/mobile-nav"
 import SettingsCard from "@/components/dashboard/settings-card"
-import SwipeStack from "@/components/dashboard/swipe-stack"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import dynamic from "next/dynamic"
+
+const SwipeStack = dynamic(() => import("@/components/dashboard/swipe-stack"), { ssr: false })
 import WelcomeSection from "@/components/dashboard/welcome-section"
 import NewUserWelcome from "@/components/dashboard/new-user-welcome"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [profiles, setProfiles] = useState<any[]>([])
-  const [swipeStats, setSwipeStats] = useState<any>(null)
+  // Include refreshProfile so we can manually trigger a fetch on first mount
+  const { user, profile, loading: isLoading, error, isVerified, refreshProfile } = useAuthContext()
   const router = useRouter()
 
+  const {
+    data: profiles = [],
+    isLoading: profilesLoading,
+    refetch: refetchProfiles,
+  } = useQuery({
+    queryKey: ["profiles", "discover"],
+    queryFn: async () => {
+      const res = await fetch("/api/profiles/discover?limit=5", { credentials: "include" })
+      if (!res.ok) throw new Error("Failed to fetch profiles")
+      const data = await res.json()
+      return (data.profiles || []).slice(0, 5)
+    },
+    enabled: isVerified,
+  })
+
+  const {
+    data: swipeStats,
+    isLoading: statsLoading,
+    refetch: refetchStats,
+  } = useQuery({
+    queryKey: ["swipe", "stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/swipe/stats", { credentials: "include" })
+      if (!res.ok) throw new Error("Failed to fetch swipe stats")
+      return res.json()
+    },
+    enabled: isVerified,
+  })
+
+  // Redirect unauthenticated users and handle onboarding status
   useEffect(() => {
-    async function getUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          router.push("/")
-          return
-        }
-
-        setUser(user)
-
-        // Fetch user profile data
-        const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.error("Error fetching user profile:", {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          })
-          console.log("User ID:", user.id)
-          console.log("User phone:", user.phone)
-          console.log("User email:", user.email)
-          
-          // If user not found, they need to complete onboarding
-          router.push("/onboarding")
-          return
-        }
-
-        // If user hasn't completed onboarding, redirect to onboarding
-        if (!profileData?.onboarding_completed) {
-          router.push("/onboarding")
-          return
-        }
-
-        setProfile(profileData)
-
-        // Add debugging
-        console.log("Profile data:", profileData)
-        console.log("Verification status:", profileData?.verification_status)
-        console.log("Account status:", profileData?.account_status)
-        console.log("Is verified:", isUserVerified(profileData))
-
-        // Only fetch profiles and swipe stats if user is verified
-        if (isUserVerified(profileData)) {
-          fetchProfiles()
-          fetchSwipeStats()
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Error in auth check:", error)
-        router.push("/")
-      }
+    console.log('[Dashboard]', { isLoading, error, profile });
+    if (isLoading) return;
+    if (!user) {
+      router.replace("/")
+      return;
     }
-
-    getUser()
-  }, [router])
-
-  const fetchProfiles = async () => {
-    try {
-      const response = await fetch("/api/profiles/discover", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setProfiles(data.profiles || [])
-      }
-    } catch (error) {
-      console.error("Error fetching profiles:", error)
+    if (error) {
+      console.error('[Dashboard] profile load error:', error);
+      return;
     }
-  }
-
-  const fetchSwipeStats = async () => {
-    try {
-      const response = await fetch("/api/swipe/stats", { credentials: "include" })
-      if (response.ok) {
-        const stats = await response.json()
-        setSwipeStats(stats)
-      }
-    } catch (error) {
-      console.error("Error fetching swipe stats:", error)
+    if (!(profile as any)?.is_onboarded) {
+      console.log('[Dashboard] not onboarded → redirecting');
+      router.replace('/onboarding');
+      return;
     }
-  }
+    // When verified, fetch page-specific data
+    if (isVerified) {
+      refetchProfiles();
+      refetchStats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, error, profile, user, isVerified])
+
+  // If the component mounts with a user but no profile (fresh after onboarding),
+  // trigger one manual refresh so the dashboard shows real data without reload.
+  useEffect(() => {
+    if (!isLoading && user && !profile) {
+      console.log('[Dashboard] profile missing → calling refreshProfile()')
+      refreshProfile()
+    }
+  }, [isLoading, user, profile, refreshProfile])
 
   const calculateProfileCompleteness = () => {
     if (!profile) return 0
 
+    // Cast to any for dynamic key access because UserProfile type does not include all onboarding fields explicitly
+    const prof: any = profile
     const fields = [
       "first_name",
       "last_name",
@@ -134,13 +109,13 @@ export default function DashboardPage() {
     const total = fields.length + arrayFields.length
 
     fields.forEach((field) => {
-      if (profile[field] && profile[field].toString().trim() !== "") {
+      if (prof[field] && prof[field].toString().trim() !== "") {
         completed++
       }
     })
 
     arrayFields.forEach((field) => {
-      if (profile[field] && Array.isArray(profile[field]) && profile[field].length > 0) {
+      if (prof[field] && Array.isArray(prof[field]) && prof[field].length > 0) {
         completed++
       }
     })
@@ -176,23 +151,17 @@ export default function DashboardPage() {
   const handleSwipe = (direction: "left" | "right" | "superlike", profileId: string) => {
     debugLog(`Swiped ${direction} on profile ${profileId}`)
     // Refresh stats after swipe
-    fetchSwipeStats()
+    refetchStats()
   }
 
-  if (loading) {
+  if (isLoading) {
     return <>{require("./loading").default()}</>;
   }
-
-  const isVerified = isUserVerified(profile)
 
   console.log("Dashboard - Is verified:", isVerified)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
-      {/* Mobile Navigation */}
-      <MobileNav userProfile={profile} />
-
-      {/* Main Content */}
+    <>
       {isVerified ? (
         // VERIFIED USER - Full Swipe Interface
         <main className="pt-20 pb-32 min-h-screen">
@@ -210,11 +179,6 @@ export default function DashboardPage() {
             </div>
 
 
-
-            {/* Referral Program Section */}
-            <div data-referral-section>
-              <ReferralProgram userId={user?.id || ""} userProfile={profile} />
-            </div>
 
             {/* Settings Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -234,6 +198,6 @@ export default function DashboardPage() {
           </div>
         </main>
       )}
-    </div>
+    </>
   )
 }

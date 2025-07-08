@@ -13,54 +13,6 @@ import Footer from "@/components/footer"
 import { Suspense } from "react";
 import Head from "next/head";
 
-export const metadata = {
-  title: "DharmaSaathi – #1 Spiritual Matrimony & Indian Matchmaking | Dharma, Sanatan, Shaadi, Marriage",
-  description:
-    "Find your soulmate on DharmaSaathi, India's leading spiritual matrimony and matchmaking platform. Discover dharma-based, Sanatan, and conscious matches. Trusted alternative to Shaadi.com, BharatMatrimony, and more.",
-  keywords: [
-    "matrimony", "spiritual matrimony", "dharma matrimony", "sanatan dharma", "shaadi", "shaadi.com", "indian matchmaking", "marriage", "hindu matrimony", "vedic marriage", "soulmate", "conscious relationships", "bharat matrimony", "elite matrimony", "community matrimony", "wedding", "kundali matching", "matchmaking", "find partner", "indian brides", "indian grooms", "marriage bureau", "marriage site", "best matrimony site", "spiritual partner", "sanatan marriage", "vedic shaadi", "hindu marriage", "shaadi india", "shaadi app", "marriage app", "spiritual shaadi", "dharma partner"
-  ],
-  metadataBase: new URL("https://dharmasaathi.com"),
-  alternates: {
-    canonical: "/",
-  },
-  openGraph: {
-    title: "DharmaSaathi – #1 Spiritual Matrimony & Indian Matchmaking | Dharma, Sanatan, Shaadi, Marriage",
-    description:
-      "Find your soulmate on DharmaSaathi, India's leading spiritual matrimony and matchmaking platform. Discover dharma-based, Sanatan, and conscious matches. Trusted alternative to Shaadi.com, BharatMatrimony, and more.",
-    url: "https://dharmasaathi.com/",
-    siteName: "DharmaSaathi",
-    images: [
-      {
-        url: "/public/images/spiritual-couple.jpg",
-        width: 1200,
-        height: 630,
-        alt: "DharmaSaathi – Spiritual Matchmaking",
-      },
-    ],
-    locale: "en_IN",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "DharmaSaathi – #1 Spiritual Matrimony & Indian Matchmaking | Dharma, Sanatan, Shaadi, Marriage",
-    description:
-      "Find your soulmate on DharmaSaathi, India's leading spiritual matrimony and matchmaking platform. Discover dharma-based, Sanatan, and conscious matches. Trusted alternative to Shaadi.com, BharatMatrimony, and more.",
-    site: "@dharmasaathi",
-    images: [
-      {
-        url: "/public/images/spiritual-couple.jpg",
-        alt: "DharmaSaathi – Spiritual Matchmaking",
-      },
-    ],
-  },
-  icons: {
-    icon: "/logo.png",
-    shortcut: "/logo.png",
-    apple: "/logo.png",
-  },
-};
-
 function JsonLd() {
   return (
     <Head>

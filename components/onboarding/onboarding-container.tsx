@@ -44,6 +44,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
   const [isLoading, setIsLoading] = useState(false)
   const [showCompletion, setShowCompletion] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [didSubmit, setDidSubmit] = useState(false)
   const router = useRouter()
 
   // Initialize form state with null for all enum/text fields and [] for arrays
@@ -124,71 +125,83 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     setError(null) // Clear any previous errors
   }
 
-  // Submit user profile using upsert to avoid duplicate key errors
-  async function submitUserProfile(profileData: Partial<OnboardingData>) {
-    if (!user?.id) {
-      throw new Error("User ID is required for profile submission")
+  // Replace the complex submitUserProfile function with the simpler handleSubmit
+  const handleSubmit = async (values: any = null) => {
+    if (didSubmit) return;
+    setDidSubmit(true);
+
+    // Pull the latest auth user (OTP verify may have produced a new session)
+    const {
+      data: { user: freshUser },
+      error: authErr,
+    } = await supabase.auth.getUser()
+
+    if (authErr || !freshUser) {
+      console.error('[Onboard] failed to read current auth user', authErr)
+      setDidSubmit(false)
+      setError('Missing auth user – please refresh and try again')
+      return
     }
 
-    try {
-      console.log("Submitting user profile for user ID:", user.id)
-      console.log("Profile data to submit:", profileData)
-      console.log("User phone from auth:", user.phone)
-      console.log("User email from auth:", user.email)
+    // Prefer passed-in values (from mergedFormData) but fall back to current state
+    const source = values ?? formData
 
-      // Prepare the complete profile data for upsert
-      // Only include phone if it's being updated and different from existing user phone
-      const completeProfileData = {
-        id: user.id, // Always include the user ID for upsert
-        ...profileData,
-        updated_at: new Date().toISOString(),
-      }
+    const payload = {
+      id: freshUser.id,
+      phone: source.phone || freshUser.phone,
+      email_verified: source.email_verified,
+      mobile_verified: source.mobile_verified,
+      gender: source.gender,
+      birthdate: source.birthdate,
+      height_ft: source.height_ft,
+      height_in: source.height_in,
+      country_id: source.country_id,
+      state_id: source.state_id,
+      city_id: source.city_id,
+      education: source.education,
+      profession: source.profession,
+      annual_income: source.annual_income,
+      marital_status: source.marital_status,
+      diet: source.diet,
+      temple_visit_freq: source.temple_visit_freq,
+      vanaprastha_interest: source.vanaprastha_interest,
+      artha_vs_moksha: source.artha_vs_moksha,
+      spiritual_org: source.spiritual_org,
+      daily_practices: source.daily_practices,
+      user_photos: source.user_photos,
+      ideal_partner_notes: source.ideal_partner_notes,
+      favorite_spiritual_quote: source.favorite_spiritual_quote,
+      about_me: source.about_me,
+      is_onboarded: true,
+      verification_status: "pending" as const
+    };
 
-              // Include phone number in profile data as requested
-        if (user.phone && !completeProfileData.phone) {
-          completeProfileData.phone = user.phone
-        }
+    console.log('[Onboard] UPSERT payload:', payload);
+    let { error } = await supabase
+      .from('users')
+      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false })
+      .single();
 
-              // Use upsert to handle both insert and update cases
-        const { data, error: upsertError } = await supabase
-          .from("users")
-          .upsert({
-            email: user.email,
-            phone: user.phone,
-            created_at: new Date().toISOString(),
-            ...completeProfileData
-          }, {
-            onConflict: "id",
-            ignoreDuplicates: false,
-          })
-          .select()
-          .single()
-
-              if (upsertError) {
-          console.error("Upsert error details:", {
-            message: upsertError.message,
-            details: upsertError.details,
-            hint: upsertError.hint,
-            code: upsertError.code,
-          })
-          
-          // Handle specific phone constraint error
-          if (upsertError.message.includes('phone_key') || 
-              upsertError.message.includes('users_v2_phone_key') || 
-              (upsertError.code === '23505' && upsertError.message.includes('phone'))) {
-            throw new Error(`This phone number is already registered. If this is your number, please contact support or try logging in instead.`)
-          }
-          
-          throw new Error(`Failed to save profile: ${upsertError.message}`)
-        }
-
-      console.log("Profile upserted successfully:", data)
-      return data
-    } catch (error) {
-      console.error("Error in submitUserProfile:", error)
-      throw error
+    // Duplicate phone constraint? retry without phone key so we still create/update the row
+    if (error && error.code === '23505' && error.message?.includes('phone')) {
+      console.warn('[Onboard] duplicate phone – retrying upsert without phone');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { phone: _p, ...withoutPhone } = payload as any;
+      ({ error } = await supabase
+        .from('users')
+        .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false })
+        .single());
     }
-  }
+
+    if (error) {
+      console.error('[Onboard] UPSERT failed:', error);
+      setDidSubmit(false);
+      setError(error.message);
+      return;
+    }
+    console.log('[Onboard] UPSERT OK → redirecting to /dashboard');
+    router.replace('/dashboard');
+  };
 
   // Fetch current user profile using user ID
   async function fetchUserProfile() {
@@ -219,7 +232,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     }
   }
 
-  // Save and next handler
+  // Simplified save and next handler - just navigates between stages without saving
   async function handleSaveAndNext(stagePayload: Partial<OnboardingData>) {
     setIsLoading(true)
     setError(null)
@@ -227,47 +240,25 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     try {
       const stageData = stagePayload
 
-      // Validate stage data before saving
+      // Validate stage data before proceeding
       if (Object.keys(stageData).length > 0) {
         validateStageData(stageData, stage)
-
-        // Sanitize the payload - removes null/undefined/empty string values
-        const payload = sanitizePayload(stageData)
-
-        debugLog("Original stage data:", stageData)
-        debugLog("Sanitized payload:", payload)
-
-        // Only make the database call if we have data to save
-        if (Object.keys(payload).length > 0) {
-          // Use the new submitUserProfile function
-          const updatedProfile = await submitUserProfile(payload)
-
-          debugLog("Successfully saved data")
-
-          // Update local profile state with the returned data
-          setProfile({ ...profile, ...updatedProfile })
-        }
+        // Update form data with stage data
+        setFormData(prev => ({ ...prev, ...stageData }))
       }
+
+      // Build a merged version of form data including latest stage inputs
+      const mergedFormData = { ...formData, ...stageData }
 
       // Move to next stage or complete
       if (stage < 5) {
         setStage(stage + 1)
       } else {
-        // Mark onboarding as complete and set verification status to pending
-        const completionData = {
-          onboarding_completed: true,
-          verification_status: "pending" as const,
-        }
-
-        await submitUserProfile(completionData as any)
-
-        setShowCompletion(true)
-        setTimeout(() => {
-          router.push("/dashboard")
-        }, 5000)
+        // On final stage, submit all data (use mergedFormData so nothing is lost)
+        await handleSubmit(mergedFormData)
       }
     } catch (err) {
-      console.error("Error saving stage data:", err)
+      console.error("Error in stage navigation:", err)
       setError((err as Error).message)
     } finally {
       setIsLoading(false)
@@ -372,18 +363,8 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       if (stage < 5) {
         setStage(stage + 1)
       } else {
-        // If skipping the final stage, still mark onboarding as complete
-        const completionData = {
-          onboarding_completed: true,
-          verification_status: "pending" as const,
-        }
-
-        await submitUserProfile(completionData as any)
-
-        setShowCompletion(true)
-        setTimeout(() => {
-          router.push("/dashboard")
-        }, 5000)
+        // If skipping the final stage, submit with current data
+        await handleSubmit(formData)
       }
     } catch (error: any) {
       console.error("Error skipping stage:", error)
@@ -400,23 +381,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     "Spiritual Preferences",
     "About You & Photos",
   ]
-
-  // Show completion loading screen
-  if (showCompletion) {
-    return (
-      <FullScreenLoading
-        title="Profile Complete! 🎉"
-        subtitle="Your spiritual journey is ready to begin"
-        messages={[
-          "Finalizing your sacred profile...",
-          "Preparing your spiritual matches...",
-          "Setting up your dashboard...",
-          "Welcome to your dharma journey!",
-        ]}
-        duration={5000}
-      />
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 relative overflow-hidden">

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,11 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
 import { Loader2, Eye, EyeOff, ArrowLeft, Mail, CheckCircle, Phone } from "lucide-react"
+import PhoneInput from "@/components/ui/phone-input"
+import { formatPhoneE164, isValidPhoneE164 } from "@/lib/utils"
 
 interface AuthDialogProps {
   isOpen: boolean
   onClose: () => void
   defaultMode: "signup" | "login"
+  prefillMobile?: string
 }
 
 interface FormData {
@@ -45,7 +48,7 @@ interface FormErrors {
 
 type ViewMode = "auth" | "forgot-password" | "reset-sent"
 
-export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogProps) {
+export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile }: AuthDialogProps) {
   const [signupData, setSignupData] = useState<FormData>({
     firstName: "",
     lastName: "",
@@ -74,33 +77,26 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
     firstName: "",
     lastName: "",
   })
+
+  // Prefill mobile if provided (once on open)
+  useEffect(() => {
+    if (prefillMobile) {
+      setMobileAuthData((prev) => ({ ...prev, mobileNumber: prefillMobile }))
+      setAuthMethod("mobile")
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillMobile])
   const [mobileAuthStep, setMobileAuthStep] = useState<"phone" | "otp">("phone")
   const [authMethod, setAuthMethod] = useState<"email" | "mobile">("email")
   const [otpSent, setOtpSent] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
 
   const validateMobileNumber = (mobile: string): boolean => {
-    // Remove all non-digit characters except +
-    const cleanMobile = mobile.replace(/[^\d+]/g, "")
-
-    // Check if it's a valid format
-    if (!cleanMobile) return false
-
-    // Should start with + or digit, be 10-15 characters long
-    const mobileRegex = /^[+]?[1-9]\d{9,14}$/
-    return mobileRegex.test(cleanMobile)
+    return isValidPhoneE164(mobile)
   }
 
   const formatMobileNumber = (mobile: string): string => {
-    // Remove all non-digit characters except +
-    let cleaned = mobile.replace(/[^\d+]/g, "")
-
-    // If it doesn't start with +, and it's an Indian number (10 digits), add +91
-    if (!cleaned.startsWith("+") && cleaned.length === 10 && cleaned.match(/^[6-9]/)) {
-      cleaned = "+91" + cleaned
-    }
-
-    return cleaned
+    return formatPhoneE164(mobile)
   }
 
   const validateSignupForm = (): boolean => {
@@ -250,11 +246,13 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
     setIsLoading(true)
     setErrors({})
 
+    const phoneE164 = formatPhoneE164(mobileAuthData.mobileNumber)
+
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        phone: mobileAuthData.mobileNumber,
+        phone: phoneE164,
         options: {
-          shouldCreateUser: activeTab === "signup",
+          shouldCreateUser: true, // let Supabase decide whether to sign up or login
           data:
             activeTab === "signup"
               ? {
@@ -266,7 +264,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
         },
       })
 
-      if (error) throw error
+      // Supabase returns error if user already exists. Treat it as non-fatal.
+      if (error && !error.message?.includes("already registered") && !error.message?.includes("User already exists")) {
+        throw error
+      }
 
       setOtpSent(true)
       setMobileAuthStep("otp")
@@ -284,14 +285,18 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
       }, 1000)
     } catch (error: any) {
       console.error("Send OTP error:", error)
-      if (error.message?.includes("User already registered")) {
-        if (activeTab === "signup") {
-          setErrors({ general: "This mobile number is already registered. Please try signing in instead." })
-        } else {
-          // For login, this is expected, continue to OTP step
-          setOtpSent(true)
-          setMobileAuthStep("otp")
-        }
+
+      const errMsg: string = error?.message ?? ""
+
+      if (errMsg.includes("Signups not allowed for phone")) {
+        setErrors({
+          general:
+            "Phone sign-ups are temporarily unavailable. Please try using email sign-up or contact support.",
+        })
+      }
+      // Rate-limiting or other errors
+      else if (errMsg.toLowerCase().includes("rate limit")) {
+        setErrors({ general: "Too many attempts. Please wait a minute before trying again." })
       } else {
         setErrors({ general: error.message || "Failed to send OTP. Please try again." })
       }
@@ -307,9 +312,11 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
     setIsLoading(true)
     setErrors({})
 
+    const phoneE164Verify = formatPhoneE164(mobileAuthData.mobileNumber)
+
     try {
       const { data, error } = await supabase.auth.verifyOtp({
-        phone: mobileAuthData.mobileNumber,
+        phone: phoneE164Verify,
         token: mobileAuthData.otp,
         type: "sms",
       })
@@ -330,7 +337,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
               email_verified: false,
               phone_verified: true,
               verification_status: "pending",
-              onboarding_completed: false,
+              is_onboarded: false,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             }
@@ -363,7 +370,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
       // Check onboarding status and redirect
       const { data: profile } = await supabase
         .from("users")
-        .select("onboarding_completed")
+        .select("is_onboarded")
         .eq("id", data.user?.id)
         .single()
 
@@ -392,8 +399,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
 
     setIsLoading(true)
     try {
+      const phoneE164Resend = formatPhoneE164(mobileAuthData.mobileNumber)
+
       const { error } = await supabase.auth.signInWithOtp({
-        phone: mobileAuthData.mobileNumber,
+        phone: phoneE164Resend,
         options: {
           shouldCreateUser: activeTab === "signup",
         },
@@ -465,7 +474,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
             phone: signupData.mobileNumber,
             email_verified: !!authData.user.email_confirmed_at, // Set based on auth status
             verification_status: "pending",
-            onboarding_completed: false,
+            is_onboarded: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }
@@ -829,25 +838,16 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
                 </div>
 
                 <div>
-                  <Label htmlFor="mobileNumber" className="text-gray-700 font-medium">
-                    Mobile Number *
-                  </Label>
-                  <div className="relative mt-1">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Phone className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <Input
-                      id="mobileNumber"
-                      type="tel"
+                  <Label className="text-gray-700 font-medium">Mobile Number *</Label>
+                  <div className="mt-1">
+                    <PhoneInput
                       value={signupData.mobileNumber}
-                      onChange={(e) => handleSignupChange("mobileNumber", e.target.value)}
-                      className={`pl-10 ${errors.mobileNumber ? "border-red-500" : ""}`}
-                      placeholder="+91 98765 43210"
+                      onChange={(val) => handleSignupChange("mobileNumber", val)}
                       disabled={isLoading}
+                      error={!!errors.mobileNumber}
                     />
                   </div>
                   {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                  <p className="mt-1 text-xs text-gray-500">Include country code (e.g., +91 for India)</p>
                 </div>
 
                 <div>
@@ -931,25 +931,16 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
                     </div>
 
                     <div>
-                      <Label htmlFor="mobile-signup-number" className="text-gray-700 font-medium">
-                        Mobile Number *
-                      </Label>
-                      <div className="relative mt-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Phone className="h-4 w-4 text-gray-400" />
-                        </div>
-                        <Input
-                          id="mobile-signup-number"
-                          type="tel"
+                      <Label className="text-gray-700 font-medium">Mobile Number *</Label>
+                      <div className="mt-1">
+                        <PhoneInput
                           value={mobileAuthData.mobileNumber}
-                          onChange={(e) => handleMobileAuthChange("mobileNumber", e.target.value)}
-                          className={`pl-10 ${errors.mobileNumber ? "border-red-500" : ""}`}
-                          placeholder="+91 98765 43210"
+                          onChange={(val) => handleMobileAuthChange("mobileNumber", val)}
                           disabled={isLoading}
+                          error={!!errors.mobileNumber}
                         />
                       </div>
                       {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                      <p className="mt-1 text-xs text-gray-500">Include country code (e.g., +91 for India)</p>
                     </div>
 
                     <Button
@@ -1152,25 +1143,16 @@ export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogP
                 {mobileAuthStep === "phone" ? (
                   <form onSubmit={handleSendOtp} className="space-y-4">
                     <div>
-                      <Label htmlFor="mobile-login-number" className="text-gray-700 font-medium">
-                        Mobile Number *
-                      </Label>
-                      <div className="relative mt-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Phone className="h-4 w-4 text-gray-400" />
-                        </div>
-                        <Input
-                          id="mobile-login-number"
-                          type="tel"
+                      <Label className="text-gray-700 font-medium">Mobile Number *</Label>
+                      <div className="mt-1">
+                        <PhoneInput
                           value={mobileAuthData.mobileNumber}
-                          onChange={(e) => handleMobileAuthChange("mobileNumber", e.target.value)}
-                          className={`pl-10 ${errors.mobileNumber ? "border-red-500" : ""}`}
-                          placeholder="+91 98765 43210"
+                          onChange={(val) => handleMobileAuthChange("mobileNumber", val)}
                           disabled={isLoading}
+                          error={!!errors.mobileNumber}
                         />
                       </div>
                       {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                      <p className="mt-1 text-xs text-gray-500">Include country code (e.g., +91 for India)</p>
                     </div>
 
                     <Button

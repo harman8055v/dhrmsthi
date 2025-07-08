@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         country:countries(name)
       `)
       .eq("verification_status", "verified")
-      .eq("onboarding_completed", true)
+      .eq("is_onboarded", true)
       .neq("id", user.id)
 
     // Exclude already swiped profiles
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
           country:countries(name)
         `)
         .eq("verification_status", "verified")
-        .eq("onboarding_completed", true)
+        .eq("is_onboarded", true)
         .neq("id", user.id)
 
       if (swipedIds.length > 0) {
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
             country:countries(name)
           `)
           .eq("verification_status", "verified")
-          .eq("onboarding_completed", true)
+          .eq("is_onboarded", true)
           .neq("id", user.id)
 
         if (swipedIds.length > 0) {

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import LocationSelector, { type LocationFormState } from "@/components/location-selector"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 
 const SPIRITUAL_ORGANIZATIONS = [
   "ISKCON",
@@ -108,6 +109,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false)
 
   // Location state
   const [locationState, setLocationState] = useState<LocationFormState>({
@@ -224,6 +226,8 @@ export default function SettingsPage() {
           description: "Profile updated successfully!",
           duration: 3000,
         })
+        setShowSuccessAlert(true)
+        setTimeout(() => setShowSuccessAlert(false), 4000)
         router.push("/dashboard/profile")
       }
     } catch (error) {
@@ -268,6 +272,24 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <MobileNav userProfile={profile} />
+
+      {showSuccessAlert && (
+        <div className="fixed top-20 left-0 w-full z-50 flex justify-center">
+          <div className="max-w-md w-full px-4">
+            <Alert className="bg-green-50 border-green-200">
+              <AlertTitle>Profile Saved</AlertTitle>
+              <AlertDescription>Your changes have been saved successfully.</AlertDescription>
+              <button
+                className="absolute top-2 right-2 text-green-700 hover:text-green-900"
+                onClick={() => setShowSuccessAlert(false)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </Alert>
+          </div>
+        </div>
+      )}
 
       <main className="pt-24 pb-40 px-4 min-h-screen">
         <div className="max-w-4xl mx-auto">
@@ -599,13 +621,15 @@ export default function SettingsPage() {
                         <SelectValue placeholder="Select annual income" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Below 3 Lakhs">Below ₹3 Lakhs</SelectItem>
-                        <SelectItem value="3-5 Lakhs">₹3-5 Lakhs</SelectItem>
-                        <SelectItem value="5-10 Lakhs">₹5-10 Lakhs</SelectItem>
-                        <SelectItem value="10-15 Lakhs">₹10-15 Lakhs</SelectItem>
-                        <SelectItem value="15-25 Lakhs">₹15-25 Lakhs</SelectItem>
-                        <SelectItem value="25-50 Lakhs">₹25-50 Lakhs</SelectItem>
-                        <SelectItem value="Above 50 Lakhs">Above ₹50 Lakhs</SelectItem>
+                        <SelectItem value="Less than ₹5,00,000">Less than ₹5,00,000</SelectItem>
+                        <SelectItem value="₹5,00,000 - ₹10,00,000">₹5,00,000 - ₹10,00,000</SelectItem>
+                        <SelectItem value="₹10,00,000 - ₹15,00,000">₹10,00,000 - ₹15,00,000</SelectItem>
+                        <SelectItem value="₹15,00,000 - ₹25,00,000">₹15,00,000 - ₹25,00,000</SelectItem>
+                        <SelectItem value="₹25,00,000 - ₹50,00,000">₹25,00,000 - ₹50,00,000</SelectItem>
+                        <SelectItem value="₹50,00,000 - ₹75,00,000">₹50,00,000 - ₹75,00,000</SelectItem>
+                        <SelectItem value="₹75,00,000 - ₹1,00,00,000">₹75,00,000 - ₹1,00,00,000</SelectItem>
+                        <SelectItem value="More than ₹1,00,00,000">More than ₹1,00,00,000</SelectItem>
+                        <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

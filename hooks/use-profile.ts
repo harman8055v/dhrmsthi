@@ -191,7 +191,7 @@ export function useProfile() {
       // Update profile with onboarding data and mark as completed
       await userService.updateProfile({
         ...onboardingData,
-        onboarding_completed: true,
+        is_onboarded: true,
         updated_at: new Date().toISOString()
       })
 

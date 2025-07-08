@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import {
   Heart,
@@ -18,6 +18,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 import Image from "next/image"
+import { useQueryClient } from "@tanstack/react-query"
 
 interface MobileNavProps {
   userProfile?: any
@@ -26,8 +27,35 @@ interface MobileNavProps {
 export default function MobileNav({ userProfile }: MobileNavProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [tappedItem, setTappedItem] = useState<string | null>(null)
+  const qc = useQueryClient()
   const router = useRouter()
   const pathname = usePathname()
+
+  // Prefetch dashboard routes for instant navigation
+  useEffect(() => {
+    const routes = [
+      "/dashboard",
+      "/dashboard/matches",
+      "/dashboard/messages",
+      "/dashboard/store",
+      "/dashboard/profile",
+    ]
+    routes.forEach((r) => router.prefetch(r))
+
+    // Prefetch limited datasets so first navigation is instant
+    qc.prefetchQuery({
+      queryKey: ["profiles", "discover"],
+      queryFn: () => fetch("/api/profiles/discover?limit=5", { credentials: "include" }).then((r) => r.json().then((d) => d.profiles || [])),
+    })
+    qc.prefetchQuery({
+      queryKey: ["matches"],
+      queryFn: () => fetch("/api/profiles/matches?limit=10", { credentials: "include" }).then((r) => r.json().then((d) => d.matches || [])),
+    })
+    qc.prefetchQuery({
+      queryKey: ["conversations"],
+      queryFn: () => fetch("/api/messages/conversations?limit=10", { credentials: "include" }).then((r) => r.json().then((d) => d.conversations || [])),
+    })
+  }, [router, qc])
 
   const isVerified = isUserVerified(userProfile)
   const showHeader = !(pathname === "/dashboard" && isVerified)

@@ -26,16 +26,69 @@ export default function OnboardingPage() {
           error: userError,
         } = await supabase.auth.getUser()
 
-        if (userError) {
-          console.error("Auth error:", userError)
-          setError("Authentication error. Please try signing in again.")
-          setTimeout(() => router.push("/"), 3000)
-          return
-        }
+        // If we reach here and there's no session yet (OTP not verified), fall back to buffered data
+        if (userError || !user) {
+          console.warn("No auth session yet – using buffered signup data")
 
-        if (!user) {
-          debugLog("No authenticated user found, redirecting to homepage")
-          router.push("/")
+          let buffered: any = null
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem('signupData')
+              if (raw) buffered = JSON.parse(raw)
+            } catch (_) {}
+          }
+
+          if (!buffered) {
+            // Nothing buffered, redirect home
+            router.push('/')
+            return
+          }
+
+          const placeholderProfile = {
+            id: 'temp',
+            phone: buffered.phone || buffered.mobileNumber || '',
+            email: buffered.email || '',
+            first_name: buffered.first_name || null,
+            last_name: buffered.last_name || null,
+            full_name: buffered.full_name || null,
+            mobile_verified: false,
+            email_verified: false,
+            is_onboarded: false,
+            // Personal & physical
+            gender: null,
+            birthdate: null,
+            height_ft: null,
+            height_in: null,
+            // Location
+            country_id: null,
+            state_id: null,
+            city_id: null,
+            // Professional
+            education: null,
+            profession: null,
+            annual_income: null,
+            marital_status: null,
+            // Spiritual
+            diet: null,
+            temple_visit_freq: null,
+            vanaprastha_interest: null,
+            artha_vs_moksha: null,
+            spiritual_org: [],
+            daily_practices: [],
+            user_photos: [],
+            ideal_partner_notes: null,
+            about_me: null,
+            favorite_spiritual_quote: null,
+            // Counters
+            super_likes_count: 5,
+            swipe_count: 50,
+            message_highlights_count: 3,
+            profile_score: 5,
+          } as unknown as OnboardingProfile
+
+          setUser(null)
+          setProfile(placeholderProfile)
+          setLoading(false)
           return
         }
 
@@ -70,7 +123,7 @@ export default function OnboardingPage() {
             email: user.email || undefined,
             mobile_verified: !!user.phone_confirmed_at,
             email_verified: !!user.email_confirmed_at,
-            onboarding_completed: false,
+            is_onboarded: false,
             // Initialize all enum fields as null
             gender: null,
             birthdate: null,
@@ -88,11 +141,7 @@ export default function OnboardingPage() {
             spiritual_org: [],
             daily_practices: [],
             user_photos: [],
-            preferred_age_min: null,
-            preferred_age_max: null,
-            preferred_diet: [],
-            preferred_spiritual_orgs: [],
-            preferred_practices: [],
+            // preference placeholders can be added later
             ideal_partner_notes: null,
             favorite_spiritual_quote: null,
             // Initialize counters
@@ -104,44 +153,15 @@ export default function OnboardingPage() {
             profile_score: 5,
           }
 
-          // Try to insert the new profile
-          const { data: insertedProfile, error: insertError } = await supabase
-            .from("users")
-            .insert({
-              ...newProfile,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .select()
-            .single()
-
-          if (insertError) {
-            console.error("Error creating profile:", {
-              message: insertError.message,
-              details: insertError.details,
-              hint: insertError.hint,
-              code: insertError.code,
-            })
-            
-            // Handle specific phone constraint error
-            if (insertError.message.includes('phone_key') || 
-                insertError.message.includes('users_v2_phone_key') || 
-                (insertError.code === '23505' && insertError.message.includes('phone'))) {
-              setError(`This phone number is already registered. If this is your number, please contact support or try logging in.`)
-              return
-            }
-            
-            // For other errors, use the local profile to continue onboarding
-            setProfile(newProfile as OnboardingProfile)
-          } else {
-            setProfile(insertedProfile)
-          }
+          // Do NOT insert here to avoid duplicate-phone conflicts.
+          // We'll upsert once at the final onboarding submission.
+          setProfile(newProfile as OnboardingProfile)
         } else {
           // Profile found
           debugLog("Profile found:", profileData)
 
           // If user has completed onboarding, redirect to dashboard
-          if (profileData?.onboarding_completed) {
+          if ((profileData as any)?.is_onboarded) {
             debugLog("Onboarding already completed, redirecting to dashboard")
             router.push("/dashboard")
             return
@@ -187,7 +207,7 @@ export default function OnboardingPage() {
     )
   }
 
-  if (!user || !profile) {
+  if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
         <div className="text-center p-8">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -28,45 +28,27 @@ import ProfileImageUploader from "@/components/dashboard/profile-image-uploader"
 import { Badge } from "@/components/ui/badge"
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  // Get auth state from context (already fetched once globally)
+  const { user, profile: rawProfile, loading } = useAuthContext()
+  // The joined profile includes nested city/state objects not declared in UserProfile type.
+  const profile: any = rawProfile
   const router = useRouter()
-  const [userImages, setUserImages] = useState<string[]>([])
+  // Redirect unauthenticated user safely after render
+  useEffect(() => {
+    if (!loading && !profile) {
+      router.replace("/")
+    }
+  }, [loading, profile, router])
+  const [userImages, setUserImages] = useState<string[]>(profile?.user_photos ?? [])
   const [showPreview, setShowPreview] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
 
+  // Update images when profile is loaded/refreshed
   useEffect(() => {
-    async function getUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
-          router.push("/")
-          return
-        }
-
-        setUser(user)
-
-        const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.error("Error fetching profile:", error)
-          return
-        }
-
-        setProfile(profileData)
-        setUserImages(profileData.user_photos || [])
-        setLoading(false)
-      } catch (error) {
-        console.error("Error:", error)
-        router.push("/")
-      }
+    if (profile?.user_photos) {
+      setUserImages(profile.user_photos)
     }
-
-    getUser()
-  }, [router])
+  }, [profile])
 
   useEffect(() => {
     if (showPreview) {
@@ -74,8 +56,9 @@ export default function ProfilePage() {
     }
   }, [showPreview])
 
-  if (loading) {
-    return <>{require("./loading").default()}</>;
+  // Show loader while auth loading or immediately after scheduling redirect
+  if (loading || !profile) {
+    return <>{require("./loading").default()}</>
   }
 
   const calculateAge = (birthdate: string) => {

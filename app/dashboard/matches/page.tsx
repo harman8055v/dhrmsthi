@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Heart, MessageCircle, MapPin, Calendar, Clock, Shield, Users, User } from "lucide-react"
-import MobileNav from "@/components/dashboard/mobile-nav"
-import WhoLikedYou from "@/components/dashboard/who-liked-you"
-import { isUserVerified } from "@/lib/utils"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import dynamic from "next/dynamic"
+
+const WhoLikedYou = dynamic(() => import("@/components/dashboard/who-liked-you"), { ssr: false })
+import { useQuery } from "@tanstack/react-query"
 
 interface Match {
   id: string
@@ -34,69 +34,39 @@ interface Match {
 }
 
 export default function MatchesPage() {
-  const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [matches, setMatches] = useState<Match[]>([])
-  const [loading, setLoading] = useState(true)
+  const { user, profile, loading, isVerified } = useAuthContext()
   const router = useRouter()
 
+  const {
+    data: matches = [],
+    isLoading: matchesLoading,
+    refetch: refetchMatches,
+  } = useQuery({
+    queryKey: ["matches"],
+    queryFn: async () => {
+      const res = await fetch("/api/profiles/matches?limit=10", { credentials: "include" })
+      if (!res.ok) throw new Error("Failed to fetch matches")
+      const data = await res.json()
+      return (data.matches || []).slice(0, 10)
+    },
+    enabled: isVerified,
+  })
+
   useEffect(() => {
-    async function getUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          router.push("/")
-          return
-        }
-
-        setUser(user)
-
-        // Fetch user profile data
-        const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.error("Error fetching user profile:", error)
-          router.push("/onboarding")
-          return
-        }
-
-        // If user hasn't completed onboarding, redirect to onboarding
-        if (!profileData?.onboarding_completed) {
-          router.push("/onboarding")
-          return
-        }
-
-        setProfile(profileData)
-
-        // Only fetch matches if user is verified
-        if (isUserVerified(profileData)) {
-          fetchMatches()
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Error in auth check:", error)
-        router.push("/")
-      }
+    if (loading) return
+    if (!user) {
+      router.replace("/")
+      return
     }
-
-    getUser()
-  }, [router])
-
-  const fetchMatches = async () => {
-    try {
-      const response = await fetch("/api/profiles/matches", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setMatches(data.matches || [])
-      }
-    } catch (error) {
-      console.error("Error fetching matches:", error)
+    if (!(profile as any)?.is_onboarded) {
+      router.replace("/onboarding")
+      return
     }
-  }
+    if (isVerified) {
+      refetchMatches()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, profile, isVerified])
 
   const calculateAge = (birthdate: string) => {
     if (!birthdate) return null
@@ -134,12 +104,7 @@ export default function MatchesPage() {
     return <>{require("./loading").default()}</>;
   }
 
-  const isVerified = isUserVerified(profile)
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
-      <MobileNav userProfile={profile} />
-
       <main className="pt-20 pb-32 min-h-screen">
         <div className="px-4 max-w-4xl mx-auto">
           {isVerified ? (
@@ -178,7 +143,7 @@ export default function MatchesPage() {
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {matches.map((match) => (
+                  {matches.map((match: Match) => (
                     <Card key={match.id} className="hover:shadow-md transition-shadow cursor-pointer">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
@@ -302,6 +267,5 @@ export default function MatchesPage() {
           )}
         </div>
       </main>
-    </div>
   )
 }

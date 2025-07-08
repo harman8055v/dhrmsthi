@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -29,8 +29,7 @@ import {
 } from "lucide-react"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import PaymentModal from "@/components/payment/payment-modal"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
-import { Toaster } from "sonner"
+// Toaster not used directly in this page
 
 const superLikePackages = [
   { count: 4, price: 199, popular: false },
@@ -45,9 +44,8 @@ const highlightPackages = [
 ]
 
 export default function StorePage() {
-  const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  // Pull auth state from the top-level provider so we hit Supabase only once per app load
+  const { user, profile, loading, refreshProfile } = useAuthContext()
   const [paymentModal, setPaymentModal] = useState<{
     isOpen: boolean
     item: any
@@ -66,52 +64,20 @@ export default function StorePage() {
   }
 
   const handlePaymentSuccess = () => {
-    // Refresh user data to show updated credits/status
-    getUser()
+    // Refresh profile data so credits/status update instantly
+    refreshProfile()
   }
 
-  async function getUser() {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push("/")
-        return
-      }
-
-      setUser(user)
-
-      // Fetch user profile data
-      const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-      if (error) {
-        console.error("Error fetching user profile:", error)
-        router.push("/onboarding")
-        return
-      }
-
-      // If user hasn't completed onboarding, redirect to onboarding
-      if (!profileData?.onboarding_completed) {
-        router.push("/onboarding")
-        return
-      }
-
-      setProfile(profileData)
-      setLoading(false)
-    } catch (error) {
-      console.error("Error in auth check:", error)
-      router.push("/")
-    }
-  }
-
-  useEffect(() => {
-    getUser()
-  }, [router])
+  // Removed local Supabase fetch – data comes from context
 
   if (loading) {
     return <>{require("./loading").default()}</>;
+  }
+
+  // If no profile (e.g., user not logged in or onboarding not complete) redirect to homepage
+  if (!profile) {
+    router.push("/")
+    return null
   }
 
   // Plan pricing based on billing cycle
@@ -832,7 +798,7 @@ export default function StorePage() {
         onSuccess={handlePaymentSuccess}
       />
 
-      <Toaster position="top-center" />
+      {/* Toaster not used directly in this page */}
     </div>
   )
 }

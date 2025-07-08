@@ -6,11 +6,13 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Heart, Sparkles, ArrowRight, Phone, Mail, User, Lock, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Heart, Sparkles, ArrowRight, Mail, User, Lock, Eye, EyeOff, Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useRouter, useSearchParams } from "next/navigation"
 import AuthDialog from "./auth-dialog"
 import FullScreenLoading from "./full-screen-loading"
+import { formatPhoneE164, isValidPhoneE164 } from "@/lib/utils"
+import PhoneInput from "@/components/ui/phone-input"
 
 interface FormData {
   firstName: string
@@ -42,6 +44,7 @@ export default function SignupSection() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
+  const [prefillMobile, setPrefillMobile] = useState<string>("")
   const [referralCode, setReferralCode] = useState<string>("")
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -56,18 +59,11 @@ export default function SignupSection() {
   }, [searchParams])
 
   const validateMobileNumber = (mobile: string): boolean => {
-    const cleanMobile = mobile.replace(/[^\d+]/g, "")
-    if (!cleanMobile) return false
-    const mobileRegex = /^[+]?[1-9]\d{9,14}$/
-    return mobileRegex.test(cleanMobile)
+    return isValidPhoneE164(mobile)
   }
 
   const formatMobileNumber = (mobile: string): string => {
-    let cleaned = mobile.replace(/[^\d+]/g, "")
-    if (!cleaned.startsWith("+") && cleaned.length === 10 && cleaned.match(/^[6-9]/)) {
-      cleaned = "+91" + cleaned
-    }
-    return cleaned
+    return formatPhoneE164(mobile)
   }
 
   const validateForm = (): boolean => {
@@ -131,88 +127,37 @@ export default function SignupSection() {
     setErrors({})
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            full_name: `${formData.firstName} ${formData.lastName}`,
-            phone: formData.mobileNumber,
-          },
-        },
-      })
-
-      if (authError) throw authError
-
-      if (authData.user) {
-        try {
-          const profileData = {
-            id: authData.user.id,
+      // 1️⃣ Persist signup data in localStorage so Seed stage can access it
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(
+          'signupData',
+          JSON.stringify({
             email: formData.email,
             first_name: formData.firstName,
             last_name: formData.lastName,
             full_name: `${formData.firstName} ${formData.lastName}`,
-            phone: formData.mobileNumber,
-            email_verified: !!authData.user.email_confirmed_at,
-            verification_status: "pending", // Default to unverified
-            onboarding_completed: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-
-          const { error: profileError } = await supabase.from("users").insert(profileData).select()
-
-          if (profileError) {
-            console.error("Profile creation error:", profileError)
-          }
-
-          // Process referral if referral code exists
-          if (referralCode) {
-            try {
-              console.log("Processing referral with code:", referralCode)
-              const response = await fetch('/api/referrals/signup', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  newUserId: authData.user.id,
-                  referralCode: referralCode
-                })
-              })
-              
-              const result = await response.json()
-              
-              if (response.ok && result.success) {
-                console.log("Referral processed successfully:", result.message)
-              } else {
-                console.warn("Referral processing issue:", result.message || result.error)
-              }
-            } catch (referralError) {
-              console.error("Referral processing failed:", referralError)
-            }
-          }
-        } catch (profileError) {
-          console.error("Profile creation failed:", profileError)
-        }
-
-        setIsSuccess(true)
-        setTimeout(() => {
-          router.push("/onboarding")
-        }, 4000) // Increased duration for better UX
+            mobileNumber: formData.mobileNumber, // track phone so SeedStage can detect prior OTP
+            gender: null,
+            birthdate: null,
+            referral_code: referralCode || null,
+          })
+        )
       }
+
+      // 2️⃣ Send OTP to phone (creates the auth row & session)
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        phone: formData.mobileNumber,
+        options: { shouldCreateUser: true },
+      })
+
+      if (otpErr) throw otpErr
+
+      // 3️⃣ Navigate to onboarding (Seed stage will verify OTP)
+      router.push('/onboarding')
     } catch (error: any) {
-      console.error("Sign up error:", error)
-      setIsLoading(false) // Reset loading state on error
-      if (error.message?.includes("already registered")) {
-        setErrors({ email: "This email is already registered. Please try signing in instead." })
-      } else if (error.message?.includes("phone")) {
-        setErrors({ mobileNumber: "This mobile number is already registered." })
-      } else {
-        setErrors({ general: error.message || "An error occurred during sign up. Please try again." })
-      }
+      console.error('Sign up error:', error)
+      setIsLoading(false)
+      setErrors({ general: error.message || 'Failed to start sign-up. Please try again.' })
     }
   }
 
@@ -373,25 +318,16 @@ export default function SignupSection() {
                   </div>
 
                   <div>
-                    <Label htmlFor="mobileNumber" className="text-gray-700 font-medium">
-                      Mobile Number *
-                    </Label>
-                    <div className="relative mt-1">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                      </div>
-                      <Input
-                        id="mobileNumber"
-                        type="tel"
+                    <Label className="text-gray-700 font-medium">Mobile Number *</Label>
+                    <div className="mt-1">
+                      <PhoneInput
                         value={formData.mobileNumber}
-                        onChange={(e) => handleChange("mobileNumber", e.target.value)}
-                        className={`pl-10 ${errors.mobileNumber ? "border-red-500" : ""}`}
-                        placeholder="+91 98765 43210"
+                        onChange={(val) => handleChange("mobileNumber", val)}
                         disabled={isLoading}
+                        error={!!errors.mobileNumber}
                       />
                     </div>
                     {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                    <p className="mt-1 text-xs text-gray-500">Include country code (e.g., +91 for India)</p>
                   </div>
 
                   <div>
@@ -460,7 +396,7 @@ export default function SignupSection() {
       </section>
 
       {/* Auth Dialog for Login */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode="login" />
+      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode="login" prefillMobile={prefillMobile} />
     </>
   )
 }

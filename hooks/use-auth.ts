@@ -17,8 +17,27 @@ export function useAuth() {
     loading: true,
     error: null
   })
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
+    // 1) bootstrap existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Session is automatically managed by Supabase
+      console.log('[useAuth] initial getSession done', { session });
+      setAuthReady(true);
+    });
+    // 2) listen for future changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
+      // Session is automatically managed by Supabase
+      console.log('[useAuth] onAuthStateChange', { session });
+      setAuthReady(true);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;    // ← do not fetch until token set
+    console.log('[useAuth] authReady effect fired');
     // Get initial session
     getInitialSession()
 
@@ -41,13 +60,14 @@ export function useAuth() {
     )
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [authReady])
 
   const getInitialSession = async () => {
     try {
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
       const { data: { session }, error } = await supabase.auth.getSession()
+      console.log('[useAuth] getInitialSession result', { session, error });
       
       if (error) {
         console.error('Session error:', error)
@@ -61,6 +81,7 @@ export function useAuth() {
       }
 
       if (session?.user) {
+        console.log('[useAuth] session.user present, calling handleUserSession');
         await handleUserSession(session.user)
       } else {
         setAuthState({
@@ -82,9 +103,14 @@ export function useAuth() {
   }
 
   const handleUserSession = async (user: User) => {
+    if (!authReady) return;    // ← do not fetch until token set
+    
     try {
       // Get user profile
-      const profile = await userService.getCurrentProfile()
+      console.time('[useAuth] getCurrentProfile');
+      const profile = await userService.getCurrentProfile(user.id)
+      console.timeEnd('[useAuth] getCurrentProfile');
+      console.log('[useAuth] profile loaded', profile);
       
       setAuthState({
         user,
@@ -93,7 +119,7 @@ export function useAuth() {
         error: null
       })
     } catch (error) {
-      console.error('Profile fetch error:', error)
+      console.error('[useAuth] profile fetch error:', error)
       setAuthState({
         user,
         profile: null,
@@ -137,10 +163,14 @@ export function useAuth() {
 
   const refreshProfile = async () => {
     if (!authState.user) return
+    if (!authReady) return;    // ← do not fetch until token set
 
     try {
+      console.log('[useAuth] refreshProfile()');
       setAuthState(prev => ({ ...prev, loading: true }))
-      const profile = await userService.getCurrentProfile()
+      console.time('[useAuth] refreshProfile.getCurrentProfile');
+      const profile = await userService.getCurrentProfile(authState.user.id)
+      console.timeEnd('[useAuth] refreshProfile.getCurrentProfile');
       
       setAuthState(prev => ({
         ...prev,
@@ -149,7 +179,7 @@ export function useAuth() {
         error: null
       }))
     } catch (error) {
-      console.error('Profile refresh error:', error)
+      console.error('[useAuth] Profile refresh error:', error)
       setAuthState(prev => ({
         ...prev,
         loading: false,
@@ -163,7 +193,7 @@ export function useAuth() {
     signOut,
     refreshProfile,
     isAuthenticated: !!authState.user,
-    isProfileComplete: !!authState.profile?.onboarding_completed,
+    isProfileComplete: !!authState.profile?.is_onboarded,
     isVerified: authState.profile?.verification_status === 'verified',
     isPremium: authState.profile?.account_status === 'premium' || authState.profile?.account_status === 'elite'
   }

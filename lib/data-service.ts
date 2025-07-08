@@ -40,7 +40,7 @@ export interface UserProfile {
   profile_photo_url?: string
   user_photos?: string[] // JSONB array of signed URLs
   // Status and verification
-  onboarding_completed: boolean
+  is_onboarded: boolean
   verification_status?: 'pending' | 'verified' | 'rejected'
   account_status?: 'free' | 'premium' | 'elite'
   premium_expires_at?: string
@@ -124,43 +124,20 @@ const handleSupabaseError = (error: any, operation: string): never => {
 // User Profile Operations
 export const userService = {
   // Get current user profile
-  async getCurrentProfile(): Promise<UserProfile | null> {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return null
+  async getCurrentProfile(userId: string): Promise<UserProfile | null> {
+    console.log('[DataService] getCurrentProfile called', { userId });
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-      const { data, error } = await supabase
-        .from('users')
-        .select(`
-          *,
-          city:cities(name),
-          state:states(name),
-          country:countries(name)
-        `)
-        .eq('id', user.id)
-        .single()
-
-      if (error) throw error
-
-      // Get signed URLs for user photos if they exist
-      if (data.user_photos && data.user_photos.length > 0) {
-        const signedUrls = await Promise.all(
-          data.user_photos.map(async (photoPath: string) => {
-            return await fileService.processPhotoUrl(photoPath)
-          })
-        )
-        data.user_photos = signedUrls.filter(url => url !== null)
-      }
-
-      // Get signed URL for profile photo if it exists
-      if (data.profile_photo_url) {
-        data.profile_photo_url = await fileService.processPhotoUrl(data.profile_photo_url)
-      }
-
-      return data
-    } catch (error) {
-      return handleSupabaseError(error, 'get current profile')
+    if (error) {
+      console.error('[DataService] getCurrentProfile error:', error);
+      throw error;
     }
+    console.log('[DataService] getCurrentProfile success', data);
+    return data;
   },
 
   // Update user profile
@@ -224,7 +201,7 @@ export const userService = {
           country:countries(name)
         `)
         .eq('id', userId)
-        .eq('onboarding_completed', true)
+        .eq('is_onboarded', true)
         .single()
 
       if (error) {
@@ -270,6 +247,12 @@ export const fileService = {
     if (photoPath.startsWith('data:')) {
       console.log('Found base64 data in profile photo, skipping')
       return null
+    }
+
+    // If the URL is an external link (not Supabase storage), return it as-is
+    if (photoPath.startsWith('http') && !photoPath.includes('supabase.co/storage')) {
+      console.log('External photo URL detected, returning as-is:', photoPath)
+      return photoPath
     }
     
     // If it's a Supabase storage URL, extract the path and generate signed URL
@@ -455,7 +438,7 @@ export const swipeService = {
           country:countries(name)
         `)
         .eq('verification_status', 'verified')
-        .eq('onboarding_completed', true)
+        .eq('is_onboarded', true)
         .neq('id', user.id)
 
       // Exclude already swiped profiles
@@ -645,7 +628,10 @@ export const premiumService = {
   // Check if user has premium access
   async hasPremiumAccess(): Promise<boolean> {
     try {
-      const profile = await userService.getCurrentProfile()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return false
+      
+      const profile = await userService.getCurrentProfile(user.id)
       if (!profile) return false
 
       if (profile.account_status === 'premium' || profile.account_status === 'elite') {

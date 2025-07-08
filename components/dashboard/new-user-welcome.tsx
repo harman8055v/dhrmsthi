@@ -140,32 +140,6 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                       Our verification process ensures a safe, authentic community where you can confidently connect with genuine spiritual partners.
                     </p>
                     
-                    {/* Pro Tip Subsection */}
-                    <div className="bg-gradient-to-r from-orange-100 to-amber-100 border-l-4 border-orange-500 rounded-lg p-3 md:p-4">
-                      <div className="flex items-start gap-2">
-                        <div className="flex-shrink-0">
-                          <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">💡</span>
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <h5 className="font-semibold text-orange-800 mb-1 text-sm md:text-base">💫 Pro Tip for Faster Verification</h5>
-                          <p className="text-xs md:text-sm text-orange-700 mb-3">
-                            <strong>Invite friends to fast-track your verification!</strong> When you refer friends who join DharmaSaathi, it significantly boosts your credibility score and results in faster verification. Our system prioritizes users with strong community connections.
-                          </p>
-                          <Button
-                            onClick={() => router.push("/dashboard/referrals")}
-                            size="sm"
-                            variant="outline"
-                            className="border-orange-400 text-orange-700 hover:bg-orange-200 text-xs"
-                          >
-                            <Users className="w-3 h-3 mr-1" />
-                            View Referral Program
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Why We Verify */}
                     <div className="bg-white rounded-xl p-3 md:p-4 space-y-3 border border-orange-100">
                       <h4 className="text-sm md:text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -207,17 +181,14 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                       <p className="text-xs text-gray-600">
                         Complete profiles get verified faster! Add photos, spiritual details, and preferences.
                       </p>
-                    </div>
-
-                    {profileCompleteness < 80 && (
                       <Button
                         onClick={() => router.push("/dashboard/settings")}
                         className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white w-full sm:w-auto text-sm md:text-base"
                       >
                         <Zap className="w-4 h-4 mr-2" />
-                        Complete Profile Now
+                        Complete Profile
                       </Button>
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -273,6 +244,32 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                 </div>
               </div>
             </div>
+
+            {/* Pro Tip – Fast-track Your Verification */}
+            <div className="bg-gradient-to-r from-orange-100 to-amber-100 border-l-4 border-orange-500 rounded-lg p-4 md:p-5">
+              <div className="flex items-start gap-2">
+                <div className="flex-shrink-0">
+                  <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">💡</span>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h5 className="font-semibold text-orange-800 mb-1 text-sm md:text-base">Pro Tip: Fast-track Your Verification</h5>
+                  <p className="text-xs md:text-sm text-orange-700 mb-3">
+                    Referring genuine friends to DharmaSaathi boosts your credibility score and helps our team verify you sooner.
+                  </p>
+                  <Button
+                    onClick={() => router.push("/dashboard/referrals")}
+                    size="sm"
+                    variant="outline"
+                    className="border-orange-400 text-orange-700 hover:bg-orange-200 text-xs"
+                  >
+                    <Users className="w-3 h-3 mr-1" />
+                    View Referral Program
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Encouragement Footer */}
@@ -294,14 +291,6 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                 >
                   Complete My Profile
                   <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push("/dashboard/referrals")}
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50 text-sm md:text-base"
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Invite Friends
                 </Button>
               </div>
             </div>

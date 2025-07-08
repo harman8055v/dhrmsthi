@@ -59,13 +59,13 @@ export default function AuthLoadingScreen({ userId, isNewUser }: AuthLoadingScre
           // Check onboarding status
           const { data: profile } = await supabase
             .from("users")
-            .select("onboarding_completed")
+            .select("is_onboarded")
             .eq("id", userId)
             .single()
 
           // Redirect based on onboarding status
           setTimeout(() => {
-            if (profile?.onboarding_completed) {
+            if ((profile as any)?.is_onboarded) {
               router.push("/dashboard")
             } else {
               router.push("/onboarding")

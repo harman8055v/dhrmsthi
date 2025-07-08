@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
             query = query.not("premium_expires_at", "is", null)
             break
           case "incomplete":
-            query = query.eq("onboarding_completed", false)
+            query = query.eq("is_onboarded", false)
             break
         }
       }
@@ -316,7 +316,7 @@ export async function GET(request: NextRequest) {
           supabase.from("users").select("id", { count: "exact", head: true }).eq("gender", "Female"),
           
           // Completed profiles
-          supabase.from("users").select("id", { count: "exact", head: true }).eq("onboarding_completed", true)
+          supabase.from("users").select("id", { count: "exact", head: true }).eq("is_onboarded", true)
         ])
 
         stats = {

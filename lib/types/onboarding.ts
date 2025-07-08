@@ -50,7 +50,7 @@ export interface OnboardingProfile extends OnboardingData {
   last_name?: string
   full_name?: string
   verification_status?: "pending" | "verified" | "rejected"
-  onboarding_completed: boolean
+  is_onboarded: boolean
   // Counters
   super_likes_count: number
   swipe_count: number

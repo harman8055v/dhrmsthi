@@ -41,3 +41,34 @@ export function getVerificationStatusText(profile: any): string {
   
   return "Profile Under Review"
 }
+
+// ───────────────────────────────────────────────────────────────
+// Phone Helpers
+// ───────────────────────────────────────────────────────────────
+/**
+ * Format a phone number into E.164 format.
+ * - Removes all non-digit characters (except leading "+" if present)
+ * - Always prefixes with "+" once cleaned (does NOT guess country codes)
+ */
+export function formatPhoneE164(input: string): string {
+  if (!input) return ""
+
+  // Strip everything except digits
+  const digitsOnly = input.replace(/[^\d]/g, "")
+
+  if (!digitsOnly) return ""
+
+  // Always return with a single leading +
+  return `+${digitsOnly}`
+}
+ 
+ /**
+  * Basic E.164 phone validation (international format)
+  * Allows + followed by 10-15 digits (country code cannot start with 0).
+  */
+ export function isValidPhoneE164(phone: string): boolean {
+   if (!phone) return false
+   const e164 = phone.trim()
+   const regex = /^\+[1-9]\d{9,14}$/
+   return regex.test(e164)
+ }

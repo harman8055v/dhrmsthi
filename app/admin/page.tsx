@@ -90,7 +90,7 @@ interface UserType {
   super_likes_count: number | null
   swipe_count: number | null
   message_highlights_count: number | null
-  onboarding_completed: boolean | null
+  is_onboarded: boolean | null
   is_verified: boolean | null
   account_status: string | null
   preferred_gender: string | null
@@ -1295,7 +1295,7 @@ export default function AdminDashboard() {
                                 {user.first_name || "Unknown"} {user.last_name || "User"}
                               </h3>
                               {user.is_active === false && <Badge variant="destructive">Inactive</Badge>}
-                              {!user.onboarding_completed && <Badge variant="outline">Incomplete</Badge>}
+                              {!user.is_onboarded && <Badge variant="outline">Incomplete</Badge>}
                               {user.role?.toLowerCase() === "admin" && (
                                 <Badge className="bg-red-100 text-red-800">Admin</Badge>
                               )}
@@ -1548,7 +1548,7 @@ export default function AdminDashboard() {
                               <h3 className="font-medium text-lg">
                                 {user.first_name || "Unknown"} {user.last_name || "User"}
                               </h3>
-                              {!user.onboarding_completed && <Badge variant="outline">Incomplete Profile</Badge>}
+                              {!user.is_onboarded && <Badge variant="outline">Incomplete Profile</Badge>}
                               <Badge className={getStatusColor(user.verification_status)}>
                                 {user.verification_status || "pending"}
                               </Badge>
