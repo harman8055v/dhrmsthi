@@ -17,6 +17,7 @@ import LocationSelector, { type LocationFormState } from "@/components/location-
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import SectionHeader from "@/components/dashboard/section-header"
+import { userService } from "@/lib/data-service"
 
 const SPIRITUAL_ORGANIZATIONS = [
   "ISKCON",
@@ -105,7 +106,7 @@ const MultiSelectCard = ({
 }
 
 export default function SettingsPage() {
-  const { user, profile, loading } = useAuthContext()
+  const { user, profile, loading, refreshProfile } = useAuthContext()
   const [saving, setSaving] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
@@ -162,10 +163,11 @@ export default function SettingsPage() {
       const cleanUpdateData = Object.fromEntries(
         Object.entries(updateData).filter(([_, value]) => value !== undefined && value !== null)
       )
-      // Use your userService or supabase update logic here
-      // Example:
-      // await userService.updateProfile(cleanUpdateData)
-      // For now, just show success (simulate):
+      // Actually update the profile in the backend
+      // Persist changes
+      await userService.updateProfile(cleanUpdateData)
+      // Sync fresh profile into auth context so subsequent pages show updated data
+      await refreshProfile()
       toast({
         title: "✅ Success",
         description: "Profile updated successfully!",
