@@ -7,42 +7,72 @@ import { Button } from "@/components/ui/button"
 import { Camera, X } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+import { userService } from "@/lib/data-service"
 
 interface ProfileImageUploaderProps {
-  userId: string
   currentImages: string[]
   onImagesUpdate: (images: string[]) => void
 }
 
-export default function ProfileImageUploader({ userId, currentImages, onImagesUpdate }: ProfileImageUploaderProps) {
+// Helper to extract storage path from URL or return as-is if already a path
+function getStoragePath(imageUrl: string) {
+  if (!imageUrl) return imageUrl;
+  if (!imageUrl.startsWith("http")) return imageUrl;
+  // Extract after /user-photos/
+  const match = imageUrl.match(/user-photos\/([^?]+)/);
+  return match ? decodeURIComponent(match[1]) : imageUrl;
+}
+
+export default function ProfileImageUploader({ currentImages, onImagesUpdate }: ProfileImageUploaderProps) {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const convertToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.readAsDataURL(file)
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = (error) => reject(error)
-    })
-  }
 
   const uploadImage = async (file: File) => {
     try {
       setUploading(true)
+      // Get authenticated user ID (auth.uid())
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.id) {
+        toast.error("User not authenticated. Please log in again.")
+        setUploading(false)
+        return
+      }
 
-      // Convert image to base64 for now (alternative to storage)
-      const base64Image = await convertToBase64(file)
+      const fileExt = file.name.split('.').pop() ?? 'jpg'
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`
+      console.log("[Upload] Path prepared:", filePath)
 
-      // For now, we'll store the base64 image directly in the database
-      // In production, you'd want to use proper file storage
-      const newImages = [...currentImages, base64Image]
+      // Attempt upload (no upsert first)
+      let { data, error } = await supabase.storage
+        .from("user-photos")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        })
 
-      // Update user profile with new images
-      const { error: updateError } = await supabase.from("users").update({ user_photos: newImages }).eq("id", userId)
+      // If conflict (duplicate), retry with upsert
+      if ((error as any)?.status === 409) {
+        console.warn("[Upload] Duplicate path, retrying with upsert:true")
+        ;({ data, error } = await supabase.storage
+          .from("user-photos")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: true,
+          }))
+      }
 
-      if (updateError) throw updateError
+      console.log("[Upload response]", { data, error })
 
+      if (error) {
+        toast.error(error.message || "Failed to upload image.")
+        setUploading(false)
+        return
+      }
+      // Save the storage path in DB
+      const newImages = [...currentImages, filePath]
+      await userService.updateProfile({ user_photos: newImages })
       onImagesUpdate(newImages)
       toast.success("Image uploaded successfully!")
     } catch (error) {
@@ -53,14 +83,37 @@ export default function ProfileImageUploader({ userId, currentImages, onImagesUp
     }
   }
 
-  const removeImage = async (imageUrl: string) => {
+  const removeImage = async (imagePath: string) => {
     try {
-      const newImages = currentImages.filter((img) => img !== imageUrl)
+      // Always use the storage path, not full URL
+      const storagePath = getStoragePath(imagePath)
+      // Fetch auth user again for safety
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.id) {
+        toast.error("User not authenticated. Please log in again.")
+        return
+      }
 
-      const { error } = await supabase.from("users").update({ user_photos: newImages }).eq("id", userId)
+      console.log("[Delete] Path:", storagePath)
 
-      if (error) throw error
+      if (!storagePath.startsWith(user.id)) {
+        toast.warning("Cannot delete a file not owned by the current user.")
+        return
+      }
 
+      const { data: delData, error: storageError } = await supabase.storage
+        .from("user-photos")
+        .remove([storagePath])
+
+      console.log("[Delete response]", { delData, storageError })
+
+      if (storageError) {
+        toast.error(storageError.message || "Failed to delete image from storage.")
+        return
+      }
+      // Remove from user_photos array
+      const newImages = currentImages.filter((img) => img !== imagePath)
+      await userService.updateProfile({ user_photos: newImages })
       onImagesUpdate(newImages)
       toast.success("Image removed successfully!")
     } catch (error) {
@@ -94,7 +147,7 @@ export default function ProfileImageUploader({ userId, currentImages, onImagesUp
         {currentImages.map((imageUrl, index) => (
           <div key={index} className="relative group">
             <img
-              src={imageUrl || "/placeholder.svg"}
+              src={imageUrl ? (imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${imageUrl}`) : "/placeholder.svg"}
               alt={`Profile ${index + 1}`}
               className="w-full h-24 object-cover rounded-lg border-2 border-gray-200"
               onError={(e) => {

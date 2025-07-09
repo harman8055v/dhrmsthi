@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import {
   Heart,
@@ -16,6 +16,7 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 import Image from "next/image"
 import { useQueryClient } from "@tanstack/react-query"
@@ -27,7 +28,9 @@ interface MobileNavProps {
 export default function MobileNav({ userProfile }: MobileNavProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [tappedItem, setTappedItem] = useState<string | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
+  const { signOut } = useAuthContext()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -57,18 +60,42 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     })
   }, [router, qc])
 
+  // Reset tappedItem when opening/closing dropdown
+  const handleDropdownOpen = () => {
+    setTappedItem(null)
+    setIsProfileMenuOpen(true)
+  }
+  const handleDropdownClose = () => {
+    setTappedItem(null)
+    setIsProfileMenuOpen(false)
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        handleDropdownClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isProfileMenuOpen]);
+
   const isVerified = isUserVerified(userProfile)
   const showHeader = !(pathname === "/dashboard" && isVerified)
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     router.push("/")
+    handleDropdownClose()
   }
 
   const handleNavItemClick = (href: string) => {
     setTappedItem(href)
     setTimeout(() => setTappedItem(null), 200)
     router.push(href)
+    handleDropdownClose()
   }
 
   const navItems = [
@@ -110,19 +137,22 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
   ]
 
   const settingsItems = [
-    { icon: Settings, label: "Account Settings", href: "/dashboard/settings" },
+    { icon: User, label: "Profile Settings", href: "/dashboard/settings" },
+    { icon: Settings, label: "Account Settings", href: "/dashboard/account-settings" },
     { icon: Heart, label: "Partner Preferences", href: "/dashboard/preferences" },
     { icon: Shield, label: "Privacy & Safety", href: "/dashboard/privacy" },
     { icon: Users, label: "Referrals", href: "/dashboard/referrals" },
-    { icon: Gift, label: "Premium", href: "/dashboard/store" }, // Changed from premium to store since store exists
+    { icon: Gift, label: "Premium", href: "/dashboard/store" },
   ]
 
-  const getUserPhoto = () => {
+  const getMainProfileImage = () => {
     if (userProfile?.user_photos && userProfile.user_photos.length > 0) {
-      return userProfile.user_photos[0]
+      const url = userProfile.user_photos[0];
+      // If already a full URL, use as is; otherwise, construct public bucket URL
+      return url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${url}`;
     }
-    return undefined
-  }
+    return null;
+  };
 
   return (
     <>
@@ -138,13 +168,13 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
             {/* User Profile Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                onClick={() => isProfileMenuOpen ? handleDropdownClose() : handleDropdownOpen()}
                 className="flex items-center gap-2 p-1 rounded-full hover:bg-white/50 transition-all duration-200 group"
               >
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-gradient-to-r from-orange-400 to-pink-400 shadow-lg group-hover:shadow-xl transition-all duration-200">
                     <Image
-                      src={getUserPhoto() || "/placeholder.svg"}
+                      src={getMainProfileImage() || "/placeholder.svg"}
                       alt={userProfile?.first_name || "User"}
                       width={40}
                       height={40}
@@ -165,14 +195,14 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
               {/* Profile Dropdown Menu */}
               {isProfileMenuOpen && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={() => setIsProfileMenuOpen(false)} />
-                  <div className="absolute top-full right-0 mt-2 w-64 bg-white backdrop-blur-md border border-orange-200 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                  <div className="fixed inset-0 z-30" onClick={handleDropdownClose} />
+                  <div ref={dropdownRef} className="absolute top-full right-0 mt-2 w-64 bg-white backdrop-blur-md border border-orange-200 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in slide-in-from-top-2 duration-200">
                     {/* User Info */}
                     <div className="p-4 bg-gradient-to-r from-orange-50 to-pink-50 border-b border-orange-100">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-orange-200">
                           <Image
-                            src={getUserPhoto() || "/placeholder.svg"}
+                            src={getMainProfileImage() || "/placeholder.svg"}
                             alt={userProfile?.first_name || "User"}
                             width={48}
                             height={48}
@@ -195,10 +225,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
                       {settingsItems.map((item, index) => (
                         <button
                           key={item.href}
-                          onClick={() => {
-                            router.push(item.href)
-                            setIsProfileMenuOpen(false)
-                          }}
+                          onClick={() => handleNavItemClick(item.href)}
                           className="flex items-center gap-3 w-full px-3 py-3 text-left text-gray-700 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-all duration-200 group"
                           style={{ animationDelay: `${index * 50}ms` }}
                         >

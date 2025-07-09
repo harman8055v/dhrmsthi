@@ -26,6 +26,7 @@ import {
 import MobileNav from "@/components/dashboard/mobile-nav"
 import ProfileImageUploader from "@/components/dashboard/profile-image-uploader"
 import { Badge } from "@/components/ui/badge"
+import SectionHeader from "@/components/dashboard/section-header"
 
 export default function ProfilePage() {
   // Get auth state from context (already fetched once globally)
@@ -42,6 +43,14 @@ export default function ProfilePage() {
   const [userImages, setUserImages] = useState<string[]>(profile?.user_photos ?? [])
   const [showPreview, setShowPreview] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+
+  // Helper function to get proper image URL
+  const getImageUrl = (imagePath: string | null): string => {
+    if (!imagePath) return "/placeholder.svg";
+    return imagePath.startsWith('http') 
+      ? imagePath 
+      : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${imagePath}`;
+  };
 
   // Update images when profile is loaded/refreshed
   useEffect(() => {
@@ -78,84 +87,75 @@ export default function ProfilePage() {
       <MobileNav userProfile={profile} />
 
       {/* Main Content with proper spacing to avoid overlap */}
-      <main className="pt-20 pb-40 px-4 min-h-screen">
-        <div className="max-w-2xl mx-auto">
+      <main className="pt-20 pb-40 px-2 sm:px-4 min-h-screen">
+        <div className="w-full max-w-lg mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => router.back()} className="p-2">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">My Profile</h1>
-                <p className="text-sm text-gray-600">View and manage your profile</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setShowPreview(true)}
-                variant="outline"
-                className="border-orange-200 text-orange-600 hover:bg-orange-50"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Preview
-              </Button>
-              <Button
-                onClick={() => router.push("/dashboard/settings")}
-                className="bg-gradient-to-r from-orange-500 to-pink-500"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
-              </Button>
-            </div>
+          <SectionHeader
+            title="My Profile"
+            subtitle="View and manage your profile"
+          />
+          {/* Button group under header */}
+          <div className="mb-4 flex flex-row gap-2 w-full">
+            <Button
+              onClick={() => setShowPreview(true)}
+              variant="outline"
+              className="border-orange-200 text-orange-600 hover:bg-orange-50 w-1/2 text-base py-3"
+            >
+              <Eye className="w-5 h-5 mr-2" />
+              Preview
+            </Button>
+            <Button
+              onClick={() => router.push("/dashboard/settings")}
+              className="bg-gradient-to-r from-orange-500 to-pink-500 w-1/2 text-base py-3"
+            >
+              <Edit className="w-5 h-5 mr-2" />
+              Edit
+            </Button>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Profile Header */}
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="relative mb-4">
-                    {userImages.length > 0 ? (
-                      <img
-                        src={userImages[0] || "/placeholder.svg"}
-                        alt="Profile"
-                        className="w-24 h-24 rounded-full object-cover border-4 border-orange-200"
-                      />
-                    ) : (
-                      <div className="w-24 h-24 bg-gradient-to-r from-orange-400 to-pink-400 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                        {profile?.first_name?.[0]}
-                        {profile?.last_name?.[0]}
-                      </div>
-                    )}
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-1">
-                    {profile?.first_name} {profile?.last_name}
-                  </h2>
-                  <p className="text-gray-600 mb-2">
-                    {calculateAge(profile?.birthdate)} years • {profile?.gender}
-                  </p>
-                  {profile?.city?.name && profile?.state?.name && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <MapPin className="w-4 h-4" />
-                      <span>{profile.city.name}, {profile.state.name}</span>
+            <Card className="rounded-xl shadow mb-4">
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <div className="relative mb-3">
+                  {userImages.length > 0 ? (
+                    <img
+                      src={getImageUrl(userImages[0])}
+                      alt="Profile"
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-orange-200"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r from-orange-400 to-pink-400 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                      {profile?.first_name?.[0]}
+                      {profile?.last_name?.[0]}
                     </div>
                   )}
                 </div>
+                <h2 className="text-lg sm:text-2xl font-bold text-gray-900 mb-1">
+                  {profile?.first_name} {profile?.last_name}
+                </h2>
+                <p className="text-gray-600 mb-1 text-base">
+                  {calculateAge(profile?.birthdate)} years • {profile?.gender}
+                </p>
+                {profile?.city?.name && profile?.state?.name && (
+                  <div className="flex items-center gap-2 text-gray-600 justify-center">
+                    <MapPin className="w-4 h-4" />
+                    <span>{profile.city.name}, {profile.state.name}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             {/* Photo Management */}
-            <Card data-photo-section>
+            <Card className="rounded-xl shadow mb-4" data-photo-section>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Camera className="w-5 h-5" />
                   Profile Photos
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ProfileImageUploader
-                  userId={user?.id || ""}
                   currentImages={userImages}
                   onImagesUpdate={setUserImages}
                 />
@@ -163,21 +163,21 @@ export default function ProfilePage() {
             </Card>
 
             {/* Basic Information */}
-            <Card>
+            <Card className="rounded-xl shadow mb-4">
               <CardHeader>
-                <CardTitle>Basic Information</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Basic Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <p className="text-sm text-gray-500">Date of Birth</p>
-                    <p className="font-medium">
+                    <p className="font-medium text-base">
                       {profile?.birthdate ? new Date(profile.birthdate).toLocaleDateString() : "Not specified"}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Height</p>
-                    <p className="font-medium">
+                    <p className="font-medium text-base">
                       {profile?.height_ft && profile?.height_in 
                         ? `${profile.height_ft}' ${profile.height_in}"` 
                         : "Not specified"}
@@ -186,47 +186,47 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Mother Tongue</p>
-                  <p className="font-medium">{profile?.mother_tongue || "Not specified"}</p>
+                  <p className="font-medium text-base">{profile?.mother_tongue || "Not specified"}</p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Professional Information */}
-            <Card>
+            <Card className="rounded-xl shadow mb-4">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Briefcase className="w-5 h-5" />
                   Professional Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-500">Education</p>
-                  <p className="font-medium">{profile?.education || "Not specified"}</p>
+                  <p className="font-medium text-base">{profile?.education || "Not specified"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Profession</p>
-                  <p className="font-medium">{profile?.profession || "Not specified"}</p>
+                  <p className="font-medium text-base">{profile?.profession || "Not specified"}</p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Spiritual Information */}
-            <Card>
+            <Card className="rounded-xl shadow mb-4">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Heart className="w-5 h-5" />
                   Spiritual Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-500">Diet</p>
-                  <p className="font-medium">{profile?.diet || "Not specified"}</p>
+                  <p className="font-medium text-base">{profile?.diet || "Not specified"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Temple Visit Frequency</p>
-                  <p className="font-medium">{profile?.temple_visit_freq || "Not specified"}</p>
+                  <p className="font-medium text-base">{profile?.temple_visit_freq || "Not specified"}</p>
                 </div>
                 {profile?.spiritual_org && Array.isArray(profile.spiritual_org) && profile.spiritual_org.length > 0 && (
                   <div>
@@ -245,88 +245,90 @@ export default function ProfilePage() {
 
             {/* Daily Practices */}
             {profile?.daily_practices && Array.isArray(profile.daily_practices) && profile.daily_practices.length > 0 && (
-              <div>
-                <p className="text-sm text-gray-500">Daily Practices</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {profile.daily_practices.map((practice: string, index: number) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      {practice}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              <Card className="rounded-xl shadow mb-4">
+                <CardHeader>
+                  <CardTitle className="text-base sm:text-lg">Daily Practices</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {profile.daily_practices.map((practice: string, index: number) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
+                        {practice}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* About Me */}
             {profile?.about_me && (
-              <Card>
+              <Card className="rounded-xl shadow mb-4">
                 <CardHeader>
-                  <CardTitle>About Me</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">About Me</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-700 leading-relaxed">{profile.about_me}</p>
+                  <p className="text-gray-700 leading-relaxed text-base">{profile.about_me}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Family & Background */}
+            <Card className="rounded-xl shadow mb-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Users className="w-5 h-5" />
+                  Family & Background
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-sm text-gray-500">Marital Status</p>
+                  <p className="font-medium text-base">{profile?.marital_status || "Not specified"}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Enhanced Spiritual Information */}
+            <Card className="rounded-xl shadow mb-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Heart className="w-5 h-5" />
+                  Detailed Spiritual Profile
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Vanaprastha Interest</p>
+                    <p className="font-medium text-base">{profile?.vanaprastha_interest || "Not specified"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Life Philosophy</p>
+                    <p className="font-medium text-base">{profile?.artha_vs_moksha || "Not specified"}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Partner Preferences */}
+            {profile?.ideal_partner_notes && (
+              <Card className="rounded-xl shadow mb-4">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <Heart className="w-5 h-5" />
+                    Partner Preferences
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-gray-900">Partner Expectations</h3>
+                    <p className="text-gray-700 leading-relaxed text-base">{profile.ideal_partner_notes}</p>
+                  </div>
                 </CardContent>
               </Card>
             )}
           </div>
-
-          {/* Family & Background */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Family & Background
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Marital Status</p>
-                  <p className="font-medium">{profile?.marital_status || "Not specified"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Enhanced Spiritual Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Heart className="w-5 h-5" />
-                Detailed Spiritual Profile
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Vanaprastha Interest</p>
-                  <p className="font-medium">{profile?.vanaprastha_interest || "Not specified"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Life Philosophy</p>
-                  <p className="font-medium">{profile?.artha_vs_moksha || "Not specified"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Partner Preferences */}
-          {profile?.ideal_partner_notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="w-5 h-5" />
-                  Partner Preferences
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-gray-900">Partner Expectations</h3>
-                  <p className="text-gray-700 leading-relaxed">{profile.ideal_partner_notes}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Profile Preview Modal */}
           {showPreview && (
@@ -343,11 +345,11 @@ export default function ProfilePage() {
                 <div className="pb-32">
                   {/* Photo Gallery */}
                   {userImages && userImages.length > 0 && (
-                    <div className="relative h-[50vh] bg-gray-100 overflow-hidden">
+                    <div className="relative h-[50vw] max-h-[60vh] bg-gray-100 overflow-hidden">
                       <div className="flex h-full">
                         <div className="w-full h-full relative">
                           <img
-                            src={userImages[currentImageIndex] || "/placeholder.svg"}
+                            src={getImageUrl(userImages[currentImageIndex])}
                             alt={`${profile?.first_name} ${profile?.last_name}`}
                             className="w-full h-full object-cover"
                           />
@@ -399,7 +401,7 @@ export default function ProfilePage() {
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden">
                           <img
-                            src={userImages[0] || "/placeholder.svg"}
+                            src={getImageUrl(userImages[0])}
                             alt={`${profile?.first_name} ${profile?.last_name}`}
                             className="w-full h-full object-cover"
                           />
@@ -696,9 +698,9 @@ export default function ProfilePage() {
                       </h4>
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                         {userImages.map((image: string, index: number) => (
-                          <div key={index} className="relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200">
+                          <div key={index} className="relative aspect-square bg-muted rounded-md overflow-hidden">
                             <img
-                              src={image}
+                              src={getImageUrl(image)}
                               alt={`Photo ${index + 1}`}
                               className="w-full h-full object-cover"
                             />

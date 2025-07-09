@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 🖼️ PROCESS PROFILE PHOTOS - Convert storage paths to signed URLs
+    // 🖼️ PROCESS PROFILE PHOTOS - Convert storage paths to public URLs
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
       if (!photoPath) return null;
       
@@ -190,50 +190,22 @@ export async function GET(request: NextRequest) {
         return null;
       }
       
-      // If it's a Supabase storage URL, extract the path and generate signed URL
-      if (photoPath.startsWith('https://') && photoPath.includes('supabase.co/storage')) {
-        try {
-          const urlParts = photoPath.split('/user-photos/');
-          if (urlParts.length > 1) {
-            const filePath = decodeURIComponent(urlParts[1]);
-            console.log('Converting profile photo public URL to signed URL for path:', filePath);
-            
-            const { data, error } = await supabase.storage
-              .from('user-photos')
-              .createSignedUrl(filePath, 3600);
-            
-            if (error) {
-              console.error('Error converting profile photo public URL to signed URL:', error);
-              return null;
-            }
-            
-            console.log('Successfully converted profile photo public URL to signed URL');
-            return data.signedUrl || null;
-          }
-        } catch (error) {
-          console.error('Error parsing profile photo storage URL:', error);
-          return null;
-        }
+      // If it's already a full URL, return as-is
+      if (photoPath.startsWith('https://') || photoPath.startsWith('http://')) {
+        return photoPath;
       }
       
-      // For storage paths (like "user-id/filename.jpg"), generate signed URL
+      // For storage paths (like "user-id/filename.jpg"), return public URL
       try {
         const cleanPath = photoPath.replace(/^\/+/, '');
-        console.log('Generating signed URL for profile photo path:', cleanPath);
+        console.log('Generating public URL for profile photo path:', cleanPath);
         
-        const { data, error } = await supabase.storage
-          .from('user-photos')
-          .createSignedUrl(cleanPath, 3600); // 1 hour expiry
+        const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`;
         
-        if (error) {
-          console.error('Error generating signed URL for profile photo path:', cleanPath, error);
-          return null;
-        }
-        
-        console.log('Successfully generated signed URL for profile photo:', cleanPath);
-        return data.signedUrl || null;
+        console.log('Generated public URL for profile photo:', publicUrl);
+        return publicUrl;
       } catch (error) {
-        console.error('Error generating signed URL for profile photo:', error);
+        console.error('Error generating public URL for profile photo:', error);
         return null;
       }
     };

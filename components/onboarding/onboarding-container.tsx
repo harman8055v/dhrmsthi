@@ -97,7 +97,11 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         temple_visit_freq: profile.temple_visit_freq || null,
         vanaprastha_interest: profile.vanaprastha_interest || null,
         artha_vs_moksha: profile.artha_vs_moksha || null,
-        spiritual_org: profile.spiritual_org || [],
+        spiritual_org: Array.isArray(profile.spiritual_org)
+          ? profile.spiritual_org
+          : profile.spiritual_org
+            ? [profile.spiritual_org]
+            : [],
         daily_practices: profile.daily_practices || [],
         user_photos: profile.user_photos || [],
         ideal_partner_notes: profile.ideal_partner_notes || null,

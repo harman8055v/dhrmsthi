@@ -2094,7 +2094,7 @@ export default function AdminDashboard() {
                             }
                           >
                             <Image
-                              src={photo || "/placeholder.svg"}
+                              src={photo.startsWith('http') ? photo : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${photo}`}
                               alt={`Photo ${index + 1}`}
                               fill
                               className="object-cover transition-transform group-hover:scale-105"

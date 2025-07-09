@@ -6,15 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuthContext } from "@/components/auth-provider"
 import { useProfile } from "@/hooks/use-profile"
 import { toast } from "sonner"
 import { Heart, Brain, Sparkles, Save, Info, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import MobileNav from "@/components/dashboard/mobile-nav"
+import SectionHeader from "@/components/dashboard/section-header"
 
 export default function PreferencesPage() {
-  const { user } = useAuth()
+  const { user } = useAuthContext()
   const { profile, updateProfile } = useProfile()
   const [idealPartnerNotes, setIdealPartnerNotes] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -50,19 +51,12 @@ export default function PreferencesPage() {
 
       {/* Main Content with proper spacing to avoid overlap */}
       <main className="pt-20 pb-40 px-4 min-h-screen">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl w-full mx-auto px-2 sm:px-4">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => router.back()} className="p-2">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">Partner Preferences</h1>
-                <p className="text-sm text-gray-600">Describe your ideal life partner and relationship goals</p>
-              </div>
-            </div>
-          </div>
+          <SectionHeader
+            title="Partner Preferences"
+            subtitle="Describe your ideal life partner and relationship goals"
+          />
 
           {/* AI Matching Info Alert */}
           <Alert className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
@@ -132,15 +126,6 @@ export default function PreferencesPage() {
                     <li>• Continuously learns from your feedback and interactions</li>
                   </ul>
                 </div>
-
-                <Button 
-                  onClick={handleSave}
-                  disabled={isLoading || !idealPartnerNotes.trim()}
-                  className="w-full sm:w-auto bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  {isLoading ? "Saving..." : "Save Preferences"}
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -176,6 +161,17 @@ export default function PreferencesPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+        {/* Save Button at the bottom */}
+        <div className="max-w-4xl w-full mx-auto px-2 sm:px-4 mt-8">
+          <Button
+            onClick={handleSave}
+            disabled={isLoading || !idealPartnerNotes.trim()}
+            className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-lg py-3 shadow-md hover:from-rose-600 hover:to-pink-600"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {isLoading ? "Saving..." : "Save Preferences"}
+          </Button>
         </div>
       </main>
     </div>

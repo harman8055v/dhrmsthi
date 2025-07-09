@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -10,14 +10,12 @@ import { ArrowLeft, Shield, Eye, Lock, Users, Globe } from "lucide-react"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
+import SectionHeader from "@/components/dashboard/section-header"
 
 export default function PrivacyPage() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, profile, loading } = useAuthContext()
   const [saving, setSaving] = useState(false)
   const router = useRouter()
-
   const [privacySettings, setPrivacySettings] = useState({
     profile_visibility: true,
     show_online_status: true,
@@ -28,43 +26,12 @@ export default function PrivacyPage() {
     show_verification_badge: true,
     allow_search_by_phone: false,
   })
-
   useEffect(() => {
-    async function getUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
-          router.push("/")
-          return
-        }
-
-        setUser(user)
-
-        const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.error("Error fetching profile:", error)
-          return
-        }
-
-        setProfile(profileData)
-
-        // Load privacy settings if they exist
-        if (profileData.privacy_settings) {
-          setPrivacySettings({ ...privacySettings, ...profileData.privacy_settings })
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Error:", error)
-        router.push("/")
-      }
+    if (profile?.privacy_settings) {
+      setPrivacySettings({ ...privacySettings, ...profile.privacy_settings })
     }
-
-    getUser()
-  }, [router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile])
 
   const handleSettingChange = (key: string, value: boolean) => {
     setPrivacySettings((prev) => ({ ...prev, [key]: value }))
@@ -93,7 +60,7 @@ export default function PrivacyPage() {
   }
 
   if (loading) {
-    return <>{require("./loading").default()}</>;
+    return <>{require("./loading").default()}</>
   }
 
   return (
@@ -103,15 +70,10 @@ export default function PrivacyPage() {
       <main className="pt-24 pb-40 px-4 min-h-screen">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-6">
-            <Button variant="ghost" size="sm" onClick={() => router.back()} className="p-2">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Privacy & Safety</h1>
-              <p className="text-gray-600">Control who can see your information</p>
-            </div>
-          </div>
+          <SectionHeader
+            title="Privacy & Safety"
+            subtitle="Control who can see your information"
+          />
 
           <div className="space-y-6">
             {/* Profile Visibility */}

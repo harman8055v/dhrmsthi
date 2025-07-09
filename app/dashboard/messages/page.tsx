@@ -105,7 +105,7 @@ export default function MessagesPage() {
 
   return (
       <main className="pt-20 pb-32 min-h-screen">
-        <div className="px-4 max-w-4xl mx-auto">
+        <div className="px-4 max-w-4xl mx-auto mt-5">
           {isVerified ? (
             // VERIFIED USER - Show Messages
             <>

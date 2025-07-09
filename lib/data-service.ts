@@ -255,48 +255,23 @@ export const fileService = {
       return photoPath
     }
     
-    // If it's a Supabase storage URL, extract the path and generate signed URL
+    // If it's already a full Supabase storage URL, return as-is
     if (photoPath.startsWith('https://') && photoPath.includes('supabase.co/storage')) {
-      try {
-        const urlParts = photoPath.split('/user-photos/')
-        if (urlParts.length > 1) {
-          const filePath = decodeURIComponent(urlParts[1])
-          console.log('Converting public URL to signed URL for path:', filePath)
-          
-          const { data, error } = await supabase.storage
-            .from('user-photos')
-            .createSignedUrl(filePath, 3600)
-          
-          if (error) {
-            console.error('Error converting public URL to signed URL:', error)
-            return null
-          }
-          
-          return data.signedUrl || null
-        }
-      } catch (error) {
-        console.error('Error parsing storage URL:', error)
-        return null
-      }
+      return photoPath
     }
     
-    // For storage paths (like "user-id/filename.jpg"), generate signed URL
+    // For storage paths (like "user-id/filename.jpg"), return public URL
     try {
       const cleanPath = photoPath.replace(/^\/+/, '')
-      console.log('Generating signed URL for photo path:', cleanPath)
+      console.log('Generating public URL for photo path:', cleanPath)
       
-      const { data, error } = await supabase.storage
-        .from('user-photos')
-        .createSignedUrl(cleanPath, 3600)
+      // Return the public bucket URL
+      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`
       
-      if (error) {
-        console.error('Error generating signed URL for photo path:', cleanPath, error)
-        return null
-      }
-      
-      return data.signedUrl || null
+      console.log('Generated public URL:', publicUrl)
+      return publicUrl
     } catch (error) {
-      console.error('Error generating signed URL for photo:', error)
+      console.error('Error generating public URL for photo:', error)
       return null
     }
   },
@@ -324,18 +299,10 @@ export const fileService = {
     }
   },
 
-  // Get signed URL for private images
-  async getSignedUrl(path: string, bucket: string = 'user-photos', expiresIn: number = 3600): Promise<string> {
-    try {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(path, expiresIn)
-
-      if (error) throw error
-      return data.signedUrl
-    } catch (error) {
-      return handleSupabaseError(error, 'get signed URL')
-    }
+  // Get signed URL for an image - DEPRECATED, use processPhotoUrl instead
+  async getSignedUrl(imagePath: string, bucket: string = 'user-photos'): Promise<string | null> {
+    // Since bucket is now public, just return the public URL
+    return this.processPhotoUrl(imagePath)
   },
 
   // Delete image from storage

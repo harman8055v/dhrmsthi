@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { userService, fileService, UserProfile } from '@/lib/data-service'
-import { useAuth } from './use-auth'
+import { useAuthContext } from '@/components/auth-provider'
 
 interface ProfileUpdateState {
   loading: boolean
@@ -9,7 +9,7 @@ interface ProfileUpdateState {
 }
 
 export function useProfile() {
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile } = useAuthContext()
   const [updateState, setUpdateState] = useState<ProfileUpdateState>({
     loading: false,
     error: null,

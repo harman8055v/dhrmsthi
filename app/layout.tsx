@@ -14,11 +14,11 @@ const fontSans = FontSans({
 })
 
 export const metadata = {
-  title: "Join DharmaSaathi — From Drama to Dharma",
+  title: "DharmaSaathi - from Drama to Dharma",
   description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
   metadataBase: new URL("https://dharmasaathi.com"),
   openGraph: {
-    title: "Join DharmaSaathi — From Drama to Dharma",
+    title: "DharmaSaathi - from Drama to Dharma",
     description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
     url: "https://dharmasaathi.com/",
     siteName: "DharmaSaathi",
@@ -35,7 +35,7 @@ export const metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Join DharmaSaathi — From Drama to Dharma",
+    title: "DharmaSaathi - from Drama to Dharma",
     description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
     images: [
       {

@@ -21,24 +21,37 @@ export interface City {
   state_id: number
 }
 
+// ---------------------------------------------------------------------------
+// Simple in-memory caches (module-level). These last for the lifetime of the
+// session/tab and dramatically reduce repeated Supabase reads.
+// ---------------------------------------------------------------------------
+
+let countryCache: Country[] | null = null
+const stateCache: Record<number, State[]> = {}
+const cityCache: Record<number, City[]> = {}
+
 export function useCountries() {
-  const [countries, setCountries] = useState<Country[]>([])
-  const [loading, setLoading] = useState(true)
+  const [countries, setCountries] = useState<Country[]>(countryCache || [])
+  const [loading, setLoading] = useState(!countryCache)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (countryCache) return // already cached
+
     async function fetchCountries() {
       try {
         setLoading(true)
         const { data, error } = await supabase.from("countries").select("*").order("name")
 
         if (error) throw error
-        setCountries(data || [])
+        countryCache = data || []
+        setCountries(countryCache)
       } catch (err) {
         console.error("Error fetching countries:", err)
         setError(err instanceof Error ? err.message : "Failed to fetch countries")
         // Fallback to India if API fails
-        setCountries([{ id: 1, name: "India", code: "IN" }])
+        countryCache = [{ id: 1, name: "India", code: "IN" }]
+        setCountries(countryCache)
       } finally {
         setLoading(false)
       }
@@ -51,13 +64,20 @@ export function useCountries() {
 }
 
 export function useStates(countryId: number | null) {
-  const [states, setStates] = useState<State[]>([])
-  const [loading, setLoading] = useState(false)
+  const cached = countryId ? stateCache[countryId] : []
+  const [states, setStates] = useState<State[]>(cached || [])
+  const [loading, setLoading] = useState(countryId ? !cached : false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!countryId) {
       setStates([])
+      return
+    }
+
+    if (stateCache[countryId!]) {
+      setStates(stateCache[countryId!])
+      setLoading(false)
       return
     }
 
@@ -67,7 +87,8 @@ export function useStates(countryId: number | null) {
         const { data, error } = await supabase.from("states").select("*").eq("country_id", countryId).order("name")
 
         if (error) throw error
-        setStates(data || [])
+        stateCache[countryId!] = data || []
+        setStates(stateCache[countryId!])
       } catch (err) {
         console.error("Error fetching states:", err)
         setError(err instanceof Error ? err.message : "Failed to fetch states")
@@ -84,13 +105,20 @@ export function useStates(countryId: number | null) {
 }
 
 export function useCities(stateId: number | null) {
-  const [cities, setCities] = useState<City[]>([])
-  const [loading, setLoading] = useState(false)
+  const cached = stateId ? cityCache[stateId] : []
+  const [cities, setCities] = useState<City[]>(cached || [])
+  const [loading, setLoading] = useState(stateId ? !cached : false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!stateId) {
       setCities([])
+      return
+    }
+
+    if (cityCache[stateId!]) {
+      setCities(cityCache[stateId!])
+      setLoading(false)
       return
     }
 
@@ -100,7 +128,8 @@ export function useCities(stateId: number | null) {
         const { data, error } = await supabase.from("cities").select("*").eq("state_id", stateId).order("name")
 
         if (error) throw error
-        setCities(data || [])
+        cityCache[stateId!] = data || []
+        setCities(cityCache[stateId!])
       } catch (err) {
         console.error("Error fetching cities:", err)
         setError(err instanceof Error ? err.message : "Failed to fetch cities")

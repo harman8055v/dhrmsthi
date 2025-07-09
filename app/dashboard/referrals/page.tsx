@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,80 +10,45 @@ import { ArrowLeft, Users, Gift, Copy, Share2, Star, CheckCircle, Zap, Crown } f
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
+import SectionHeader from "@/components/dashboard/section-header"
 
 export default function ReferralsPage() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, profile, loading } = useAuthContext()
   const [referralStats, setReferralStats] = useState({
     total_referrals: 0,
     successful_referrals: 0,
     pending_referrals: 0,
   })
   const router = useRouter()
-
   const referralCode = profile?.referral_code || "GENERATING"
-  const referralLink = profile?.referral_code 
-    ? `https://dharmasaathi.com/signup?ref=${referralCode}`
+  const referralLink = profile?.referral_code
+    ? `https://dharmasaathi.com/?ref=${referralCode}`
     : "Generating your unique referral link..."
-
   useEffect(() => {
-    async function getUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
-          router.push("/")
-          return
-        }
-
-        setUser(user)
-
-        const { data: profileData, error } = await supabase.from("users").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.error("Error fetching profile:", error)
-          return
-        }
-
-        setProfile(profileData)
-
-        // Generate referral code if user doesn't have one
-        if (!profileData.referral_code) {
-          await generateReferralCode(user.id)
-        }
-
-        // Fetch referral stats
-        await fetchReferralStats(user.id)
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Error:", error)
-        router.push("/")
-      }
+    if (user?.id) {
+      // Only fetch stats if user is present
+      fetchReferralStats(user.id)
     }
-
-    getUser()
-  }, [router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const generateReferralCode = async (userId: string) => {
     try {
       // Generate a simple referral code
       const code = Math.random().toString(36).substr(2, 8).toUpperCase()
       
-      const { error } = await supabase
-        .from("users")
-        .update({ referral_code: code })
-        .eq("id", userId)
+      // const { error } = await supabase
+      //   .from("users")
+      //   .update({ referral_code: code })
+      //   .eq("id", userId)
 
-      if (error) {
-        console.error("Error generating referral code:", error)
-        return
-      }
+      // if (error) {
+      //   console.error("Error generating referral code:", error)
+      //   return
+      // }
 
-      // Update local profile state
-      setProfile((prev: any) => ({ ...prev, referral_code: code }))
+      // // Update local profile state
+      // setProfile((prev: any) => ({ ...prev, referral_code: code }))
     } catch (error) {
       console.error("Error generating referral code:", error)
     }
@@ -92,78 +57,82 @@ export default function ReferralsPage() {
   const fetchReferralStats = async (userId: string) => {
     try {
       // First check if referrals table exists by trying a simple query
-      const { data, error } = await supabase
-        .from("referrals")
-        .select("id, status, referred_id")
-        .eq("referrer_id", userId)
+      // const { data, error } = await supabase
+      //   .from("referrals")
+      //   .select("id, status, referred_id")
+      //   .eq("referrer_id", userId)
 
-      if (error) {
-        console.error("Error fetching referral stats:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        })
+      // if (error) {
+      //   console.error("Error fetching referral stats:", {
+      //     message: error.message,
+      //     details: error.details,
+      //     hint: error.hint,
+      //     code: error.code,
+      //   })
         
-        // If table doesn't exist, use default stats
-        if (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist')) {
-          console.log("Referrals table does not exist - using default stats")
-          return
-        }
+      //   // If table doesn't exist, use default stats
+      //   if (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist')) {
+      //     console.log("Referrals table does not exist - using default stats")
+      //     setLoading(false)
+      //     return
+      //   }
         
-        return
-      }
+      //   return
+      // }
 
-      if (!data) {
-        console.log("No referral data found for user:", userId)
-        return
-      }
+      // if (!data) {
+      //   console.log("No referral data found for user:", userId)
+      //   setLoading(false)
+      //   return
+      // }
 
-      const totalReferrals = data.length || 0
+      // const totalReferrals = data.length || 0
       
-      // If we have referrals, get verification status for each referred user
-      let successfulReferrals = 0
-      let pendingReferrals = 0
+      // // If we have referrals, get verification status for each referred user
+      // let successfulReferrals = 0
+      // let pendingReferrals = 0
       
-      if (totalReferrals > 0) {
-        // Get verification status for referred users
-        const referredIds = data.map(r => r.referred_id).filter(Boolean)
+      // if (totalReferrals > 0) {
+      //   // Get verification status for referred users
+      //   const referredIds = data.map(r => r.referred_id).filter(Boolean)
         
-        if (referredIds.length > 0) {
-          const { data: referredUsers, error: usersError } = await supabase
-            .from("users")
-            .select("id, verification_status")
-            .in("id", referredIds)
+      //   if (referredIds.length > 0) {
+      //     const { data: referredUsers, error: usersError } = await supabase
+      //       .from("users")
+      //       .select("id, verification_status")
+      //       .in("id", referredIds)
           
-          if (usersError) {
-            console.error("Error fetching referred users:", usersError)
-          } else {
-            // Count successful and pending referrals
-            for (const referral of data) {
-              const referredUser = referredUsers?.find(u => u.id === referral.referred_id)
+      //     if (usersError) {
+      //       console.error("Error fetching referred users:", usersError)
+      //     } else {
+      //       // Count successful and pending referrals
+      //       for (const referral of data) {
+      //         const referredUser = referredUsers?.find(u => u.id === referral.referred_id)
               
-              if (referral.status === "completed" && referredUser?.verification_status === "verified") {
-                successfulReferrals++
-              } else {
-                pendingReferrals++
-              }
-            }
-          }
-        }
-      }
+      //         if (referral.status === "completed" && referredUser?.verification_status === "verified") {
+      //           successfulReferrals++
+      //         } else {
+      //           pendingReferrals++
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
 
-      console.log("Referral stats:", { totalReferrals, successfulReferrals, pendingReferrals })
+      // console.log("Referral stats:", { totalReferrals, successfulReferrals, pendingReferrals })
 
-      setReferralStats({
-        total_referrals: totalReferrals,
-        successful_referrals: successfulReferrals,
-        pending_referrals: pendingReferrals,
-      })
+      // setReferralStats({
+      //   total_referrals: totalReferrals,
+      //   successful_referrals: successfulReferrals,
+      //   pending_referrals: pendingReferrals,
+      // })
+      // setLoading(false)
     } catch (error) {
       console.error("Error fetching referral stats:", {
         message: error instanceof Error ? error.message : 'Unknown error',
         error: error
       })
+      // setLoading(false)
     }
   }
 
@@ -224,7 +193,7 @@ export default function ReferralsPage() {
   }
 
   if (loading) {
-    return <>{require("./loading").default()}</>;
+    return <>{require("./loading").default()}</>
   }
 
   return (
@@ -234,15 +203,10 @@ export default function ReferralsPage() {
       <main className="pt-24 pb-40 px-4 min-h-screen">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-6">
-            <Button variant="ghost" size="sm" onClick={() => router.back()} className="p-2">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Referral Program</h1>
-              <p className="text-sm text-gray-600">Invite friends and unlock exclusive benefits</p>
-            </div>
-          </div>
+          <SectionHeader
+            title="Referral Program"
+            subtitle="Invite friends and unlock exclusive benefits"
+          />
 
           <div className="space-y-6">
             {/* Referral Stats */}

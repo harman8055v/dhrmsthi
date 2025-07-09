@@ -26,10 +26,12 @@ export default function WelcomeSection({ profile }: WelcomeSectionProps) {
 
   const getMainProfileImage = () => {
     if (profile?.user_photos && profile.user_photos.length > 0) {
-      return profile.user_photos[0]
+      const url = profile.user_photos[0];
+      // If already a full URL, use as is; otherwise, construct public bucket URL
+      return url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${url}`;
     }
-    return null
-  }
+    return null;
+  };
 
   return (
     <Card className="bg-gradient-to-r from-orange-50 to-pink-50 border-orange-200 shadow-lg">

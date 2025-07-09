@@ -1,10 +1,13 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useState } from "react"
 import { Loader2, Upload, X, Quote } from "lucide-react"
 import Image from "next/image"
 import type { OnboardingData } from "@/lib/types/onboarding"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { userService } from "@/lib/data-service"
 
 interface FullBloomStageProps {
   formData: OnboardingData
@@ -23,9 +26,10 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     ideal_partner_notes: ideal_partner_notes || "",
     favorite_spiritual_quote: favorite_spiritual_quote || "",
   })
+  const [uploading, setUploading] = useState(false)
   const [photos, setPhotos] = useState<File[]>([])
   const [photoUrls, setPhotoUrls] = useState<string[]>(user_photos)
-  const [uploading, setUploading] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -38,48 +42,110 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
   }
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newPhotos = Array.from(e.target.files)
-      if (photoUrls.length + photos.length + newPhotos.length <= 6) {
-        setPhotos((prev) => [...prev, ...newPhotos])
-      } else {
-        alert("You can upload a maximum of 6 photos")
-      }
-    }
+  // Helper to extract storage path from URL or return as-is if already a path
+  function getStoragePath(imageUrl: string) {
+    if (!imageUrl) return imageUrl;
+    if (!imageUrl.startsWith("http")) return imageUrl;
+    // Extract after /user-photos/
+    const match = imageUrl.match(/user-photos\/([^?]+)/);
+    return match ? decodeURIComponent(match[1]) : imageUrl;
   }
 
-  const handleRemovePhoto = (index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const handleRemoveUploadedPhoto = (url: string) => {
-    setPhotoUrls((prev) => prev.filter((photoUrl) => photoUrl !== url))
-  }
-
-  const uploadPhotos = async () => {
-    if (photos.length === 0) return photoUrls
-
-    setUploading(true)
-    const uploadedUrls = [...photoUrls]
-
+  const uploadImage = async (file: File) => {
     try {
-      for (const photo of photos) {
-        // Simulate upload delay
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        // Simulate URL generation
-        const url = URL.createObjectURL(photo)
-        uploadedUrls.push(url)
+      setUploading(true)
+      // Get authenticated user ID (auth.uid())
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.id) {
+        toast.error("User not authenticated. Please log in again.")
+        setUploading(false)
+        return null
       }
-
-      return uploadedUrls
+      const fileExt = file.name.split('.').pop() ?? 'jpg'
+      const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
+      let { data, error } = await supabase.storage
+        .from("user-photos")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        })
+      if ((error as any)?.status === 409) {
+        ;({ data, error } = await supabase.storage
+          .from("user-photos")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: true,
+          }))
+      }
+      if (error) {
+        toast.error(error.message || "Failed to upload image.")
+        setUploading(false)
+        return null
+      }
+      return filePath
     } catch (error) {
-      console.error("Error uploading photos:", error)
-      return photoUrls
+      console.error("Error uploading image:", error)
+      toast.error("Failed to upload image. Please try again.")
+      return null
     } finally {
       setUploading(false)
     }
+  }
+
+  const removeImage = async (imagePath: string) => {
+    try {
+      const storagePath = getStoragePath(imagePath)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.id) {
+        toast.error("User not authenticated. Please log in again.")
+        return
+      }
+      if (!storagePath.startsWith(user.id)) {
+        toast.warning("Cannot delete a file not owned by the current user.")
+        return
+      }
+      const { error: storageError } = await supabase.storage
+        .from("user-photos")
+        .remove([storagePath])
+      if (storageError) {
+        toast.error(storageError.message || "Failed to delete image from storage.")
+        return
+      }
+      const newImages = photoUrls.filter((img) => img !== imagePath)
+      setPhotoUrls(newImages)
+      toast.success("Image removed successfully!")
+    } catch (error) {
+      console.error("Error removing image:", error)
+      toast.error("Failed to remove image. Please try again.")
+    }
+  }
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files) return
+    const filesArr = Array.from(files)
+    for (const file of filesArr) {
+      if (photoUrls.length >= 6) {
+        toast.error("You can upload a maximum of 6 photos")
+        break
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("Image size should be less than 10MB")
+        continue
+      }
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please select a valid image file")
+        continue
+      }
+      const uploadedPath = await uploadImage(file)
+      if (uploadedPath) {
+        setPhotoUrls((prev) => [...prev, uploadedPath])
+      }
+    }
+    // Reset file input value so same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const validateForm = () => {
@@ -101,13 +167,11 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
 
     try {
-      const uploadedPhotoUrls = await uploadPhotos()
-
       const dataToSave: Partial<OnboardingData> = {
         about_me: localFormData.about_me.trim() || null,
         ideal_partner_notes: localFormData.ideal_partner_notes.trim() || null,
         favorite_spiritual_quote: localFormData.favorite_spiritual_quote.trim() || null,
-        user_photos: uploadedPhotoUrls,
+        user_photos: photoUrls,
       }
 
       // Pass the data directly to onNext, which will handle saving and moving to the next stage
@@ -201,51 +265,33 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
         {/* Photo Upload */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">Upload Photos (Max 6)</label>
-
-          {/* Photo Grid */}
           <div className="grid grid-cols-3 gap-2 mb-4">
-            {/* Existing Photos */}
             {photoUrls.map((url, index) => (
               <div key={`uploaded-${index}`} className="relative aspect-square bg-muted rounded-md overflow-hidden">
-                <Image src={url || "/placeholder.svg"} alt={`User photo ${index + 1}`} fill className="object-cover" />
+                <Image src={url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${url}`} alt={`User photo ${index + 1}`} fill className="object-cover" />
                 <button
                   type="button"
-                  onClick={() => handleRemoveUploadedPhoto(url)}
+                  onClick={() => removeImage(url)}
                   className="absolute top-1 right-1 bg-background/80 p-1 rounded-full"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             ))}
-
-            {/* New Photos */}
-            {photos.map((photo, index) => (
-              <div key={`new-${index}`} className="relative aspect-square bg-muted rounded-md overflow-hidden">
-                <Image
-                  src={URL.createObjectURL(photo) || "/placeholder.svg"}
-                  alt={`New photo ${index + 1}`}
-                  fill
-                  className="object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemovePhoto(index)}
-                  className="absolute top-1 right-1 bg-background/80 p-1 rounded-full"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-
-            {/* Upload Button */}
-            {photoUrls.length + photos.length < 6 && (
-              <label className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-input rounded-md cursor-pointer hover:bg-muted/50">
+            {photoUrls.length < 6 && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-input rounded-md cursor-pointer hover:bg-muted/50"
+              >
                 <Upload className="h-6 w-6 text-muted-foreground mb-1" />
-                <span className="text-xs text-muted-foreground">Upload</span>
-                <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" multiple />
-              </label>
+                <span className="text-xs text-muted-foreground">{uploading ? "Uploading..." : "Upload"}</span>
+              </button>
             )}
           </div>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" multiple />
+          <p className="text-xs text-gray-500 text-center">Add up to 6 photos. Max 10MB per image.</p>
         </div>
 
         {/* Display any server errors */}

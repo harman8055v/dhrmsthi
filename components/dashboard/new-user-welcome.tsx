@@ -206,7 +206,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
                       <h3 className="text-lg md:text-xl font-bold text-gray-900">Step 2: Discover Your Perfect DharmaSaathi</h3>
-                      <Badge className="bg-gray-100 text-gray-600 border border-gray-200 text-xs w-fit">Coming Soon</Badge>
+                      <Badge className="bg-gray-100 text-gray-600 border border-gray-200 text-xs w-fit">Available after verification</Badge>
                     </div>
                     
                     <div className="space-y-3">

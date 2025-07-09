@@ -63,20 +63,21 @@ export default function PhoneInput({ value, onChange, placeholder = "1234567890"
   }, [value])
 
   return (
-    <div className="flex">
+    <div className="flex w-full">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="inline-flex items-center gap-1 px-3 py-2 border border-gray-300 rounded-l-md bg-gray-50 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-3 h-12 border border-gray-300 border-r-0 rounded-l-lg bg-white text-sm font-medium hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all duration-150"
             disabled={disabled}
+            style={{ minWidth: 80 }}
           >
             <span className="text-lg">{country.flag}</span>
-            <span>{country.dial_code}</span>
-            <ChevronDown className="w-4 h-4" />
+            <span className="ml-1">{country.dial_code}</span>
+            <ChevronDown className="w-4 h-4 ml-1" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="max-h-60 overflow-y-auto p-0 w-56">
+        <PopoverContent className="max-h-60 overflow-y-auto p-0 w-56 rounded-lg shadow-lg border border-gray-200 mt-1">
           {COUNTRIES.map((c) => (
             <button
               key={c.code}
@@ -85,8 +86,8 @@ export default function PhoneInput({ value, onChange, placeholder = "1234567890"
                 setCountry(c)
                 setOpen(false)
               }}
-              className={`flex items-center w-full px-3 py-2 text-sm gap-2 hover:bg-gray-100 ${
-                c.code === country.code ? "bg-gray-100" : ""
+              className={`flex items-center w-full px-3 py-2 text-sm gap-2 hover:bg-orange-50 transition-colors duration-100 ${
+                c.code === country.code ? "bg-orange-100" : ""
               }`}
             >
               <span className="text-lg">{c.flag}</span>
@@ -103,7 +104,8 @@ export default function PhoneInput({ value, onChange, placeholder = "1234567890"
         onChange={(e) => setLocalNumber(e.target.value.replace(/[^\d]/g, ""))}
         placeholder={placeholder}
         disabled={disabled}
-        className={`flex-1 rounded-l-none ${error ? "border-red-500" : ""}`}
+        className={`flex-1 h-12 rounded-l-none rounded-r-lg border border-gray-300 ${error ? "border-red-500" : ""}`}
+        style={{ minWidth: 0 }}
       />
     </div>
   )

@@ -214,7 +214,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
     if (profile.user_photos && profile.user_photos.length > 0) {
       return profile.user_photos[currentImageIndex]
     }
-    return null
+    return profile.profile_photo_url || null
   }
 
   const getCurrentDetailImage = () => {
@@ -223,6 +223,14 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
     }
     return null
   }
+
+  // Helper function to get proper image URL
+  const getImageUrl = (imagePath: string | null): string => {
+    if (!imagePath) return "/placeholder.svg";
+    return imagePath.startsWith('http') 
+      ? imagePath 
+      : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${imagePath}`;
+  };
 
   const nopeOpacity = useTransform(x, [-150, -50], [1, 0])
   const nopeRotate = useTransform(x, [-150, -50], [-30, 0])
@@ -244,7 +252,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
         <div className="relative w-full h-full rounded-3xl overflow-hidden">
           {getCurrentImage() && (
             <Image
-              src={getCurrentImage()!}
+              src={getImageUrl(getCurrentImage())}
               alt={`${profile.first_name} ${profile.last_name}`}
               fill
               className="object-cover"
@@ -279,7 +287,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
           <div className="relative h-full">
             {getCurrentImage() && (
               <Image
-                src={getCurrentImage()!}
+                src={getImageUrl(getCurrentImage())}
                 alt={`${profile.first_name} ${profile.last_name}`}
                 fill
                 className="object-cover"
@@ -562,7 +570,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                       <div key={idx} className="w-full h-full relative flex-shrink-0">
                         {photo && (
                           <Image
-                            src={photo}
+                            src={getImageUrl(photo)}
                             alt={`${profile.first_name} ${profile.last_name} - Photo ${idx + 1}`}
                             fill
                             className="object-cover"
@@ -634,7 +642,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                   <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-orange-100">
                     {getCurrentImage() && (
                       <Image
-                        src={getCurrentImage()!}
+                        src={getImageUrl(getCurrentImage())}
                         alt={`${profile.first_name} ${profile.last_name}`}
                         width={80}
                         height={80}

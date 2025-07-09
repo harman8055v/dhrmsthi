@@ -298,11 +298,16 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
                   <div className="relative mb-3">
                     <Avatar className="w-16 h-16 mx-auto">
                       <AvatarImage
-                        src={
-                          data.can_see_details 
-                            ? (like.profile.profile_photo_url || like.profile.user_photos?.[0] || "/placeholder-user.jpg")
-                            : "/placeholder-user.jpg"
-                        }
+                        src={(() => {
+                          if (!data.can_see_details) return "/placeholder-user.jpg";
+                          
+                          const photoUrl = like.profile.profile_photo_url || like.profile.user_photos?.[0];
+                          if (!photoUrl) return "/placeholder-user.jpg";
+                          
+                          return photoUrl.startsWith('http') 
+                            ? photoUrl 
+                            : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${photoUrl}`;
+                        })()}
                         className={!data.can_see_details ? "blur-md" : ""}
                       />
                       <AvatarFallback>
