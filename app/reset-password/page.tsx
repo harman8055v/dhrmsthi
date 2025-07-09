@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,19 +30,24 @@ export default function ResetPasswordPage() {
   const [isValidToken, setIsValidToken] = useState(false)
 
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   useEffect(() => {
+    // 1) Listen for PASSWORD_RECOVERY event in case Supabase internally sets the session
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" && session?.access_token) {
+        setIsValidToken(true)
+      }
+    })
+
+    // 2) Manually validate the hash parameters on first load
     const validateResetToken = async () => {
       try {
-        // Check if we have the required hash parameters for password reset
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = hashParams.get("access_token")
         const refreshToken = hashParams.get("refresh_token")
         const type = hashParams.get("type")
 
         if (type === "recovery" && accessToken && refreshToken) {
-          // Set the session with the tokens from the URL
           const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
@@ -57,6 +62,7 @@ export default function ResetPasswordPage() {
             setIsValidToken(false)
           }
         } else {
+          // No valid hash parameters – token invalid
           setIsValidToken(false)
         }
       } catch (error) {
@@ -68,6 +74,11 @@ export default function ResetPasswordPage() {
     }
 
     validateResetToken()
+
+    return () => {
+      listener.subscription.unsubscribe()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const validateForm = (): boolean => {
@@ -105,11 +116,14 @@ export default function ResetPasswordPage() {
 
       if (error) throw error
 
+      // Sign out to clear any temp token
+      await supabase.auth.signOut()
+
       setIsSuccess(true)
 
-      // Redirect to login after 3 seconds
+      // Redirect to dedicated login page with query param so we can show toast there if needed
       setTimeout(() => {
-        router.push("/")
+        router.push("/login?reset=success")
       }, 3000)
     } catch (error: any) {
       console.error("Password reset error:", error)
