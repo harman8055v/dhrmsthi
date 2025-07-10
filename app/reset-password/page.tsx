@@ -62,7 +62,7 @@ export default function ResetPasswordPage() {
         const typeQuery = searchParams.get("type")
 
         // Case A: New "code" param (PKCE/implicit handled internally by supabase)
-        if (codeParam && !typeQuery) {
+        if (codeParam) {
           // Attempt to verify the code as a recovery OTP
           const { error } = await supabase.auth.verifyOtp({
             token_hash: codeParam,
