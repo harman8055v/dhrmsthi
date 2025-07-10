@@ -57,14 +57,29 @@ export default function ResetPasswordPage() {
         // 1. Newer supabase:  ?code=...
         // 2. Older / PKCE:    ?token=...&type=recovery
         const searchParams = new URLSearchParams(window.location.search)
-        const tokenParam = searchParams.get("token") || searchParams.get("code")
+        const codeParam = searchParams.get("code")
+        const tokenParam = searchParams.get("token")
+        const typeQuery = searchParams.get("type")
 
-        // Determine if we should attempt session exchange.
-        // If we have a `token` param, ensure it is recovery type (if provided).
-        const typeQuery = searchParams.get("type") // may be null for ?code= flow
+        // Case A: New "code" param (PKCE/implicit handled internally by supabase)
+        if (codeParam && !typeQuery) {
+          // Attempt to verify the code as a recovery OTP
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: codeParam,
+            type: "recovery",
+          })
 
-        if (tokenParam && (!typeQuery || typeQuery === "recovery")) {
-          // Exchange the one-time code for a session
+          if (error) {
+            console.error("verifyOtp recovery error", error)
+            setIsValidToken(false)
+          } else {
+            setIsValidToken(true)
+          }
+          return
+        }
+
+        // Case B: Legacy query param token + type=recovery
+        if (tokenParam && typeQuery === "recovery") {
           const { error } = await supabase.auth.exchangeCodeForSession(tokenParam)
           if (error) {
             console.error("exchangeCodeForSession error", error)
