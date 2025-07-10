@@ -53,12 +53,17 @@ export default function ResetPasswordPage() {
           return
         }
 
-        // ----- QUERY FORMAT (?token=...&type=recovery)
+        // ----- QUERY FORMAT
+        // 1. Newer supabase:  ?code=...
+        // 2. Older / PKCE:    ?token=...&type=recovery
         const searchParams = new URLSearchParams(window.location.search)
-        const tokenParam = searchParams.get("token")
-        const typeQuery = searchParams.get("type")
+        const tokenParam = searchParams.get("token") || searchParams.get("code")
 
-        if (typeQuery === "recovery" && tokenParam) {
+        // Determine if we should attempt session exchange.
+        // If we have a `token` param, ensure it is recovery type (if provided).
+        const typeQuery = searchParams.get("type") // may be null for ?code= flow
+
+        if (tokenParam && (!typeQuery || typeQuery === "recovery")) {
           // Exchange the one-time code for a session
           const { error } = await supabase.auth.exchangeCodeForSession(tokenParam)
           if (error) {
