@@ -50,17 +50,13 @@ export default function OnboardingWelcome() {
 
       {/* Divine Energy Glow Behind Box */}
       <div className="absolute z-30 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] h-[340px] max-w-[90vw] max-h-[60vh] pointer-events-none">
-        <div className="w-full h-full rounded-3xl bg-gradient-to-br from-primary/30 via-pink-300/20 to-amber-200/30 blur-2xl animate-pulse-glow"></div>
+        <div className="w-full h-full rounded-3xl bg-gradient-to-br from-primary/30 via-pink-300/20 to-amber-200/30 blur-2xl opacity-80"></div>
       </div>
 
       {/* Content Box with animated border and overlays, refactored for animation visibility */}
       <div className="z-40 w-full max-w-xs sm:max-w-sm px-6 py-8 rounded-2xl flex flex-col items-center justify-center relative overflow-visible mt-24 md:mt-32" style={{minHeight:'260px'}}>
         {/* Box background */}
-        <div className="absolute inset-0 rounded-2xl bg-white/80 backdrop-blur-xl shadow-2xl border-2 border-transparent z-0" />
-        {/* Animated Gradient Border Overlay */}
-        <div className="absolute inset-0 rounded-2xl pointer-events-none animate-divine-border-glow z-10" />
-        {/* Extra animated gradient overlay for divine effect */}
-        <div className="absolute inset-0 rounded-2xl pointer-events-none animate-divine-border-glow2 mix-blend-lighten z-20" style={{opacity:0.7}} />
+        <div className="absolute inset-0 rounded-2xl bg-white/80 backdrop-blur-xl shadow-2xl border-2 border-primary/20 z-0" />
         {/* Loader */}
         <div className="mb-6 relative z-30">
           <span className="block w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin"></span>
@@ -72,7 +68,7 @@ export default function OnboardingWelcome() {
         </div>
         {/* Welcome */}
         <div
-          className={`text-center text-xl md:text-2xl font-semibold tracking-wide mt-4 text-brand-700 relative z-30 animate-warm-pulse ${caveat.className}`}
+          className={`text-center text-xl md:text-2xl font-semibold tracking-wide mt-4 text-brand-700 relative z-30 ${caveat.className}`}
           style={{color: 'hsl(var(--primary))', fontWeight: 700, letterSpacing: '0.01em'}}
         >
           Have a blessed journey ahead{firstName ? `, ${firstName}` : ""}.

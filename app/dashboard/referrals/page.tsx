@@ -11,9 +11,10 @@ import MobileNav from "@/components/dashboard/mobile-nav"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
 import SectionHeader from "@/components/dashboard/section-header"
+import { supabase } from "@/lib/supabase"
 
 export default function ReferralsPage() {
-  const { user, profile, loading } = useAuthContext()
+  const { user, profile, loading, refreshProfile } = useAuthContext()
   const [referralStats, setReferralStats] = useState({
     total_referrals: 0,
     successful_referrals: 0,
@@ -25,30 +26,34 @@ export default function ReferralsPage() {
     ? `https://dharmasaathi.com/?ref=${referralCode}`
     : "Generating your unique referral link..."
   useEffect(() => {
+    if (user?.id && !profile?.referral_code) {
+      generateReferralCode(user.id)
+    }
+  }, [user?.id, profile?.referral_code])
+
+  // Fetch referral stats separately once user available
+  useEffect(() => {
     if (user?.id) {
-      // Only fetch stats if user is present
       fetchReferralStats(user.id)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
   const generateReferralCode = async (userId: string) => {
     try {
       // Generate a simple referral code
-      const code = Math.random().toString(36).substr(2, 8).toUpperCase()
-      
-      // const { error } = await supabase
-      //   .from("users")
-      //   .update({ referral_code: code })
-      //   .eq("id", userId)
-
-      // if (error) {
-      //   console.error("Error generating referral code:", error)
-      //   return
-      // }
-
-      // // Update local profile state
-      // setProfile((prev: any) => ({ ...prev, referral_code: code }))
+      const code = Math.random().toString(36).substring(2, 10).toUpperCase()
+      const { error } = await supabase
+        .from("users")
+        .update({ referral_code: code })
+        .eq("id", userId)
+      if (error) {
+        console.error("Error generating referral code:", error)
+        toast.error("Failed to generate referral code. Please try again later.")
+        return
+      }
+      // Refresh profile context so UI updates
+      await refreshProfile()
+      toast.success("Referral code generated!")
     } catch (error) {
       console.error("Error generating referral code:", error)
     }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { Users, Copy, CheckCircle, Gift, Zap, Crown, Share2, Clock } from "lucide-react"
+import { useAuthContext } from "@/components/auth-provider"
 
 interface ReferralProgramProps {
   userId: string
@@ -21,6 +22,7 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
   const [rewards, setRewards] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
+  const { refreshProfile } = useAuthContext()
 
   useEffect(() => {
     fetchReferralData()
@@ -61,6 +63,8 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
 
         if (updateError) {
           console.error("Error updating referral code:", updateError)
+        } else {
+          await refreshProfile()
         }
       }
 
