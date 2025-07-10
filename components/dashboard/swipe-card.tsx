@@ -256,6 +256,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
               alt={`${profile.first_name} ${profile.last_name}`}
               fill
               className="object-cover"
+              style={{ objectPosition: '50% 20%' }}
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -291,6 +292,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                 alt={`${profile.first_name} ${profile.last_name}`}
                 fill
                 className="object-cover"
+                style={{ objectPosition: '50% 20%' }}
                 priority
               />
             )}
@@ -575,6 +577,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                             fill
                             className="object-cover"
                             priority={idx === 0}
+                            style={{ objectPosition: '50% 20%' }}
                           />
                         )}
                       </div>
@@ -647,6 +650,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                         width={80}
                         height={80}
                         className="w-full h-full object-cover"
+                        style={{ objectPosition: '50% 20%' }}
                       />
                     )}
                   </div>

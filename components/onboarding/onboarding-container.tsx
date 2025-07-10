@@ -203,8 +203,8 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       setError(error.message);
       return;
     }
-    console.log('[Onboard] UPSERT OK → redirecting to /dashboard');
-    router.replace('/dashboard');
+    console.log('[Onboard] UPSERT OK → redirecting to /onboarding/welcome');
+    router.replace('/onboarding/welcome');
   };
 
   // Fetch current user profile using user ID

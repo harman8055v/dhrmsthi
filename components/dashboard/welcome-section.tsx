@@ -44,6 +44,7 @@ export default function WelcomeSection({ profile }: WelcomeSectionProps) {
                 src={getMainProfileImage() || "/placeholder.svg"}
                 alt="Profile"
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-lg"
+                style={{ objectPosition: '50% 20%' }}
               />
             ) : (
               <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r from-orange-400 to-pink-400 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-bold border-4 border-white shadow-lg">

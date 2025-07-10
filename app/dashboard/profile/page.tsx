@@ -30,7 +30,7 @@ import SectionHeader from "@/components/dashboard/section-header"
 
 export default function ProfilePage() {
   // Get auth state from context (already fetched once globally)
-  const { user, profile: rawProfile, loading } = useAuthContext()
+  const { user, profile: rawProfile, loading, refreshProfile } = useAuthContext()
   // The joined profile includes nested city/state objects not declared in UserProfile type.
   const profile: any = rawProfile
   const router = useRouter()
@@ -157,7 +157,10 @@ export default function ProfilePage() {
               <CardContent>
                 <ProfileImageUploader
                   currentImages={userImages}
-                  onImagesUpdate={setUserImages}
+                  onImagesUpdate={(images) => {
+                    setUserImages(images)
+                    refreshProfile()
+                  }}
                 />
               </CardContent>
             </Card>
@@ -345,13 +348,14 @@ export default function ProfilePage() {
                 <div className="pb-32">
                   {/* Photo Gallery */}
                   {userImages && userImages.length > 0 && (
-                    <div className="relative h-[50vw] max-h-[60vh] bg-gray-100 overflow-hidden">
+                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden mx-auto" style={{ aspectRatio: '1 / 1' }}>
                       <div className="flex h-full">
                         <div className="w-full h-full relative">
                           <img
                             src={getImageUrl(userImages[currentImageIndex])}
                             alt={`${profile?.first_name} ${profile?.last_name}`}
                             className="w-full h-full object-cover"
+                            style={{ objectPosition: '50% 20%' }}
                           />
 
                           {/* Navigation Arrows */}

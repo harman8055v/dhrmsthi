@@ -154,6 +154,7 @@ export default function MatchesPage() {
                                 match.other_user.user_photos?.[0] ||
                                 "/placeholder-user.jpg"
                               }
+                              style={{ objectPosition: '50% 20%' }}
                             />
                             <AvatarFallback>
                               {match.other_user.first_name?.[0] || "U"}

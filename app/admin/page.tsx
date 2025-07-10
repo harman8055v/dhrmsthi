@@ -1079,10 +1079,13 @@ export default function AdminDashboard() {
                       <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarImage src={(() => {
-                              const validPhotos = getValidPhotos(user.user_photos)
-                              return validPhotos.length > 0 ? validPhotos[0] : undefined
-                            })()} />
+                            <AvatarImage
+                              src={(() => {
+                                const validPhotos = getValidPhotos(user.user_photos)
+                                return validPhotos.length > 0 ? validPhotos[0] : undefined
+                              })()}
+                              style={{ objectPosition: '50% 20%' }}
+                            />
                             <AvatarFallback>
                               {user.first_name?.[0] || "U"}
                               {user.last_name?.[0] || "U"}
@@ -1280,10 +1283,13 @@ export default function AdminDashboard() {
                       >
                         <div className="flex items-center gap-4">
                           <Avatar className="h-12 w-12">
-                            <AvatarImage src={(() => {
-                              const validPhotos = getValidPhotos(user.user_photos)
-                              return validPhotos.length > 0 ? validPhotos[0] : undefined
-                            })()} />
+                            <AvatarImage
+                              src={(() => {
+                                const validPhotos = getValidPhotos(user.user_photos)
+                                return validPhotos.length > 0 ? validPhotos[0] : undefined
+                              })()}
+                              style={{ objectPosition: '50% 20%' }}
+                            />
                             <AvatarFallback>
                               {user.first_name?.[0] || "U"}
                               {user.last_name?.[0] || "U"}
@@ -1534,10 +1540,13 @@ export default function AdminDashboard() {
                       <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
                         <div className="flex items-center gap-4">
                           <Avatar className="h-16 w-16">
-                            <AvatarImage src={(() => {
-                              const validPhotos = getValidPhotos(user.user_photos)
-                              return validPhotos.length > 0 ? validPhotos[0] : undefined
-                            })()} />
+                            <AvatarImage
+                              src={(() => {
+                                const validPhotos = getValidPhotos(user.user_photos)
+                                return validPhotos.length > 0 ? validPhotos[0] : undefined
+                              })()}
+                              style={{ objectPosition: '50% 20%' }}
+                            />
                             <AvatarFallback className="text-lg">
                               {user.first_name?.[0] || "U"}
                               {user.last_name?.[0] || "U"}
@@ -1813,6 +1822,7 @@ export default function AdminDashboard() {
                             const validPhotos = getValidPhotos(selectedUser.user_photos)
                             return validPhotos.length > 0 ? validPhotos[0] : "/placeholder.svg"
                           })()}
+                          style={{ objectPosition: '50% 20%' }}
                         />
                         <AvatarFallback className="text-lg">
                           {selectedUser.first_name?.[0] || "U"}
@@ -2098,6 +2108,7 @@ export default function AdminDashboard() {
                               alt={`Photo ${index + 1}`}
                               fill
                               className="object-cover transition-transform group-hover:scale-105"
+                              style={{ objectPosition: '50% 20%' }}
                             />
                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
                               <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -2510,6 +2521,7 @@ export default function AdminDashboard() {
                         width={48} 
                         height={48}
                         className="w-full h-full object-cover"
+                        style={{ objectPosition: '50% 20%' }}
                       />
                     ) : (
                       <div className="w-full h-full bg-gray-400 flex items-center justify-center text-white text-sm">

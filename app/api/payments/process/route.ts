@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,6 +104,31 @@ export async function POST(request: NextRequest) {
       if (userUpdateError) {
         console.error("Message highlights update error:", userUpdateError)
         return NextResponse.json({ error: "Failed to add message highlights" }, { status: 500 })
+      }
+    } else if (item_type === "profile_boosts") {
+      // Add profile boosts to user account
+      const { data: userData, error: fetchError } = await supabase
+        .from("users")
+        .select("profile_boosts_count")
+        .eq("id", user_id)
+        .single()
+
+      if (fetchError) {
+        console.error("User fetch error:", fetchError)
+        return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
+      }
+
+      const currentCount = userData.profile_boosts_count || 0
+      const { error: userUpdateError } = await supabase
+        .from("users")
+        .update({
+          profile_boosts_count: currentCount + count,
+        })
+        .eq("id", user_id)
+
+      if (userUpdateError) {
+        console.error("Profile boosts update error:", userUpdateError)
+        return NextResponse.json({ error: "Failed to add profile boosts" }, { status: 500 })
       }
     }
 

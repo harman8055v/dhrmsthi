@@ -39,34 +39,41 @@ export default function ResetPasswordPage() {
       }
     })
 
-    // 2) Manually validate the hash parameters on first load
+    // 2) Validate tokens on first load (hash or query param)
     const validateResetToken = async () => {
       try {
+        // ----- HASH FORMAT (#access_token=...&type=recovery)
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
+        const typeHash = hashParams.get("type")
 
-        if (type === "recovery" && accessToken && refreshToken) {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-
-          if (error) {
-            console.error("Error setting session:", error)
-            setIsValidToken(false)
-          } else if (data.user) {
-            setIsValidToken(true)
-          } else {
-            setIsValidToken(false)
-          }
-        } else {
-          // No valid hash parameters – token invalid
-          setIsValidToken(false)
+        if (typeHash === "recovery" && accessToken) {
+          // Supabase JS automatically picks up the hash and sets the session
+          setIsValidToken(true)
+          return
         }
-      } catch (error) {
-        console.error("Error validating reset token:", error)
+
+        // ----- QUERY FORMAT (?token=...&type=recovery)
+        const searchParams = new URLSearchParams(window.location.search)
+        const tokenParam = searchParams.get("token")
+        const typeQuery = searchParams.get("type")
+
+        if (typeQuery === "recovery" && tokenParam) {
+          // Exchange the one-time code for a session
+          const { error } = await supabase.auth.exchangeCodeForSession(tokenParam)
+          if (error) {
+            console.error("exchangeCodeForSession error", error)
+            setIsValidToken(false)
+          } else {
+            setIsValidToken(true)
+          }
+          return
+        }
+
+        // No valid parameters
+        setIsValidToken(false)
+      } catch (err) {
+        console.error("Error validating reset token", err)
         setIsValidToken(false)
       } finally {
         setIsValidating(false)

@@ -14,12 +14,12 @@ const fontSans = FontSans({
 })
 
 export const metadata = {
-  title: "DharmaSaathi - from Drama to Dharma",
-  description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+  title: "DharmaSaathi: India's #1 Spiritual Matrimony & Matchmaking Platform",
+  description: "Discover your dharmic life partner on DharmaSaathi, India’s leading spiritual matrimony & conscious matchmaking platform. Join free to meet like-minded seekers.",
   metadataBase: new URL("https://dharmasaathi.com"),
   openGraph: {
-    title: "DharmaSaathi - from Drama to Dharma",
-    description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+    title: "DharmaSaathi: India's #1 Spiritual Matrimony & Matchmaking Platform",
+    description: "Discover your dharmic life partner on DharmaSaathi, India’s leading spiritual matrimony & conscious matchmaking platform. Join free to meet like-minded seekers.",
     url: "https://dharmasaathi.com/",
     siteName: "DharmaSaathi",
     images: [
@@ -35,8 +35,8 @@ export const metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "DharmaSaathi - from Drama to Dharma",
-    description: "Tired of superficial swiping and mismatches? Find the one who shares your silence, your sadhana, your soul’s purpose. DharmaSaathi is India’s spiritual matchmaking platform for authentic love and conscious companionship.",
+    title: "DharmaSaathi: India's #1 Spiritual Matrimony & Matchmaking Platform",
+    description: "Discover your dharmic life partner on DharmaSaathi, India’s leading spiritual matrimony & conscious matchmaking platform. Join free to meet like-minded seekers.",
     images: [
       {
         url: "/thumbnail.jpg",

@@ -309,6 +309,7 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
                             : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${photoUrl}`;
                         })()}
                         className={!data.can_see_details ? "blur-md" : ""}
+                        style={{ objectPosition: '50% 20%' }}
                       />
                       <AvatarFallback>
                         {data.can_see_details 
