@@ -24,7 +24,8 @@ export default function ResetPasswordClient() {
 
   useEffect(() => {
     const verify = async () => {
-      if (type === "recovery" && code) {
+      if (code) {
+        // New Supabase flow: single code param
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) {
           console.error("exchangeCodeForSession error", error)
