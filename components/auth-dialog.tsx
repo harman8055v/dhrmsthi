@@ -756,286 +756,112 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
 
           <TabsContent value="signup">
             {/* Auth Method Selection */}
-            <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod("email")
-                  resetMobileAuth()
-                  setErrors({})
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  authMethod === "email" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                📧 Email
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod("mobile")
-                  setErrors({})
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  authMethod === "mobile" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                📱 Mobile
-              </button>
-            </div>
-
-            {authMethod === "email" ? (
-              // Keep existing email signup form
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="firstName" className="text-gray-700 font-medium">
-                      First Name *
-                    </Label>
-                    <Input
-                      id="firstName"
-                      type="text"
-                      value={signupData.firstName}
-                      onChange={(e) => handleSignupChange("firstName", e.target.value)}
-                      className={`mt-1 ${errors.firstName ? "border-red-500" : ""}`}
-                      placeholder="First name"
-                      disabled={isLoading}
-                    />
-                    {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="lastName" className="text-gray-700 font-medium">
-                      Last Name *
-                    </Label>
-                    <Input
-                      id="lastName"
-                      type="text"
-                      value={signupData.lastName}
-                      onChange={(e) => handleSignupChange("lastName", e.target.value)}
-                      className={`mt-1 ${errors.lastName ? "border-red-500" : ""}`}
-                      placeholder="Last name"
-                      disabled={isLoading}
-                    />
-                    {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
-                  </div>
-                </div>
-
+            {/* Only show email sign up, remove mobile option */}
+            <form onSubmit={handleSignup} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="signup-email" className="text-gray-700 font-medium">
-                    Email Address *
+                  <Label htmlFor="firstName" className="text-gray-700 font-medium">
+                    First Name *
                   </Label>
                   <Input
-                    id="signup-email"
-                    type="email"
-                    value={signupData.email}
-                    onChange={(e) => handleSignupChange("email", e.target.value)}
-                    className={`mt-1 ${errors.email ? "border-red-500" : ""}`}
-                    placeholder="your@email.com"
+                    id="firstName"
+                    type="text"
+                    value={signupData.firstName}
+                    onChange={(e) => handleSignupChange("firstName", e.target.value)}
+                    className={`mt-1 ${errors.firstName ? "border-red-500" : ""}`}
+                    placeholder="First name"
                     disabled={isLoading}
                   />
-                  {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+                  {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
                 </div>
 
                 <div>
-                  <Label className="text-gray-700 font-medium">Mobile Number *</Label>
-                  <div className="mt-1">
-                    <PhoneInput
-                      value={signupData.mobileNumber}
-                      onChange={(val) => handleSignupChange("mobileNumber", val)}
-                      disabled={isLoading}
-                      error={!!errors.mobileNumber}
-                    />
-                  </div>
-                  {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                </div>
-
-                <div>
-                  <Label htmlFor="signup-password" className="text-gray-700 font-medium">
-                    Password *
+                  <Label htmlFor="lastName" className="text-gray-700 font-medium">
+                    Last Name *
                   </Label>
-                  <div className="relative mt-1">
-                    <Input
-                      id="signup-password"
-                      type={showPassword ? "text" : "password"}
-                      value={signupData.password}
-                      onChange={(e) => handleSignupChange("password", e.target.value)}
-                      className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
-                      placeholder="Create password"
-                      disabled={isLoading}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
-                  <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    value={signupData.lastName}
+                    onChange={(e) => handleSignupChange("lastName", e.target.value)}
+                    className={`mt-1 ${errors.lastName ? "border-red-500" : ""}`}
+                    placeholder="Last name"
+                    disabled={isLoading}
+                  />
+                  {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
                 </div>
-
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      Creating Account...
-                    </>
-                  ) : (
-                    "Create Account"
-                  )}
-                </Button>
-              </form>
-            ) : (
-              // Mobile signup form
-              <div className="space-y-4">
-                {mobileAuthStep === "phone" ? (
-                  <form onSubmit={handleSendOtp} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="mobile-firstName" className="text-gray-700 font-medium">
-                          First Name *
-                        </Label>
-                        <Input
-                          id="mobile-firstName"
-                          type="text"
-                          value={mobileAuthData.firstName}
-                          onChange={(e) => handleMobileAuthChange("firstName", e.target.value)}
-                          className={`mt-1 ${errors.firstName ? "border-red-500" : ""}`}
-                          placeholder="First name"
-                          disabled={isLoading}
-                        />
-                        {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
-                      </div>
-
-                      <div>
-                        <Label htmlFor="mobile-lastName" className="text-gray-700 font-medium">
-                          Last Name *
-                        </Label>
-                        <Input
-                          id="mobile-lastName"
-                          type="text"
-                          value={mobileAuthData.lastName}
-                          onChange={(e) => handleMobileAuthChange("lastName", e.target.value)}
-                          className={`mt-1 ${errors.lastName ? "border-red-500" : ""}`}
-                          placeholder="Last name"
-                          disabled={isLoading}
-                        />
-                        {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label className="text-gray-700 font-medium">Mobile Number *</Label>
-                      <div className="mt-1">
-                        <PhoneInput
-                          value={mobileAuthData.mobileNumber}
-                          onChange={(val) => handleMobileAuthChange("mobileNumber", val)}
-                          disabled={isLoading}
-                          error={!!errors.mobileNumber}
-                        />
-                      </div>
-                      {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Sending OTP...
-                        </>
-                      ) : (
-                        "Send OTP"
-                      )}
-                    </Button>
-                  </form>
-                ) : (
-                  // OTP verification form
-                  <div className="space-y-4">
-                    <div className="text-center mb-6">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Phone className="w-6 h-6 text-green-600" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Verify Your Mobile</h3>
-                      <p className="text-gray-600 text-sm">
-                        We've sent a 6-digit code to:
-                        <br />
-                        <span className="font-semibold text-gray-900">{mobileAuthData.mobileNumber}</span>
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                      <div>
-                        <Label htmlFor="mobile-otp" className="text-gray-700 font-medium">
-                          Enter OTP *
-                        </Label>
-                        <Input
-                          id="mobile-otp"
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={6}
-                          value={mobileAuthData.otp}
-                          onChange={(e) => handleMobileAuthChange("otp", e.target.value.replace(/\D/g, ""))}
-                          className={`mt-1 text-center text-lg tracking-widest ${errors.general ? "border-red-500" : ""}`}
-                          placeholder="000000"
-                          disabled={isLoading}
-                          autoFocus
-                        />
-                        {errors.general && <p className="mt-1 text-xs text-red-600">{errors.general}</p>}
-                      </div>
-
-                      <Button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Verifying...
-                          </>
-                        ) : (
-                          "Verify & Create Account"
-                        )}
-                      </Button>
-                    </form>
-
-                    <div className="text-center space-y-2">
-                      <button
-                        type="button"
-                        onClick={handleResendOtp}
-                        disabled={resendTimer > 0 || isLoading}
-                        className="text-sm text-orange-600 hover:text-orange-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : "Resend OTP"}
-                      </button>
-                      <br />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileAuthStep("phone")
-                          setOtpSent(false)
-                          setErrors({})
-                        }}
-                        className="text-sm text-gray-600 hover:text-gray-800 font-medium"
-                      >
-                        Change mobile number
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
+
+              <div>
+                <Label htmlFor="signup-email" className="text-gray-700 font-medium">
+                  Email Address *
+                </Label>
+                <Input
+                  id="signup-email"
+                  type="email"
+                  value={signupData.email}
+                  onChange={(e) => handleSignupChange("email", e.target.value)}
+                  className={`mt-1 ${errors.email ? "border-red-500" : ""}`}
+                  placeholder="your@email.com"
+                  disabled={isLoading}
+                />
+                {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+              </div>
+
+              <div>
+                <Label className="text-gray-700 font-medium">Mobile Number *</Label>
+                <div className="mt-1">
+                  <PhoneInput
+                    value={signupData.mobileNumber}
+                    onChange={(val) => handleSignupChange("mobileNumber", val)}
+                    disabled={isLoading}
+                    error={!!errors.mobileNumber}
+                  />
+                </div>
+                {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
+              </div>
+
+              <div>
+                <Label htmlFor="signup-password" className="text-gray-700 font-medium">
+                  Password *
+                </Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="signup-password"
+                    type={showPassword ? "text" : "password"}
+                    value={signupData.password}
+                    onChange={(e) => handleSignupChange("password", e.target.value)}
+                    className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
+                    placeholder="Create password"
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+                <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Creating Account...
+                  </>
+                ) : (
+                  "Create Account"
+                )}
+              </Button>
+            </form>
           </TabsContent>
 
           <TabsContent value="login">

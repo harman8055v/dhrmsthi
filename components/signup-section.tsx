@@ -144,16 +144,27 @@ export default function SignupSection() {
         )
       }
 
-      // 2️⃣ Send OTP to phone (creates the auth row & session)
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        phone: formData.mobileNumber,
-        options: { shouldCreateUser: true },
+      // 2️⃣ Create user with email+password (normal sign up)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            full_name: `${formData.firstName} ${formData.lastName}`,
+            phone: formData.mobileNumber,
+          },
+        },
       })
 
-      if (otpErr) throw otpErr
+      if (authError) throw authError
 
-      // 3️⃣ Navigate to onboarding (Seed stage will verify OTP)
-      router.push('/onboarding')
+      if (authData.user) {
+        // Optionally, create user profile in your users table here
+        setIsSuccess(true)
+        router.push(`/auth-loading?userId=${authData.user.id}&isNew=true`)
+      }
     } catch (error: any) {
       console.error('Sign up error:', error)
       setIsLoading(false)

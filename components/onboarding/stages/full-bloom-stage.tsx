@@ -8,6 +8,10 @@ import type { OnboardingData } from "@/lib/types/onboarding"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { userService } from "@/lib/data-service"
+import Cropper from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface FullBloomStageProps {
   formData: OnboardingData
@@ -31,6 +35,17 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
   const [photoUrls, setPhotoUrls] = useState<string[]>(user_photos)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
+  const [editIndex, setEditIndex] = useState<number | null>(null)
+
+  const onCropComplete = (_: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -122,30 +137,74 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
   }
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-    const filesArr = Array.from(files)
-    for (const file of filesArr) {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
       if (photoUrls.length >= 6) {
         toast.error("You can upload a maximum of 6 photos")
-        break
+        return
       }
       if (file.size > 10 * 1024 * 1024) {
         toast.error("Image size should be less than 10MB")
-        continue
+        return
       }
       if (!file.type.startsWith("image/")) {
         toast.error("Please select a valid image file")
-        continue
+        return
       }
-      const uploadedPath = await uploadImage(file)
+      setSelectedFile(file)
+      setImageUrl(URL.createObjectURL(file))
+      setCropModalOpen(true)
+    }
+  }
+
+  const getCroppedImg = async (imageSrc: string, crop: any): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const image = new window.Image()
+      image.src = imageSrc
+      image.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = crop.width
+        canvas.height = crop.height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return resolve(null)
+        ctx.drawImage(
+          image,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          crop.width,
+          crop.height
+        )
+        canvas.toBlob((blob) => {
+          resolve(blob)
+        }, 'image/jpeg')
+      }
+    })
+  }
+
+  const handleCropSave = async () => {
+    if (!imageUrl || !croppedAreaPixels || !selectedFile) return
+    setUploading(true)
+    const croppedBlob = await getCroppedImg(imageUrl, croppedAreaPixels)
+    if (croppedBlob) {
+      const croppedFile = new File([croppedBlob], selectedFile.name || 'cropped.jpg', { type: 'image/jpeg' })
+      const uploadedPath = await uploadImage(croppedFile)
       if (uploadedPath) {
         setPhotoUrls((prev) => [...prev, uploadedPath])
       }
     }
-    // Reset file input value so same file can be selected again
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    setUploading(false)
+    setCropModalOpen(false)
+    setSelectedFile(null)
+    setImageUrl(null)
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setCroppedAreaPixels(null)
+    setEditIndex(null)
   }
 
   const validateForm = () => {
@@ -290,9 +349,51 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
               </button>
             )}
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" multiple />
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
           <p className="text-xs text-gray-500 text-center">Add up to 6 photos. Max 10MB per image.</p>
         </div>
+        {/* Crop Modal */}
+        <Dialog open={cropModalOpen} onOpenChange={setCropModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Crop Photo</DialogTitle>
+            </DialogHeader>
+            <div className="relative w-full h-72 bg-gray-100">
+              {imageUrl && (
+                <Cropper
+                  image={imageUrl}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  cropShape="rect"
+                  showGrid={true}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={onCropComplete}
+                />
+              )}
+            </div>
+            <div className="flex flex-col gap-2 mt-4">
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full"
+              />
+              <DialogFooter>
+                <Button onClick={handleCropSave} disabled={uploading} className="w-full">
+                  {uploading ? 'Uploading...' : 'Save & Upload'}
+                </Button>
+                <DialogClose asChild>
+                  <Button variant="outline" className="w-full">Cancel</Button>
+                </DialogClose>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Display any server errors */}
         {error && (
