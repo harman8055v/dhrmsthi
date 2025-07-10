@@ -547,7 +547,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(resetData.email, {
-        redirectTo: `${window.location.origin}/reset-password?type=recovery`,
+        redirectTo: `${window.location.origin}/reset-password?email=${encodeURIComponent(resetData.email)}`,
       })
 
       if (error) throw error

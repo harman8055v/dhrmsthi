@@ -64,8 +64,16 @@ export default function ResetPasswordPage() {
         // Case A: New "code" param (PKCE/implicit handled internally by supabase)
         if (codeParam) {
           // Attempt to verify the code as a recovery OTP
+          const emailParam = searchParams.get("email")
+
+          if (!emailParam) {
+            setIsValidToken(false)
+            return
+          }
+
           const { error } = await supabase.auth.verifyOtp({
-            token_hash: codeParam,
+            email: emailParam,
+            token: codeParam,
             type: "recovery",
           })
 
