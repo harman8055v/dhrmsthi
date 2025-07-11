@@ -21,7 +21,22 @@ interface SeedStageProps {
 }
 
 export default function SeedStage({ formData, onChange, onNext, isLoading, user, error }: SeedStageProps) {
-  const [mobileNumber, setMobileNumber] = useState<string>(formData.phone || user?.phone || "")
+  // Prefill mobile number from localStorage if available and no user/phone is set
+  const getInitialMobile = () => {
+    if (formData.phone) return formData.phone
+    if (user?.phone) return user.phone
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('signupData')
+        if (raw) {
+          const signupData = JSON.parse(raw)
+          if (signupData.mobileNumber) return signupData.mobileNumber
+        }
+      } catch (e) {}
+    }
+    return ''
+  }
+  const [mobileNumber, setMobileNumber] = useState<string>(getInitialMobile())
   const [otp, setOtp] = useState("")
   const [otpSent, setOtpSent] = useState(false)
   const [verifying, setVerifying] = useState(false)
@@ -76,28 +91,41 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
 
       let error: any = null
       if (user) {
-        // If already signed in (email+password), attach phone to this user
-        const { error: updErr } = await supabase.auth.updateUser({
+        // If already signed in (email+password), attach phone to this user and send OTP
+        const { data: updData, error: updErr } = await supabase.auth.updateUser({
           phone: formattedNumber,
+        })
+        // Supabase JS v2 does not expose headers, but log everything we get
+        console.log('[OTP] updateUser response', {
+          location: 'send',
+          status: updErr?.status ?? 200,
+          message: updErr?.message ?? 'OK',
+          data: updData,
         })
         error = updErr
       } else {
-        // If not signed in, this is a pure phone signup
-        const { error: signErr } = await supabase.auth.signInWithOtp({
+        // If not signed in, this is a pure phone signup; send OTP via signInWithOtp
+        const { data: signData, error: signErr } = await supabase.auth.signInWithOtp({
           phone: formattedNumber,
           options: { shouldCreateUser: true },
+        })
+        console.log('[OTP] signInWithOtp response', {
+          location: 'send',
+          status: signErr?.status ?? 200,
+          message: signErr?.message ?? 'OK',
+          data: signData,
         })
         error = signErr
       }
 
-      // Ignore duplicate/exists errors
-      if (
-        error &&
-        !error.message?.includes("already registered") &&
-        !error.message?.includes("exists")
-      ) {
+      if (error) {
         console.error("OTP send error:", error)
-        setLocalError(error.message || "Failed to send OTP. Please try again.")
+        // Duplicate phone or any other error should surface to user
+        if (error.message?.includes("already registered") || error.message?.includes("exists")) {
+          setLocalError("This phone number is already linked to another account. Please use a different number or contact support.")
+        } else {
+          setLocalError(error.message || "Failed to send OTP. Please try again.")
+        }
         return
       }
 
@@ -129,17 +157,26 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
     setLocalError(null)
 
     try {
+      // ────────────────  OTP VERIFY  ────────────────
       const formattedNumber = formatPhoneE164(mobileNumber)
 
-      const { data, error } = await supabase.auth.verifyOtp({
+      // Always verify using verifyOtp (works for both logged-in and logged-out flows)
+      const verifyType = user ? 'phone_change' : 'sms'
+      const { data: verifyData, error: verifyErr } = await supabase.auth.verifyOtp({
         phone: formattedNumber,
         token: otp,
-        type: "sms",
+        type: verifyType as any,
       })
-
-      if (error && !error.message?.includes("already confirmed")) {
-        console.error("OTP verification error:", error)
-        setLocalError(error.message || "Invalid OTP. Please try again.")
+      console.log('[OTP] verifyOtp response', {
+        location: 'verify',
+        type: verifyType,
+        status: verifyErr?.status ?? 200,
+        message: verifyErr?.message ?? 'OK',
+        data: verifyData,
+      })
+      if (verifyErr && !verifyErr.message?.includes("already confirmed")) {
+        console.error("OTP verification error:", verifyErr)
+        setLocalError(verifyErr.message || "Invalid OTP. Please try again.")
         return
       }
 

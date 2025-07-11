@@ -18,6 +18,10 @@ import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import SectionHeader from "@/components/dashboard/section-header"
 import { userService } from "@/lib/data-service"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { supabase } from "@/lib/supabase"
+import PhotoUploader from "@/components/onboarding/photo-uploader"
+import FullBloomStage from "@/components/onboarding/stages/full-bloom-stage"
 
 const SPIRITUAL_ORGANIZATIONS = [
   "ISKCON",
@@ -105,6 +109,24 @@ const MultiSelectCard = ({
   )
 }
 
+// Utility function to fetch location names by ID (no hooks)
+async function getLocationDisplayString({ country_id, state_id, city_id }: { country_id: number | null, state_id: number | null, city_id: number | null }) {
+  let country = "", state = "", city = "";
+  if (country_id) {
+    const { data } = await supabase.from("countries").select("name").eq("id", country_id).single();
+    country = data?.name || "";
+  }
+  if (state_id) {
+    const { data } = await supabase.from("states").select("name").eq("id", state_id).single();
+    state = data?.name || "";
+  }
+  if (city_id) {
+    const { data } = await supabase.from("cities").select("name").eq("id", city_id).single();
+    city = data?.name || "";
+  }
+  return [city, state, country].filter(Boolean).join(", ") || "Not set";
+}
+
 export default function SettingsPage() {
   const { user, profile, loading, refreshProfile } = useAuthContext()
   const [saving, setSaving] = useState(false)
@@ -113,11 +135,20 @@ export default function SettingsPage() {
   const [showSuccessAlert, setShowSuccessAlert] = useState(false)
   // Local editable state
   const [editable, setEditable] = useState<any>(profile)
+  const [locationModalOpen, setLocationModalOpen] = useState(false)
+  const [locationSaving, setLocationSaving] = useState(false)
   const [locationState, setLocationState] = useState<LocationFormState>({
     country_id: profile?.country_id ?? null,
     state_id: profile?.state_id ?? null,
     city_id: profile?.city_id ?? null,
   })
+  const [locationDisplay, setLocationDisplay] = useState<string>("")
+
+  // Helper to get location names from IDs
+  useEffect(() => {
+    getLocationDisplayString(locationState).then(setLocationDisplay)
+  }, [locationState])
+
   useEffect(() => {
     setEditable(profile)
     setLocationState({
@@ -186,6 +217,35 @@ export default function SettingsPage() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleLocationSave = async () => {
+    setLocationSaving(true)
+    try {
+      const updateData = {
+        country_id: locationState.country_id,
+        state_id: locationState.state_id,
+        city_id: locationState.city_id,
+        updated_at: new Date().toISOString(),
+      }
+      const cleanUpdateData = Object.fromEntries(
+        Object.entries(updateData).filter(([_, value]) => value !== undefined && value !== null)
+      )
+      await userService.updateProfile(cleanUpdateData)
+      await refreshProfile()
+      setShowSuccessAlert(true)
+      setTimeout(() => setShowSuccessAlert(false), 4000)
+      setLocationModalOpen(false)
+    } catch (error) {
+      toast({
+        title: "❌ Error",
+        description: `Failed to save location. Please try again.`,
+        variant: "destructive",
+        duration: 5000,
+      })
+    } finally {
+      setLocationSaving(false)
     }
   }
 
@@ -352,15 +412,15 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Location Section */}
+                  {/* Location Section (Refactored) */}
                   <div className="pt-4 border-t">
-                    <LocationSelector
-                      value={locationState}
-                      onChange={handleLocationChange}
-                      required={false}
-                      showLabels={true}
-                      defaultToIndia={false}
-                    />
+                    <Label className="block mb-1">Location</Label>
+                    <div className="flex items-center gap-4">
+                      <span>{locationDisplay}</span>
+                      <Button type="button" variant="outline" onClick={() => setLocationModalOpen(true)}>
+                        Change Location
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Family & Background */}
@@ -397,6 +457,42 @@ export default function SettingsPage() {
                       value={editable?.about_me || ""}
                       onChange={(e) => updateProfile("about_me", e.target.value)}
                       placeholder="Tell us about yourself..."
+                    />
+                  </div>
+                  <div>
+                    <Label>Profile Photos</Label>
+                    <FullBloomStage
+                      formData={{
+                        phone: editable?.phone || '',
+                        mobile_verified: editable?.mobile_verified || false,
+                        email: editable?.email || '',
+                        email_verified: editable?.email_verified || false,
+                        gender: editable?.gender || null,
+                        birthdate: editable?.birthdate || null,
+                        height_ft: editable?.height_ft || null,
+                        height_in: editable?.height_in || null,
+                        city_id: editable?.city_id || null,
+                        state_id: editable?.state_id || null,
+                        country_id: editable?.country_id || null,
+                        education: editable?.education || null,
+                        profession: editable?.profession || null,
+                        annual_income: editable?.annual_income || null,
+                        marital_status: editable?.marital_status || null,
+                        diet: editable?.diet || null,
+                        temple_visit_freq: editable?.temple_visit_freq || null,
+                        vanaprastha_interest: editable?.vanaprastha_interest || null,
+                        artha_vs_moksha: editable?.artha_vs_moksha || null,
+                        spiritual_org: editable?.spiritual_org || [],
+                        daily_practices: editable?.daily_practices || [],
+                        user_photos: editable?.user_photos || [],
+                        ideal_partner_notes: editable?.ideal_partner_notes || null,
+                        about_me: editable?.about_me || null,
+                        favorite_spiritual_quote: editable?.favorite_spiritual_quote || null,
+                      }}
+                      onChange={(updates) => updateProfile("user_photos", updates.user_photos)}
+                      onNext={() => {}}
+                      isLoading={false}
+                      error={null}
                     />
                   </div>
                 </CardContent>
@@ -615,6 +711,33 @@ export default function SettingsPage() {
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
+        {/* Location Modal */}
+        <Dialog open={locationModalOpen} onOpenChange={setLocationModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Change Location</DialogTitle>
+            </DialogHeader>
+            <LocationSelector
+              value={locationState}
+              onChange={setLocationState}
+              required={false}
+              showLabels={true}
+              defaultToIndia={false}
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLocationModalOpen(false)} disabled={locationSaving}>
+                Cancel
+              </Button>
+              <Button onClick={handleLocationSave} disabled={locationSaving}>
+                {locationSaving ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mt-0.5 flex-shrink-0 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z" /></svg>
+              <span>If the location is taking too long to load, please reload the page.</span>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   )

@@ -12,6 +12,8 @@ import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import imageCompression from "browser-image-compression"
+import { useRef } from "react"
 
 interface FullBloomStageProps {
   formData: OnboardingData
@@ -42,6 +44,8 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
   const [editIndex, setEditIndex] = useState<number | null>(null)
+  const [cropUploadProgress,setCropUploadProgress]=useState<number>(0)
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const onCropComplete = (_: any, croppedAreaPixels: any) => {
     setCroppedAreaPixels(croppedAreaPixels)
@@ -189,22 +193,49 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
   const handleCropSave = async () => {
     if (!imageUrl || !croppedAreaPixels || !selectedFile) return
     setUploading(true)
-    const croppedBlob = await getCroppedImg(imageUrl, croppedAreaPixels)
-    if (croppedBlob) {
-      const croppedFile = new File([croppedBlob], selectedFile.name || 'cropped.jpg', { type: 'image/jpeg' })
-      const uploadedPath = await uploadImage(croppedFile)
-      if (uploadedPath) {
-        setPhotoUrls((prev) => [...prev, uploadedPath])
+    setCropUploadProgress(0)
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+    let fakeProgress = 0
+    progressIntervalRef.current = setInterval(() => {
+      fakeProgress += 3 + Math.random() * 2 // 3-5% per tick
+      setCropUploadProgress(Math.min(99, Math.round(fakeProgress)))
+    }, 40)
+    try {
+      const croppedBlob = await getCroppedImg(imageUrl, croppedAreaPixels)
+      if (croppedBlob) {
+        // Compress the cropped image before upload
+        const croppedFile = new File([croppedBlob], selectedFile.name || 'cropped.jpg', { type: 'image/jpeg' })
+        const compressed = await imageCompression(croppedFile, {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+        })
+        const uploadedPath = await uploadImage(compressed)
+        if (uploadedPath) {
+          // Use the public CDN URL for preview
+          const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${uploadedPath}`
+          setPhotoUrls((prev) => [...prev, publicUrl])
+        }
       }
+      setCropUploadProgress(100)
+    } catch (error) {
+      toast.error("Failed to upload cropped image. Please try again.")
+      console.error("Error uploading cropped image:", error)
+      setCropUploadProgress(0)
+    } finally {
+      setTimeout(() => {
+        setUploading(false)
+        setCropUploadProgress(0)
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+        setCropModalOpen(false)
+        setSelectedFile(null)
+        setImageUrl(null)
+        setCrop({ x: 0, y: 0 })
+        setZoom(1)
+        setCroppedAreaPixels(null)
+        setEditIndex(null)
+      }, 400)
     }
-    setUploading(false)
-    setCropModalOpen(false)
-    setSelectedFile(null)
-    setImageUrl(null)
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-    setCroppedAreaPixels(null)
-    setEditIndex(null)
   }
 
   const validateForm = () => {
@@ -383,6 +414,14 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
                 onChange={(e) => setZoom(Number(e.target.value))}
                 className="w-full"
               />
+              {uploading && (
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                  <div className="h-2 bg-primary transition-all rounded-full" style={{width: cropUploadProgress + '%'}}></div>
+                </div>
+              )}
+              {uploading && (
+                <div className="w-full text-right text-xs text-gray-600 mb-2">{cropUploadProgress}%</div>
+              )}
               <DialogFooter>
                 <Button onClick={handleCropSave} disabled={uploading} className="w-full">
                   {uploading ? 'Uploading...' : 'Save & Upload'}

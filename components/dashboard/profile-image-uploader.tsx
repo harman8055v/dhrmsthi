@@ -156,6 +156,7 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
   const getCroppedImg = async (imageSrc: string, crop: any): Promise<Blob | null> => {
     return new Promise((resolve) => {
       const image = new window.Image()
+      image.crossOrigin = "anonymous"
       image.src = imageSrc
       image.onload = () => {
         const canvas = document.createElement('canvas')
