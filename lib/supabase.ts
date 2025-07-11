@@ -5,11 +5,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables:', {
-    url: supabaseUrl ? 'SET' : 'MISSING',
-    key: supabaseAnonKey ? 'SET' : 'MISSING'
-  })
-  throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required')
+  console.warn(
+    "[supabase] Missing NEXT_PUBLIC_SUPABASE_URL / KEY – running in limited mode."
+  )
 }
 
 // Create Supabase client with explicit configuration
