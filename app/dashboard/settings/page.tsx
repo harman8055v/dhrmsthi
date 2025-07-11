@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Save, User, Heart, Briefcase, Users, Activity, Target, Check } from "lucide-react"
+import { ArrowLeft, Save, User, Heart, Briefcase, Users, Activity, Target, Check, Upload, X } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { cn } from "@/lib/utils"
@@ -18,10 +18,13 @@ import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import SectionHeader from "@/components/dashboard/section-header"
 import { userService } from "@/lib/data-service"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { supabase } from "@/lib/supabase"
-import PhotoUploader from "@/components/onboarding/photo-uploader"
-import FullBloomStage from "@/components/onboarding/stages/full-bloom-stage"
+import Image from "next/image"
+import Cropper from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
+import imageCompression from "browser-image-compression"
+import PhotoCropUploader from '@/components/onboarding/photo-crop-uploader'
 
 const SPIRITUAL_ORGANIZATIONS = [
   "ISKCON",
@@ -185,6 +188,7 @@ export default function SettingsPage() {
         favorite_spiritual_quote: editable.favorite_spiritual_quote,
         about_me: editable.about_me,
         ideal_partner_notes: editable.ideal_partner_notes,
+        user_photos: editable.user_photos, // <-- ensure photos are saved
         country_id: locationState.country_id,
         state_id: locationState.state_id,
         city_id: locationState.city_id,
@@ -459,40 +463,14 @@ export default function SettingsPage() {
                       placeholder="Tell us about yourself..."
                     />
                   </div>
-                  <div>
-                    <Label>Profile Photos</Label>
-                    <FullBloomStage
-                      formData={{
-                        phone: editable?.phone || '',
-                        mobile_verified: editable?.mobile_verified || false,
-                        email: editable?.email || '',
-                        email_verified: editable?.email_verified || false,
-                        gender: editable?.gender || null,
-                        birthdate: editable?.birthdate || null,
-                        height_ft: editable?.height_ft || null,
-                        height_in: editable?.height_in || null,
-                        city_id: editable?.city_id || null,
-                        state_id: editable?.state_id || null,
-                        country_id: editable?.country_id || null,
-                        education: editable?.education || null,
-                        profession: editable?.profession || null,
-                        annual_income: editable?.annual_income || null,
-                        marital_status: editable?.marital_status || null,
-                        diet: editable?.diet || null,
-                        temple_visit_freq: editable?.temple_visit_freq || null,
-                        vanaprastha_interest: editable?.vanaprastha_interest || null,
-                        artha_vs_moksha: editable?.artha_vs_moksha || null,
-                        spiritual_org: editable?.spiritual_org || [],
-                        daily_practices: editable?.daily_practices || [],
-                        user_photos: editable?.user_photos || [],
-                        ideal_partner_notes: editable?.ideal_partner_notes || null,
-                        about_me: editable?.about_me || null,
-                        favorite_spiritual_quote: editable?.favorite_spiritual_quote || null,
+                  <div className="space-y-2">
+                    <PhotoCropUploader
+                      photos={editable?.user_photos || []}
+                      onChange={(urls) => {
+                        setEditable((prev: any) => ({ ...prev, user_photos: urls }))
+                        updateProfile('user_photos', urls)
                       }}
-                      onChange={(updates) => updateProfile("user_photos", updates.user_photos)}
-                      onNext={() => {}}
-                      isLoading={false}
-                      error={null}
+                      maxPhotos={6}
                     />
                   </div>
                 </CardContent>
