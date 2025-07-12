@@ -20,6 +20,10 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function getUser() {
       try {
+        // Check if this is a mobile login
+        const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
+        const mobileLoginUserId = typeof window !== 'undefined' ? localStorage.getItem('mobileLoginUserId') : null;
+
         // Get the current user session
         const {
           data: { user },
@@ -28,8 +32,43 @@ export default function OnboardingPage() {
 
         // If we reach here and there's no session yet (OTP not verified), fall back to buffered data
         if (userError || !user) {
-          console.warn("No auth session yet – using buffered signup data")
+          console.warn("No auth session yet – checking for mobile login or buffered signup data")
 
+          // Check if this is a mobile login
+          if (isMobileLogin && mobileLoginUserId) {
+            console.log("Mobile login detected, fetching user profile")
+            
+            // Fetch user profile using the mobile login user ID
+            const { data: profileData, error: profileError } = await supabase
+              .from("users")
+              .select("*")
+              .eq("id", mobileLoginUserId)
+              .single()
+
+            if (profileError || !profileData) {
+              console.error("Error fetching mobile login user profile:", profileError)
+              // Clear mobile login data
+              localStorage.removeItem('isMobileLogin')
+              localStorage.removeItem('mobileLoginUserId')
+              router.push('/')
+              return
+            }
+
+            // Check if already onboarded
+            if (profileData.is_onboarded) {
+              debugLog("Mobile login user already onboarded, redirecting to dashboard")
+              router.push("/dashboard")
+              return
+            }
+
+            // Set up profile for onboarding
+            setUser(null) // No auth user for mobile login
+            setProfile(profileData)
+            setLoading(false)
+            return
+          }
+
+          // Original buffered data logic
           let buffered: any = null
           if (typeof window !== 'undefined') {
             try {

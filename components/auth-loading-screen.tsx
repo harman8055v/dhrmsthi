@@ -9,6 +9,7 @@ import { Shield, Users, CheckCircle, Lock } from "lucide-react"
 interface AuthLoadingScreenProps {
   userId?: string
   isNewUser?: boolean
+  isMobileLogin?: boolean
 }
 
 const inspirationalMessages = [
@@ -27,13 +28,80 @@ const trustElements = [
   { icon: Lock, text: "Private & Secure", subtext: "Protected messaging" },
 ]
 
-export default function AuthLoadingScreen({ userId, isNewUser }: AuthLoadingScreenProps) {
+export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: AuthLoadingScreenProps) {
   const [progress, setProgress] = useState(0)
   const [currentMessage, setCurrentMessage] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
+    // Handle mobile login
+    if (isMobileLogin && userId) {
+      // For mobile login, we need to verify the user and redirect appropriately
+      const handleMobileLogin = async () => {
+        try {
+          // Call the mobile login API to verify the session
+          const response = await fetch('/api/auth/mobile-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Use the magic link token to establish a session
+            if (data.token && data.type) {
+              const { error: sessionError } = await supabase.auth.verifyOtp({
+                token_hash: data.token,
+                type: data.type
+              });
+
+              if (sessionError) {
+                console.error('Session creation error:', sessionError);
+                // Try alternative approach - exchange session
+                const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(data.token);
+                
+                if (exchangeError) {
+                  console.error('Session exchange error:', exchangeError);
+                  router.push("/");
+                  return;
+                }
+              }
+
+              // Session established, clear localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('mobileLoginUserId');
+              }
+
+              // Redirect based on onboarding status
+              setTimeout(() => {
+                if (data.isOnboarded) {
+                  router.push("/dashboard")
+                } else {
+                  router.push("/onboarding")
+                }
+              }, 1000)
+            } else {
+              // Fallback - no token received
+              console.error('No auth token received');
+              router.push("/");
+            }
+          } else {
+            // Mobile login failed, redirect to home
+            router.push("/")
+          }
+        } catch (error) {
+          console.error("Mobile login error:", error)
+          router.push("/")
+        }
+      };
+
+      handleMobileLogin();
+      return;
+    }
+
+    // Regular auth flow (non-mobile login)
     // Progress animation
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
@@ -91,7 +159,7 @@ export default function AuthLoadingScreen({ userId, isNewUser }: AuthLoadingScre
       clearInterval(messageInterval)
       clearTimeout(completeTimer)
     }
-  }, [userId, isNewUser, router])
+  }, [userId, isNewUser, router, isMobileLogin])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-pink-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">

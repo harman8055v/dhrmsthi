@@ -150,9 +150,55 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     // Prefer passed-in values (from mergedFormData) but fall back to current state
     const source = values ?? formData
 
+    // Get user data from localStorage (from signup) or from existing profile
+    let userData = {
+      first_name: profile?.first_name || '',
+      last_name: profile?.last_name || '',
+      full_name: profile?.full_name || '',
+      email: freshUser.email || profile?.email || ''
+    }
+
+    // Try to get user data from localStorage if not in profile
+    if (typeof window !== 'undefined' && (!userData.first_name || !userData.last_name)) {
+      try {
+        const signupDataRaw = localStorage.getItem('signupData')
+        if (signupDataRaw) {
+          const signupData = JSON.parse(signupDataRaw)
+          userData = {
+            first_name: signupData.first_name || userData.first_name,
+            last_name: signupData.last_name || userData.last_name,
+            full_name: signupData.full_name || userData.full_name || `${signupData.first_name} ${signupData.last_name}`.trim(),
+            email: signupData.email || userData.email
+          }
+        }
+      } catch (e) {
+        console.error('Error reading signup data from localStorage:', e)
+      }
+    }
+
+    // Update phone number in Supabase auth if mobile is verified
+    if (source.mobile_verified && source.phone && source.phone !== freshUser.phone) {
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({
+          phone: source.phone
+        })
+        if (updateError) {
+          console.error('[Onboard] Failed to update phone in auth:', updateError)
+        } else {
+          console.log('[Onboard] Updated phone number in Supabase auth')
+        }
+      } catch (e) {
+        console.error('[Onboard] Error updating phone in auth:', e)
+      }
+    }
+
     const payload = {
       id: freshUser.id,
       phone: source.phone || freshUser.phone,
+      email: userData.email,
+      first_name: userData.first_name,
+      last_name: userData.last_name,
+      full_name: userData.full_name,
       email_verified: source.email_verified,
       mobile_verified: source.mobile_verified,
       gender: source.gender,

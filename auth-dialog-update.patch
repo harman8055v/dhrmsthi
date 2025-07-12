@@ -1,0 +1,52 @@
+--- components/auth-dialog.tsx
++++ components/auth-dialog.tsx
+@@ -317,11 +317,36 @@
+       // Check if this is an existing user (login) or new user (signup)
+       if (data.isExistingUser && activeTab === "login") {
+         // Mobile login flow - user exists
+-        // Store mobile login info in localStorage
+-        if (typeof window !== 'undefined') {
+-          localStorage.setItem('mobileLoginUserId', data.userId)
+-          // Also store that this is a mobile login to bypass auth check
+-          localStorage.setItem('isMobileLogin', 'true')
++        
++        // Check if session data was returned from OTP verify
++        if (data.session?.access_token && data.session?.refresh_token) {
++          try {
++            // Set the session using the tokens from the server
++            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
++              access_token: data.session.access_token,
++              refresh_token: data.session.refresh_token
++            });
++            
++            if (sessionError) {
++              console.error('Failed to set session:', sessionError);
++              // Fall back to localStorage method
++              if (typeof window !== 'undefined') {
++                localStorage.setItem('mobileLoginUserId', data.userId);
++                localStorage.setItem('isMobileLogin', 'true');
++              }
++            } else {
++              // Success! Clear any mobile login flags since we have a real session
++              if (typeof window !== 'undefined') {
++                localStorage.removeItem('mobileLoginUserId');
++                localStorage.removeItem('isMobileLogin');
++              }
++            }
++          } catch (error) {
++            console.error('Session creation error:', error);
++            // Fall back to localStorage method
++            if (typeof window !== 'undefined') {
++              localStorage.setItem('mobileLoginUserId', data.userId);
++              localStorage.setItem('isMobileLogin', 'true');
++            }
++          }
++        } else {
++          // No session data, use localStorage fallback
++          if (typeof window !== 'undefined') {
++            localStorage.setItem('mobileLoginUserId', data.userId);
++            localStorage.setItem('isMobileLogin', 'true');
++          }
+         }
+ 
+         // Close dialog and redirect based on onboarding status from verify response

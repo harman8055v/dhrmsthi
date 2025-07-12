@@ -17,7 +17,7 @@ import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 
 export default function DashboardPage() {
   // Include refreshProfile so we can manually trigger a fetch on first mount
-  const { user, profile, loading: isLoading, error, isVerified, refreshProfile } = useAuthContext()
+  const { user, profile, loading: isLoading, error, isVerified, refreshProfile, isMobileLogin } = useAuthContext()
   const router = useRouter()
 
   const {
@@ -51,28 +51,51 @@ export default function DashboardPage() {
 
   // Redirect unauthenticated users and handle onboarding status
   useEffect(() => {
-    console.log('[Dashboard]', { isLoading, error, profile });
+    console.log('[Dashboard]', { isLoading, error, profile, user, isMobileLogin });
     if (isLoading) return;
-    if (!user) {
-      router.replace("/")
-      return;
+    
+    // For mobile login users, only check profile
+    if (isMobileLogin) {
+      if (!profile) {
+        console.log('[Dashboard] Mobile login but no profile, redirecting to home');
+        router.replace("/");
+        return;
+      }
+      
+      if (!(profile as any)?.is_onboarded) {
+        console.log('[Dashboard] Mobile login not onboarded → redirecting');
+        router.replace('/onboarding');
+        return;
+      }
+    } else {
+      // Regular auth flow
+      if (!user && !profile) {
+        router.replace("/")
+        return;
+      }
+      
+      if (!(profile as any)?.is_onboarded) {
+        console.log('[Dashboard] not onboarded → redirecting');
+        router.replace('/onboarding');
+        return;
+      }
     }
+    
     if (error) {
       console.error('[Dashboard] profile load error:', error);
-      return;
+      // Don't redirect on error for mobile login users
+      if (!isMobileLogin) {
+        return;
+      }
     }
-    if (!(profile as any)?.is_onboarded) {
-      console.log('[Dashboard] not onboarded → redirecting');
-      router.replace('/onboarding');
-      return;
-    }
+    
     // When verified, fetch page-specific data
     if (isVerified) {
       refetchProfiles();
       refetchStats();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, error, profile, user, isVerified])
+  }, [isLoading, error, profile, user, isVerified, isMobileLogin])
 
   // If the component mounts with a user but no profile (fresh after onboarding),
   // trigger one manual refresh so the dashboard shows real data without reload.
