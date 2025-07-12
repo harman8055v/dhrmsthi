@@ -22,23 +22,52 @@ export default function ResetPasswordClient() {
   const [confirm, setConfirm] = useState("")
   const [updating, setUpdating] = useState(false)
 
+  // Validate the reset-password link on mount. We now support three scenarios:
+  // 1) PKCE flow – ?code=… (exchangeCodeForSession)
+  // 2) Implicit flow – ?/#!access_token=…&refresh_token=… (setSession)
+  // 3) Supabase already placed a valid session in localStorage (getSession)
   useEffect(() => {
     const verify = async () => {
-      if (code) {
-        // New Supabase flow: single code param
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) {
-          console.error("exchangeCodeForSession error", error)
-          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-          setStatus("error")
-        } else {
-          setStatus("verified")
-        }
+      // We re-parse search / hash here to capture possible tokens that weren’t
+      // available through the initial useSearchParams (hash is not included).
+      const search = new URLSearchParams(window.location.search)
+      const hash = new URLSearchParams(window.location.hash.slice(1))
+
+      const codeParam = search.get("code")
+      const accessToken = search.get("access_token") || hash.get("access_token")
+      const refreshToken = search.get("refresh_token") || hash.get("refresh_token")
+
+      let authError: any = null
+
+      if (codeParam) {
+        // PKCE
+        ;({ error: authError } = await supabase.auth.exchangeCodeForSession(codeParam))
+      } else if (accessToken && refreshToken) {
+        // Implicit / hash flow
+        ;({ error: authError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        }))
       } else {
-        setErrorMsg("Invalid reset link.")
+        // Maybe Supabase already created a session (redirect_to flow)
+        const { data } = await supabase.auth.getSession()
+        if (data.session) {
+          setStatus("verified")
+          return
+        } else {
+          authError = new Error("Missing credentials")
+        }
+      }
+
+      if (authError) {
+        console.error("Password-reset auth error", authError)
+        setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
         setStatus("error")
+      } else {
+        setStatus("verified")
       }
     }
+
     verify()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
