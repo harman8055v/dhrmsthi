@@ -147,9 +147,15 @@ export const userService = {
       .single();
 
     if (error) {
+      // "Not found" returns PGRST116 – treat as null (common right after signup before profile row exists)
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+
+      // For other errors log once and handle based on caller
       console.error('[DataService] getCurrentProfile error:', error);
-      // Don't throw for mobile login users, just return null
       if (userId) {
+        // For mobile-login flow just swallow the error so the caller can retry later
         return null;
       }
       throw error;

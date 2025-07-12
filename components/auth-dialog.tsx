@@ -408,6 +408,21 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           }
 
           await supabase.from("users").upsert(profileData)
+
+          // 📲 Enqueue onboarding WhatsApp message (30-min delay)
+          try {
+            fetch('/api/whatsapp/onboarding', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: authData.user.id,
+                phone: phoneE164Verify,
+                firstName: mobileAuthData.firstName,
+              }),
+            }).catch((err) => console.error('WhatsApp enqueue error:', err))
+          } catch (err) {
+            console.error('Failed to enqueue WhatsApp message', err)
+          }
           
           // Close dialog and redirect
           onClose()

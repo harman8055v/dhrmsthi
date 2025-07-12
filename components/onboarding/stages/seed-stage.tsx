@@ -142,6 +142,42 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
         phone: formattedNumber,
         mobile_verified: true,
       }
+
+      // 📲 Enqueue onboarding WhatsApp message (30-min delay)
+      try {
+        let firstName = 'Friend'
+
+        // Try localStorage → supports web signup path
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('signupData')
+            if (raw) {
+              const sd = JSON.parse(raw)
+              firstName = sd.first_name || sd.firstName || firstName
+            }
+          } catch (e) {
+            console.warn('[SeedStage] Failed to parse signupData', e)
+          }
+        }
+
+        // Fallback: if verify response carried existingUser, use that
+        if (firstName === 'Friend' && data?.firstName) {
+          firstName = data.firstName
+        }
+
+        fetch('/api/whatsapp/onboarding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: data.userId ?? null,
+            phone: formattedNumber,
+            firstName,
+          }),
+        }).catch(err => console.error('WhatsApp enqueue error:', err))
+      } catch (err) {
+        console.error('Failed to enqueue WhatsApp message', err)
+      }
+
       onChange(verificationData)
       onNext(verificationData)
     } catch (error) {

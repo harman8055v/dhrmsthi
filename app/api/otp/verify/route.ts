@@ -101,27 +101,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ─────────────────────────────────────────────
-       🎉  Enqueue 30-minute onboarding WhatsApp msg
-       Only for fresh sign ‑ up (purpose === 'signup')
-    ───────────────────────────────────────────── */
-    if (purpose === 'signup' && existingUser) {
-      try {
-        // Clean phone number (digits only, no plus)
-        const cleanPhone = phone.replace(/[^\d]/g, '')
-        const firstName = (existingUser as any)?.first_name || 'Friend'
-
-        await supabase.from('whatsapp_outbox').insert({
-          user_id      : existingUser.id,
-          phone        : cleanPhone,
-          template_name: 'onboarding',
-          payload      : { "name": firstName },
-          send_after   : new Date(Date.now() + 30 * 60_000) // +30 minutes
-        })
-      } catch (queueErr) {
-        console.error('Failed to enqueue onboarding WhatsApp:', queueErr)
-      }
-    }
+    // Removed WhatsApp outbox insertion here to avoid duplicates.
 
     return NextResponse.json({ 
       success: true, 

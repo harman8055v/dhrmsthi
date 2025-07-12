@@ -67,7 +67,10 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && (user || profile)) {
+    if (loading) return;
+
+    // Only redirect when the visitor has a session *and* is fully onboarded
+    if (profile?.is_onboarded) {
       router.replace("/dashboard");
     }
   }, [loading, user, profile, router]);
