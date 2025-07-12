@@ -62,10 +62,25 @@ export default function AccountSettingsPage() {
     if (!phone) return
     setUpdatingPhone(true)
     try {
-      const { error } = await supabase.auth.updateUser({ phone })
-      if (error) throw error
+      // Call new backend API to send OTP via WhatsApp
+      const res = await fetch('/api/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone, 
+          purpose: 'phone_update',
+          userId: user?.id
+        }),
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send OTP')
+      }
+      
       setPhoneOtpSent(true)
-      toast.success("OTP sent to new phone number")
+      toast.success("OTP sent to new phone number via WhatsApp")
     } catch (error: any) {
       console.error("Phone update error", error)
       toast.error(error.message || "Failed to send OTP")
@@ -78,8 +93,35 @@ export default function AccountSettingsPage() {
     if (!phoneOtp) return
     setVerifyingPhone(true)
     try {
-      const { error } = await supabase.auth.verifyOtp({ phone, token: phoneOtp, type: "sms" })
-      if (error) throw error
+      // Call new backend API to verify OTP
+      const res = await fetch('/api/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone, 
+          otp: phoneOtp,
+          purpose: 'phone_update'
+        }),
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Invalid OTP')
+      }
+      
+      // Update user profile with new phone
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ 
+          phone,
+          mobile_verified: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user?.id)
+      
+      if (updateError) throw updateError
+      
       toast.success("Phone number updated and verified")
       setPhoneOtp("")
       setPhoneOtpSent(false)

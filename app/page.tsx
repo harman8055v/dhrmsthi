@@ -12,6 +12,9 @@ import Faq from "@/components/faq"
 import Footer from "@/components/footer"
 import { Suspense } from "react";
 import Head from "next/head";
+import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 function JsonLd() {
   return (
@@ -60,6 +63,14 @@ function JsonLd() {
 }
 
 export default function Home() {
+  const { user, profile, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && (user || profile)) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, profile, router]);
   return (
     <>
       <JsonLd />

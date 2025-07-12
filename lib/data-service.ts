@@ -124,16 +124,34 @@ const handleSupabaseError = (error: any, operation: string): never => {
 // User Profile Operations
 export const userService = {
   // Get current user profile
-  async getCurrentProfile(userId: string): Promise<UserProfile | null> {
+  async getCurrentProfile(userId?: string): Promise<UserProfile | null> {
     console.log('[DataService] getCurrentProfile called', { userId });
+    
+    // If userId is provided (mobile login), use it directly
+    // Otherwise, get from auth session
+    let targetUserId = userId;
+    
+    if (!targetUserId) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.error('[DataService] No authenticated user found');
+        return null;
+      }
+      targetUserId = user.id;
+    }
+    
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('id', userId)
+      .eq('id', targetUserId)
       .single();
 
     if (error) {
       console.error('[DataService] getCurrentProfile error:', error);
+      // Don't throw for mobile login users, just return null
+      if (userId) {
+        return null;
+      }
       throw error;
     }
     console.log('[DataService] getCurrentProfile success', data);

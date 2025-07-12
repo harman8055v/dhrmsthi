@@ -45,10 +45,19 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     ]
     routes.forEach((r) => router.prefetch(r))
 
+    // Check if mobile login user
+    const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
+    const mobileUserId = typeof window !== 'undefined' ? localStorage.getItem('mobileLoginUserId') : null;
+
     // Prefetch limited datasets so first navigation is instant
     qc.prefetchQuery({
       queryKey: ["profiles", "discover"],
-      queryFn: () => fetch("/api/profiles/discover?limit=5", { credentials: "include" }).then((r) => r.json().then((d) => d.profiles || [])),
+      queryFn: () => {
+        const url = isMobileLogin && mobileUserId 
+          ? `/api/profiles/discover?limit=5&mobileUserId=${mobileUserId}`
+          : "/api/profiles/discover?limit=5";
+        return fetch(url, { credentials: "include" }).then((r) => r.json().then((d) => d.profiles || []))
+      },
     })
     qc.prefetchQuery({
       queryKey: ["matches"],

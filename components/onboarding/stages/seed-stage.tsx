@@ -88,55 +88,26 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
 
     try {
       const formattedNumber = formatPhoneE164(mobileNumber)
-
-      let error: any = null
-      if (user) {
-        // If already signed in (email+password), attach phone to this user and send OTP
-        const { data: updData, error: updErr } = await supabase.auth.updateUser({
-          phone: formattedNumber,
-        })
-        // Supabase JS v2 does not expose headers, but log everything we get
-        console.log('[OTP] updateUser response', {
-          location: 'send',
-          status: updErr?.status ?? 200,
-          message: updErr?.message ?? 'OK',
-          data: updData,
-        })
-        error = updErr
-      } else {
-        // If not signed in, this is a pure phone signup; send OTP via signInWithOtp
-        const { data: signData, error: signErr } = await supabase.auth.signInWithOtp({
-          phone: formattedNumber,
-          options: { shouldCreateUser: true },
-        })
-        console.log('[OTP] signInWithOtp response', {
-          location: 'send',
-          status: signErr?.status ?? 200,
-          message: signErr?.message ?? 'OK',
-          data: signData,
-        })
-        error = signErr
-      }
-
-      if (error) {
-        console.error("OTP send error:", error)
-        // Duplicate phone or any other error should surface to user
-        if (error.message?.includes("already registered") || error.message?.includes("exists")) {
-          setLocalError("This phone number is already linked to another account. Please use a different number or contact support.")
-        } else {
-          setLocalError(error.message || "Failed to send OTP. Please try again.")
-        }
+      // Call new backend API to send OTP via WhatsApp
+      const res = await fetch('/api/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone: formattedNumber, 
+          purpose: 'signup',
+          userId: user?.id || null 
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setLocalError(data.error || 'Failed to send OTP. Please try again.')
         return
       }
-
       setOtpSent(true)
-      setCountdown(60) // 60 second countdown
-
-      // Update form data with mobile number
+      setCountdown(60)
       onChange({ phone: formattedNumber })
     } catch (error) {
-      console.error("Error sending OTP:", error)
-      setLocalError("Failed to send OTP. Please try again.")
+      setLocalError('Failed to send OTP. Please try again.')
     } finally {
       setSendingOtp(false)
     }
@@ -147,107 +118,34 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       setLocalError("Please enter the OTP")
       return
     }
-
     if (!mobileNumber.trim()) {
       setLocalError("Mobile number is required")
       return
     }
-
     setVerifying(true)
     setLocalError(null)
-
     try {
-      // ────────────────  OTP VERIFY  ────────────────
       const formattedNumber = formatPhoneE164(mobileNumber)
-
-      // Always verify using verifyOtp (works for both logged-in and logged-out flows)
-      const verifyType = user ? 'phone_change' : 'sms'
-      const { data: verifyData, error: verifyErr } = await supabase.auth.verifyOtp({
-        phone: formattedNumber,
-        token: otp,
-        type: verifyType as any,
+      // Call new backend API to verify OTP
+      const res = await fetch('/api/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formattedNumber, otp, purpose: 'signup' }),
       })
-      console.log('[OTP] verifyOtp response', {
-        location: 'verify',
-        type: verifyType,
-        status: verifyErr?.status ?? 200,
-        message: verifyErr?.message ?? 'OK',
-        data: verifyData,
-      })
-      if (verifyErr && !verifyErr.message?.includes("already confirmed")) {
-        console.error("OTP verification error:", verifyErr)
-        setLocalError(verifyErr.message || "Invalid OTP. Please try again.")
+      const data = await res.json()
+      if (!res.ok) {
+        setLocalError(data.error || 'Invalid OTP. Please try again.')
         return
       }
-
-      // Treat duplicate confirmation as success
-
-      // OTP verified successfully – fetch the fresh auth user (has the final UID)
-      const {
-        data: { user: freshUser },
-        error: userErr,
-      } = await supabase.auth.getUser()
-
-      if (userErr || !freshUser) {
-        console.error('Failed to read current auth user after OTP verify', userErr)
-        setLocalError('Unexpected auth error. Please refresh and try again.')
-        return
-      }
-
-      // 1️⃣ Pull any buffered signup data from localStorage (set during initial form)
-      let buffered: Record<string, any> = {}
-      try {
-        const raw = typeof window !== 'undefined' ? localStorage.getItem('signupData') : null
-        if (raw) buffered = JSON.parse(raw)
-      } catch (e) {
-        console.warn('Failed to parse buffered signup data', e)
-      }
-
-      // 2️⃣ Build initial profile payload
-      const initialPayload = {
-        id: freshUser.id,
-        phone: formattedNumber,
-        mobile_verified: true,
-        email: buffered.email || null,
-        full_name: buffered.full_name || null,
-        first_name: buffered.first_name || null,
-        last_name: buffered.last_name || null,
-        gender: buffered.gender || null,
-        birthdate: buffered.birthdate || null,
-        // mark onboarding not done yet – rest of stages will update
-        is_onboarded: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      // 3️⃣ Upsert row in public.users
-      const { error: upsertErr } = await supabase
-        .from('users')
-        .upsert(initialPayload, { onConflict: 'id', ignoreDuplicates: false })
-        .single()
-
-      if (upsertErr && !upsertErr.message?.includes('duplicate')) {
-        console.error('Initial profile upsert error:', upsertErr)
-        setLocalError('Failed to create profile. Please try again.')
-        return
-      }
-
-      // 4️⃣ Clear buffered data
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('signupData')
-      }
-
+      // Mark as verified and proceed
       const verificationData = {
         phone: formattedNumber,
         mobile_verified: true,
       }
-
-      // Update form data and proceed to next stage
       onChange(verificationData)
       onNext(verificationData)
     } catch (error) {
-      console.error("Error verifying OTP:", error)
-      setLocalError("Failed to verify OTP. Please try again.")
+      setLocalError('Failed to verify OTP. Please try again.')
     } finally {
       setVerifying(false)
     }
@@ -288,7 +186,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       <div className="text-center mb-6">
         <div className="text-4xl mb-4">🌱</div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Plant your seed of trust</h2>
-        <p className="text-gray-600">Verify your mobile number to ensure secure communication</p>
+        <p className="text-gray-600">Verify your mobile number via WhatsApp to ensure secure communication</p>
       </div>
 
       {!otpSent ? (
@@ -319,14 +217,14 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
                 Sending OTP...
               </span>
             ) : (
-              "Send OTP"
+              "Send OTP via WhatsApp"
             )}
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-700 text-sm">OTP sent to {formatPhoneE164(mobileNumber)}</p>
+            <p className="text-blue-700 text-sm">OTP sent via WhatsApp to {formatPhoneE164(mobileNumber)}</p>
           </div>
 
           <div className="space-y-2">
@@ -382,7 +280,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
             <p className="text-center text-sm text-gray-500">Resend OTP in {countdown} seconds</p>
           ) : (
             <Button variant="link" onClick={handleSendOtp} disabled={sendingOtp} className="w-full">
-              Resend OTP
+              Resend OTP via WhatsApp
             </Button>
           )}
 

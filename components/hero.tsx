@@ -133,7 +133,7 @@ export default function Hero() {
               >
                 <div className="text-center">
                   <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-brand-600 to-brand-700 bg-clip-text text-transparent">
-                    10K+
+                    50K+
                   </div>
                   <div className="text-xs sm:text-sm text-gray-600 leading-tight">Spiritual Seekers</div>
                 </div>
@@ -145,7 +145,7 @@ export default function Hero() {
                 </div>
                 <div className="text-center">
                   <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-brand-800 to-brand-900 bg-clip-text text-transparent">
-                    50+
+                    150+
                   </div>
                   <div className="text-xs sm:text-sm text-gray-600 leading-tight">Cities</div>
                 </div>

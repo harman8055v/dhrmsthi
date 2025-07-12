@@ -7,21 +7,46 @@ export async function GET(request: NextRequest) {
     // Create Supabase client with service role key for server-side operations
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    let userId: string | null = null;
+
+    // Check for mobile login user via query parameter
+    const searchParams = request.nextUrl.searchParams;
+    const mobileUserId = searchParams.get('mobileUserId');
+    
+    if (mobileUserId) {
+      // Mobile login user - verify they exist
+      const { data: mobileUser } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", mobileUserId)
+        .single();
+      
+      if (mobileUser) {
+        userId = mobileUserId;
+      }
+    } else {
+      // Regular auth flow
+      const authHeader = request.headers.get("authorization")
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      const token = authHeader.replace("Bearer ", "")
+
+      // Verify the JWT token
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token)
+
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+      
+      userId = user.id;
     }
 
-    const token = authHeader.replace("Bearer ", "")
-
-    // Verify the JWT token
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -34,7 +59,7 @@ export async function GET(request: NextRequest) {
         state:states(name),
         country:countries(name)
       `)
-      .eq("id", user.id)
+      .eq("id", userId)
       .single()
 
     if (!userProfile) {
@@ -42,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get profiles user has already swiped on
-    const { data: swipedProfiles } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", user.id)
+    const { data: swipedProfiles } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", userId)
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
 
@@ -57,7 +82,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq("verification_status", "verified")
       .eq("is_onboarded", true)
-      .neq("id", user.id)
+      .neq("id", userId)
 
     // Exclude already swiped profiles
     if (swipedIds.length > 0) {
@@ -115,7 +140,7 @@ export async function GET(request: NextRequest) {
         `)
         .eq("verification_status", "verified")
         .eq("is_onboarded", true)
-        .neq("id", user.id)
+        .neq("id", userId)
 
       if (swipedIds.length > 0) {
         fallbackQuery = fallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
@@ -150,7 +175,7 @@ export async function GET(request: NextRequest) {
           `)
           .eq("verification_status", "verified")
           .eq("is_onboarded", true)
-          .neq("id", user.id)
+          .neq("id", userId)
 
         if (swipedIds.length > 0) {
           ultimateFallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
@@ -249,7 +274,7 @@ export async function GET(request: NextRequest) {
     );
 
     // 🚀 ADVANCED AI MATCHING ENGINE ACTIVATION
-    console.log(`🧠 AI Matching Engine: Processing ${profilesWithPhotos.length} profiles for user ${user.id}${fallbackUsed ? ' (with fallback)' : ''}`)
+    console.log(`🧠 AI Matching Engine: Processing ${profilesWithPhotos.length} profiles for user ${userId}${fallbackUsed ? ' (with fallback)' : ''}`)
     
     // Use our sophisticated matching engine to calculate compatibility
     const profilesWithCompatibility = await matchingEngine.sortProfilesByCompatibility(userProfile, profilesWithPhotos)

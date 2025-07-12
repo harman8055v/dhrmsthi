@@ -26,12 +26,12 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const { user, profile, loading } = useAuthContext()
   const router = useRouter()
 
-  // Redirect to /login if the user is not authenticated
+  // Redirect to /login only if we have neither Supabase user nor profile (covers mobile login)
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !profile) {
       router.replace("/login")
     }
-  }, [loading, user, router])
+  }, [loading, user, profile, router])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
