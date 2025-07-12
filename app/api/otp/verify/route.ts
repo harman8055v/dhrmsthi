@@ -101,6 +101,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    /* ─────────────────────────────────────────────
+       🎉  Enqueue 30-minute onboarding WhatsApp msg
+       Only for fresh sign ‑ up (purpose === 'signup')
+    ───────────────────────────────────────────── */
+    if (purpose === 'signup' && existingUser) {
+      try {
+        // Fetch first_name for template variable; fallback to empty string
+        const firstName = (existingUser as any)?.first_name || ''
+
+        await supabase.from('whatsapp_outbox').insert({
+          user_id      : existingUser.id,
+          phone        : phone,
+          template_name: 'onboarding',
+          payload      : { "1": firstName },
+          send_after   : new Date(Date.now() + 30 * 60_000) // +30 minutes
+        })
+      } catch (queueErr) {
+        console.error('Failed to enqueue onboarding WhatsApp:', queueErr)
+      }
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: 'OTP verified successfully',
