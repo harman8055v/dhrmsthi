@@ -198,33 +198,45 @@ export function useAuth() {
 
   const signOut = async () => {
     try {
-      setAuthState(prev => ({ ...prev, loading: true }))
-      
-      const { error } = await supabase.auth.signOut()
-      
-      if (error) {
-        console.error('Sign out error:', error)
-        setAuthState(prev => ({ 
-          ...prev, 
-          loading: false, 
-          error: 'Failed to sign out' 
-        }))
-        return
+      // Start sign-out flow – ensure UI shows spinner, clear any previous errors
+      setAuthState(prev => ({ ...prev, loading: true, error: null }))
+
+      // Always clear any mobile-login flags so future auth logic is clean
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('isMobileLogin')
+        localStorage.removeItem('mobileLoginUserId')
       }
 
+      // Only call Supabase signOut when we actually have a Supabase session
+      if (!isMobileLoginUser) {
+        const { error } = await supabase.auth.signOut()
+
+        // Many times signOut() can return "No session" or similar when the
+        // refresh token has already been removed. Treat these as benign and
+        // proceed rather than surfacing an error to the UI.
+        if (error && error.message && !/no session/i.test(error.message)) {
+          console.error('Sign out error:', error)
+        }
+      }
+
+      // Regardless of Supabase response, reset local auth state so the app
+      // behaves as signed-out.
       setAuthState({
         user: null,
         profile: null,
         loading: false,
-        error: null
+        error: null,
       })
     } catch (error) {
-      console.error('Sign out error:', error)
-      setAuthState(prev => ({ 
-        ...prev, 
-        loading: false, 
-        error: 'Sign out failed' 
-      }))
+      // This catch is only for unexpected errors (e.g. network failures). We
+      // still complete the sign-out locally to avoid trapping the user.
+      console.error('Unexpected sign out error:', error)
+      setAuthState({
+        user: null,
+        profile: null,
+        loading: false,
+        error: null,
+      })
     }
   }
 
