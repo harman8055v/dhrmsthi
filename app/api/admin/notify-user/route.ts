@@ -1,41 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { createClient } from "@supabase/supabase-js"
+import { withAuth } from "@/lib/withAuth"
+import type { SupabaseClient, User } from "@supabase/supabase-js"
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, { supabase, user }: { supabase: SupabaseClient; user: User }) => {
   try {
     const { userId, message, type } = await request.json()
 
-    // Create admin client with service role key
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
-    // Create auth client to verify user session
-    const supabaseAuth = createRouteHandlerClient({ cookies })
-
-    // Check if user is authenticated
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabaseAuth.auth.getSession()
-
-    if (sessionError || !session?.user) {
-      return NextResponse.json({ error: "Authentication failed" }, { status: 401 })
+    // Only admins can send notifications
+    if ((user.app_metadata as any)?.role !== 'admin' && (user.user_metadata as any)?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Get user details
-    const { data: user, error: userError } = await supabaseAdmin
+    const { data: targetUser, error: userError } = await supabase
       .from("users")
       .select("email, phone, first_name, last_name")
       .eq("id", userId)
       .single()
 
-    if (userError || !user) {
+    if (userError || !targetUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
     // Create notification record
-    const { error: notificationError } = await supabaseAdmin.from("notifications").insert({
+    const { error: notificationError } = await supabase.from("notifications").insert({
       user_id: userId,
       title: getNotificationTitle(type),
       message: message,
@@ -50,9 +38,9 @@ export async function POST(request: NextRequest) {
 
     // Here you would integrate with SMS/Email service
     // For now, we'll just log the notification
-    console.log(`Notification sent to ${user.first_name} ${user.last_name}:`, {
-      email: user.email,
-      mobile: user.phone,
+    console.log(`Notification sent to ${targetUser.first_name} ${targetUser.last_name}:`, {
+      email: targetUser.email,
+      mobile: targetUser.phone,
       message,
       type,
     })
@@ -76,7 +64,7 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
-}
+})
 
 function getNotificationTitle(type: string): string {
   switch (type) {

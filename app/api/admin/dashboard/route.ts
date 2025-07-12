@@ -1,9 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { withAuth } from "@/lib/withAuth"
+import type { SupabaseClient, User } from "@supabase/supabase-js"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+// The underlying handler is now wrapped with withAuth() so only authenticated users
+// (via Bearer token) can access it.  We additionally enforce `role === 'admin'`.
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: NextRequest, { supabase, user }: { supabase: SupabaseClient; user: User }) => {
+  // Ensure only admin users can access dashboard data
+  if ((user.app_metadata as any)?.role !== 'admin' && (user.user_metadata as any)?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   try {
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
@@ -343,7 +349,7 @@ export async function GET(request: NextRequest) {
     console.error("API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
+})
 
 function calculateProfileCompletion(user: any): number {
   let score = 0

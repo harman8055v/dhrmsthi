@@ -34,6 +34,7 @@ The onboarding and authentication system is built using Supabase for authenticat
 
 ### 2.2. Phone/OTP Signup
 - **Component:** `components/auth-dialog.tsx`, `components/onboarding/stages/seed-stage.tsx`
+- **OTP Delivery:** OTP is delivered **via WhatsApp** using the custom `/api/otp/send` route which integrates with **WATI**. (SMS fallback coming soon.)
 - **API:** `supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true, data: { ...profile } } })`
 - **OTP Verification:**
   - `supabase.auth.verifyOtp({ phone, token, type: 'sms' })`
@@ -56,8 +57,9 @@ The onboarding and authentication system is built using Supabase for authenticat
 
 ### 3.2. Phone/OTP Login
 - **Component:** `components/auth-dialog.tsx`, `components/onboarding/stages/seed-stage.tsx`
+- **OTP Delivery:** OTP is delivered **via WhatsApp** using the `/api/otp/send` route backed by WATI.
 - **API:**
-  - `supabase.auth.signInWithOtp({ phone })` to send OTP
+  - `supabase.auth.signInWithOtp({ phone })` to send OTP *(WhatsApp message)*
   - `supabase.auth.verifyOtp({ phone, token, type: 'sms' })` to verify
 - **On success:**
   - User is redirected to `/auth-loading?userId=...&isNew=false`
@@ -65,6 +67,22 @@ The onboarding and authentication system is built using Supabase for authenticat
 ### 3.3. Password Reset
 - **API:** `supabase.auth.resetPasswordForEmail(email, { redirectTo })`
 - **Redirect:** `/reset-password?email=...`
+
+### 3.4. Mobile Login Flow (OTP-only / WebView)
+- **Use-case:** When a user completes OTP verification inside the mobile app’s WebView (or a special deep-link) we cannot rely on secure HTTP-only cookies for Supabase. Instead, the backend returns only the verified `userId`.
+- **State flags:** The front-end sets two keys in `localStorage`:
+  - `isMobileLogin` → `'true'`
+  - `mobileLoginUserId` → Supabase `uuid` of the verified user.
+- **Auth handling:**
+  - `hooks/use-auth.ts` detects these flags synchronously and bypasses `supabase.auth.getSession()`. It fetches the user profile directly via `/api/users/profile?userId=${mobileLoginUserId}`.
+  - `user` is `null`; only `profile` is populated. A computed flag `isMobileLogin` is exposed to all consumers via `useAuth()`.
+- **Navigation rules:**
+  - On the Dashboard, onboarding and verification redirects honour `isMobileLogin` so users without a Supabase session are still allowed after profile fetch.
+- **Sign-out:**
+  - `signOut()` first clears the two localStorage keys.
+  - It then calls `supabase.auth.signOut()` **only** if a regular session exists. “No session” responses are treated as benign.
+  - Local auth state is reset regardless, so the UI always returns to an unauthenticated state.
+- **API considerations:** Many `/api/*` routes accept an optional `mobileUserId` query parameter which, when present, is authorised via server-role RLS bypass.
 
 ---
 
@@ -130,6 +148,9 @@ The onboarding and authentication system is built using Supabase for authenticat
 ### 6.2. LocalStorage
 - Used to buffer signup data between steps and across reloads
 - Stores `signupData` with email, name, phone, referral code, etc.
+- **Mobile login flags:**
+  - `isMobileLogin` → indicates that the session was established via OTP inside the mobile app
+  - `mobileLoginUserId` → the user’s UUID used to fetch profile data when no Supabase session cookie is available
 
 ### 6.3. Custom API
 - `/api/referrals/signup` for referral code processing

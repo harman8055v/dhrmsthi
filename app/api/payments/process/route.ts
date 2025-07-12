@@ -1,9 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { withAuth } from "@/lib/withAuth"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, { supabase, user }) => {
   try {
     const { user_id, item_type, item_name, amount, count, payment_id, order_id } = await request.json()
 
@@ -132,14 +130,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: "Payment processed successfully",
       item_type,
-      item_name 
+      item_name,
     })
   } catch (error) {
     console.error("Payment processing error:", error)
     return NextResponse.json({ error: "Payment processing failed" }, { status: 500 })
   }
-}
+})

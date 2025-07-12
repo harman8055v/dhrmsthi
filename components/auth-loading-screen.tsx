@@ -83,9 +83,15 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
                 }
               }, 1000)
             } else {
-              // Fallback - no token received
-              console.error('No auth token received');
-              router.push("/");
+              // No token in response – assume session already exists (e.g., via OTP verify)
+              console.log('[AuthLoading] No token provided, using existing session');
+              setTimeout(() => {
+                if (data.isOnboarded) {
+                  router.push("/dashboard");
+                } else {
+                  router.push("/onboarding");
+                }
+              }, 1000);
             }
           } else {
             // Mobile login failed, redirect to home

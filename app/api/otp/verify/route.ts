@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // Check if user exists with this phone number
     const { data: existingUser } = await supabase
       .from('users')
-      .select('id, email, is_onboarded')
+      .select('id, email, is_onboarded, first_name')
       .eq('phone', phone)
       .single();
 
@@ -107,14 +107,15 @@ export async function POST(req: NextRequest) {
     ───────────────────────────────────────────── */
     if (purpose === 'signup' && existingUser) {
       try {
-        // Fetch first_name for template variable; fallback to empty string
-        const firstName = (existingUser as any)?.first_name || ''
+        // Clean phone number (digits only, no plus)
+        const cleanPhone = phone.replace(/[^\d]/g, '')
+        const firstName = (existingUser as any)?.first_name || 'Friend'
 
         await supabase.from('whatsapp_outbox').insert({
           user_id      : existingUser.id,
-          phone        : phone,
+          phone        : cleanPhone,
           template_name: 'onboarding',
-          payload      : { "1": firstName },
+          payload      : { "name": firstName },
           send_after   : new Date(Date.now() + 30 * 60_000) // +30 minutes
         })
       } catch (queueErr) {

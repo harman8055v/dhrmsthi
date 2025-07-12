@@ -1,7 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { withAuth } from "@/lib/withAuth"
 import { createClient } from "@supabase/supabase-js"
+import type { SupabaseClient, User } from "@supabase/supabase-js"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+// Use anon key for public event ingestion (RLS should restrict permissible columns)
+const supabaseAnon = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,12 +19,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Store the analytics event in Supabase
-    const { error } = await supabase.from("analytics_events").insert({
+    const { error } = await supabaseAnon.from("analytics_events").insert({
       event_name: event.event,
       properties: event.properties || {},
       timestamp: event.timestamp || new Date().toISOString(),
       user_agent: request.headers.get("user-agent"),
-      ip_address: request.ip || request.headers.get("x-forwarded-for"),
+      ip_address: request.headers.get("x-forwarded-for") || null,
     })
 
     if (error) {
@@ -33,7 +39,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: NextRequest, { supabase, user }: { supabase: SupabaseClient; user: User }) => {
+  // Only admins can read analytics events
+  if ((user.app_metadata as any)?.role !== 'admin' && (user.user_metadata as any)?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   try {
     const { searchParams } = new URL(request.url)
     const eventType = searchParams.get("event_type")
@@ -66,4 +76,4 @@ export async function GET(request: NextRequest) {
     console.error("Analytics API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
+})
