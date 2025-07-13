@@ -18,9 +18,13 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // Extract the `code` param from the URL (e.g. /reset-password?code=xyz)
+    // 1️⃣ Log the raw URL
+    console.log('🔍 Reset-password URL:', window.location.href)
+
+    // 2️⃣ Grab the code param
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
+    console.log('🔑 code param:', code)
 
     if (!code) {
       setErrorMsg('Invalid or missing reset code')
@@ -28,12 +32,12 @@ export default function ResetPasswordClient() {
       return
     }
 
-    // Exchange the code for a session (PKCE flow)
+    // 3️⃣ Try the exchange
     supabase.auth.exchangeCodeForSession(code)
-      .then(({ error }) => {
-        if (error) {
-          console.error('Error exchanging code for session:', error)
-          setErrorMsg(error.message || 'Invalid or expired reset link')
+      .then(({ data, error }) => {
+        console.log('⚙️ exchangeCodeForSession →', { data, error })
+        if (error || !data.session) {
+          setErrorMsg(error?.message ?? 'Invalid or expired reset link')
           setStatus('error')
         } else {
           setStatus('verified')
