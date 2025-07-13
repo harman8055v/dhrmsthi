@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import PhoneInput from "@/components/ui/phone-input";
-import { User, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
+import React from "react";
 
 interface AuthDialogProps {
   isOpen: boolean;
@@ -36,6 +37,19 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetJustSent, setResetJustSent] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  // Reset the sent state after a short delay for button feedback
+  React.useEffect(() => {
+    if (resetJustSent) {
+      const t = setTimeout(() => setResetJustSent(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [resetJustSent]);
 
   const handleChange = (field: keyof FormState, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -105,153 +119,239 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
         <div className="p-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-[#8b0000] tracking-tight">
-              {mode === "signup" ? "Create your account" : "Welcome back"}
+              {mode === "signup" ? "Create your account" : showForgot ? "Reset your password" : "Welcome back"}
             </h2>
-            <button
-              className="text-sm text-[#8b0000] underline font-medium hover:text-[#a30000] transition-colors"
-              onClick={() => setMode(mode === "signup" ? "login" : "signup")}
-              type="button"
-            >
-              {mode === "signup" ? "Log in" : "Sign up"}
-            </button>
+            {!showForgot && (
+              <button
+                className="text-sm text-[#8b0000] underline font-medium hover:text-[#a30000] transition-colors"
+                onClick={() => setMode(mode === "signup" ? "login" : "signup")}
+                type="button"
+              >
+                {mode === "signup" ? "Log in" : "Sign up"}
+              </button>
+            )}
           </div>
 
-          {generalError && (
+          {generalError && !showForgot && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 text-sm">{generalError}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {mode === "signup" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="firstName" className="text-gray-700 font-medium">
-                    First Name
-                  </Label>
-                  <div className="relative mt-1">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <Input
-                      id="firstName"
-                      type="text"
-                      value={form.firstName}
-                      onChange={e => handleChange("firstName", e.target.value)}
-                      className={`pl-10 ${errors.firstName ? "border-red-500" : ""}`}
-                      placeholder="First name"
-                      disabled={loading}
-                    />
-                  </div>
-                  {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="lastName" className="text-gray-700 font-medium">
-                    Last Name
-                  </Label>
-                  <div className="relative mt-1">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <Input
-                      id="lastName"
-                      type="text"
-                      value={form.lastName}
-                      onChange={e => handleChange("lastName", e.target.value)}
-                      className={`pl-10 ${errors.lastName ? "border-red-500" : ""}`}
-                      placeholder="Last name"
-                      disabled={loading}
-                    />
-                  </div>
-                  {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <Label htmlFor="email" className="text-gray-700 font-medium">
-                Email Address
-              </Label>
-              <div className="relative mt-1">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-4 w-4 text-gray-400" />
-                </div>
-                <Input
-                  id="email"
-                  type="email"
-                  value={form.email}
-                  onChange={e => handleChange("email", e.target.value)}
-                  className={`pl-10 ${errors.email ? "border-red-500" : ""}`}
-                  placeholder="you@email.com"
-                  disabled={loading}
-                />
-              </div>
-              {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
-            </div>
-
-            {mode === "signup" && (
+          {/* Forgot Password Flow */}
+          {showForgot ? (
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                setResetError(null);
+                setResetSent(false);
+                setResetJustSent(false);
+                setLoading(true);
+                try {
+                  const { data, error } = await supabase.auth.resetPasswordForEmail(
+                    resetEmail,
+                    { redirectTo: 'https://dharmasaathi.com/reset-password' }
+                  );
+                  if (error) throw error;
+                  setResetSent(true);
+                  setResetJustSent(true);
+                } catch (err: any) {
+                  setResetError(err.message || "Could not send reset link");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="space-y-6"
+            >
               <div>
-                <Label className="text-gray-700 font-medium">Mobile Number</Label>
-                <div className="mt-1">
-                  <PhoneInput
-                    value={form.mobile}
-                    onChange={val => handleChange("mobile", val)}
+                <Label htmlFor="reset-email" className="text-gray-700 font-medium">Email Address</Label>
+                <div className="relative mt-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    value={resetEmail}
+                    onChange={e => setResetEmail(e.target.value)}
+                    className="pl-10"
+                    placeholder="you@email.com"
                     disabled={loading}
-                    error={!!errors.mobile}
-                    placeholder="Your mobile number"
                   />
                 </div>
-                {errors.mobile && <p className="mt-1 text-xs text-red-600">{errors.mobile}</p>}
               </div>
-            )}
-
-            <div>
-              <Label htmlFor="password" className="text-gray-700 font-medium">
-                Password
-              </Label>
-              <div className="relative mt-1">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-4 w-4 text-gray-400" />
+              {resetError && <p className="text-xs text-red-600 mt-1">{resetError}</p>}
+              {resetSent && <p className="text-xs text-green-600 mt-1">Check your inbox for a reset link.</p>}
+              <Button
+                type="submit"
+                disabled={loading || resetJustSent}
+                className={`w-full bg-gradient-to-r from-[#8b0000] to-[#a30000] hover:from-[#a30000] hover:to-[#8b0000] text-white font-semibold py-3 transition-all duration-200 rounded-lg shadow-lg flex items-center justify-center gap-2 ${resetJustSent ? 'bg-green-600 hover:bg-green-700' : ''}`}
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : resetJustSent ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Sent!
+                  </>
+                ) : (
+                  "Send reset link"
+                )}
+              </Button>
+              <button
+                type="button"
+                className="text-sm underline text-center w-full mt-2"
+                onClick={() => {
+                  setShowForgot(false);
+                  setResetEmail("");
+                  setResetError(null);
+                  setResetSent(false);
+                }}
+              >
+                ← Back to login
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {mode === "signup" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="firstName" className="text-gray-700 font-medium">
+                      First Name
+                    </Label>
+                    <div className="relative mt-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <User className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <Input
+                        id="firstName"
+                        type="text"
+                        value={form.firstName}
+                        onChange={e => handleChange("firstName", e.target.value)}
+                        className={`pl-10 ${errors.firstName ? "border-red-500" : ""}`}
+                        placeholder="First name"
+                        disabled={loading}
+                      />
+                    </div>
+                    {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName" className="text-gray-700 font-medium">
+                      Last Name
+                    </Label>
+                    <div className="relative mt-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <User className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <Input
+                        id="lastName"
+                        type="text"
+                        value={form.lastName}
+                        onChange={e => handleChange("lastName", e.target.value)}
+                        className={`pl-10 ${errors.lastName ? "border-red-500" : ""}`}
+                        placeholder="Last name"
+                        disabled={loading}
+                      />
+                    </div>
+                    {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
+                  </div>
                 </div>
-                <Input
-                  id="password"
-                  type={showPwd ? "text" : "password"}
-                  value={form.password}
-                  onChange={e => handleChange("password", e.target.value)}
-                  className={`pl-10 pr-10 ${errors.password ? "border-red-500" : ""}`}
-                  placeholder="Create password"
-                  disabled={loading}
-                />
+              )}
+
+              <div>
+                <Label htmlFor="email" className="text-gray-700 font-medium">
+                  Email Address
+                </Label>
+                <div className="relative mt-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    onChange={e => handleChange("email", e.target.value)}
+                    className={`pl-10 ${errors.email ? "border-red-500" : ""}`}
+                    placeholder="you@email.com"
+                    disabled={loading}
+                  />
+                </div>
+                {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+              </div>
+
+              {mode === "signup" && (
+                <div>
+                  <Label className="text-gray-700 font-medium">Mobile Number</Label>
+                  <div className="mt-1">
+                    <PhoneInput
+                      value={form.mobile}
+                      onChange={val => handleChange("mobile", val)}
+                      disabled={loading}
+                      error={!!errors.mobile}
+                      placeholder="Your mobile number"
+                    />
+                  </div>
+                  {errors.mobile && <p className="mt-1 text-xs text-red-600">{errors.mobile}</p>}
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="password" className="text-gray-700 font-medium">
+                  Password
+                </Label>
+                <div className="relative mt-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <Input
+                    id="password"
+                    type={showPwd ? "text" : "password"}
+                    value={form.password}
+                    onChange={e => handleChange("password", e.target.value)}
+                    className={`pl-10 pr-10 ${errors.password ? "border-red-500" : ""}`}
+                    placeholder="Create password"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd(!showPwd)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+                <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
+              </div>
+
+              {mode === "login" && (
                 <button
                   type="button"
-                  onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="text-sm underline text-[#8b0000] hover:text-[#a30000] mt-1"
+                  onClick={() => setShowForgot(true)}
                 >
-                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  Forgot password?
                 </button>
-              </div>
-              {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
-              <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-[#8b0000] to-[#a30000] hover:from-[#a30000] hover:to-[#8b0000] text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-lg shadow-lg flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : mode === "signup" ? (
-                <>
-                  Create Account <ArrowRight className="w-4 h-4 ml-1" />
-                </>
-              ) : (
-                <>
-                  Log In <ArrowRight className="w-4 h-4 ml-1" />
-                </>
               )}
-            </Button>
-          </form>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-[#8b0000] to-[#a30000] hover:from-[#a30000] hover:to-[#8b0000] text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-lg shadow-lg flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : mode === "signup" ? (
+                  <>
+                    Create Account <ArrowRight className="w-4 h-4 ml-1" />
+                  </>
+                ) : (
+                  <>
+                    Log In <ArrowRight className="w-4 h-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            </form>
+          )}
         </div>
       </DialogContent>
     </Dialog>
