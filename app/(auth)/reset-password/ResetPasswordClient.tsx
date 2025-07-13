@@ -22,77 +22,21 @@ export default function ResetPasswordClient() {
   const [confirm, setConfirm] = useState("")
   const [updating, setUpdating] = useState(false)
 
-  // Validate the reset-password link on mount. We now support three scenarios:
-  // 1) PKCE flow – ?code=… (exchangeCodeForSession)
-  // 2) Implicit flow – ?/#!access_token=…&refresh_token=… (setSession)
-  // 3) Supabase already placed a valid session in localStorage (getSession)
+  // Validate link once: PKCE code must be present.
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout | null = null
-    let subscriptionCleanup: (() => void) | null = null
+    const search = new URLSearchParams(window.location.search)
+    const codeParam = search.get("code")
 
-    const verify = async () => {
-      // We re-parse search / hash here to capture possible tokens that weren’t
-      // available through the initial useSearchParams (hash is not included).
-      const search = new URLSearchParams(window.location.search)
-      const hash = new URLSearchParams(window.location.hash.slice(1))
-
-      const codeParam = search.get("code")
-      const accessToken = search.get("access_token") || hash.get("access_token")
-      const refreshToken = search.get("refresh_token") || hash.get("refresh_token")
-
-      let authError: any = null
-
-      if (codeParam) {
-        // PKCE
-        ;({ error: authError } = await supabase.auth.exchangeCodeForSession(codeParam))
-      } else if (accessToken && refreshToken) {
-        // Implicit / hash flow
-        ;({ error: authError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        }))
-      } else {
-        // Maybe Supabase already created a session (redirect_to flow) but it can
-        // take a brief moment for the client to hydrate from localStorage. We
-        // check once immediately and, if no session found, we subscribe to the
-        // auth state change event for up to ~3 seconds before giving up.
-        const attemptImmediate = await supabase.auth.getSession()
-        if (attemptImmediate.data.session) {
-          setStatus("verified")
-          return
-        }
-
-        // Poll every 200 ms for up to 5 s to see if a session shows up.
-        const POLL_INTERVAL = 200
-        const MAX_TIME = 5000
-        let elapsed = 0
-
-        const intervalId = setInterval(async () => {
-          elapsed += POLL_INTERVAL
-          const { data } = await supabase.auth.getSession()
-          if (data.session) {
-            clearInterval(intervalId)
-            if (timeoutId) clearTimeout(timeoutId)
-            setStatus("verified")
-          } else if (elapsed >= MAX_TIME) {
-            clearInterval(intervalId)
-          }
-        }, POLL_INTERVAL)
-
-        // Hard timeout – if after MAX_TIME no session, show error
-        timeoutId = setTimeout(() => {
-          clearInterval(intervalId)
-          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-          setStatus("error")
-        }, MAX_TIME)
-
-        subscriptionCleanup = () => {
-          clearInterval(intervalId)
-        }
+    const run = async () => {
+      if (!codeParam) {
+        setErrorMsg("Invalid reset link.")
+        setStatus("error")
+        return
       }
 
-      if (authError) {
-        console.error("Password-reset auth error", authError)
+      const { error } = await supabase.auth.exchangeCodeForSession(codeParam)
+      if (error) {
+        console.error("exchangeCodeForSession error", error)
         setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
         setStatus("error")
       } else {
@@ -100,14 +44,7 @@ export default function ResetPasswordClient() {
       }
     }
 
-    verify()
-
-    // Cleanup when effect unmounts
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId)
-      if (subscriptionCleanup) subscriptionCleanup()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    run()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

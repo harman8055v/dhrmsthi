@@ -358,19 +358,19 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           }
         }
 
-        // Redirect the user BEFORE unmounting the dialog so the router reference remains valid
-        const target = data.isOnboarded ? "/dashboard" : "/onboarding"
-        router.replace(target)
+        // Navigate via auth-loading screen which handles profile fetch & final redirect
+        const loadingUrl = `/auth-loading?userId=${data.userId}&mobileLogin=true`
+        router.push(loadingUrl)
 
-        // Hard-refresh fallback – if SPA routing silently fails, force navigation
+        // Hard-refresh fallback – if SPA routing silently fails, force navigation after 1s
         setTimeout(() => {
-          if (typeof window !== "undefined" && window.location.pathname !== target) {
-            window.location.assign(target)
+          if (typeof window !== "undefined" && window.location.pathname !== "/auth-loading") {
+            window.location.assign(loadingUrl)
           }
-        }, 500)
+        }, 1000)
 
-        // Close the dialog after the navigation request is queued (next tick)
-        setTimeout(onClose, 0)
+        // Close the dialog after queuing navigation
+        onClose()
       } else if (!data.isExistingUser && activeTab === "signup") {
         // Mobile signup flow - continue with creating auth user
         // Generate a temporary password for phone-only signup
@@ -609,7 +609,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(resetData.email, {
-        redirectTo: `${window.location.origin}/reset-password?email=${encodeURIComponent(resetData.email)}`,
+        redirectTo: `${window.location.origin}/reset-password`,
       })
 
       if (error) throw error
