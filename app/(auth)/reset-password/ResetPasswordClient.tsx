@@ -23,25 +23,26 @@ export default function ResetPasswordClient() {
     }
   }, []);
 
+  // Verify the code once URL is normalized
   useEffect(() => {
-    const code = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("code") : null;
-    if (!code) {
-      setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
-      setStatus("error");
-      return;
-    }
-    const doVerify = async () => {
-      // code is guaranteed to be a string here
-      const { error } = await supabase.auth.exchangeCodeForSession(code as string);
+    const verify = async () => {
+      if (typeof window === 'undefined') return;
+      const code = new URLSearchParams(window.location.search).get('code');
+      if (!code) {
+        setErrorMsg('Invalid or expired reset link.');
+        setStatus('error');
+        return;
+      }
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
-        console.error("exchangeCodeForSession error:", error);
-        setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
-        setStatus("error");
+        console.error('exchangeCodeForSession error:', error);
+        setErrorMsg('Invalid or expired reset link.');
+        setStatus('error');
       } else {
-        setStatus("verified");
+        setStatus('verified');
       }
     };
-    doVerify();
+    verify();
   }, []);
 
   const [status, setStatus] = useState<"verifying" | "verified" | "done" | "error">("verifying")
