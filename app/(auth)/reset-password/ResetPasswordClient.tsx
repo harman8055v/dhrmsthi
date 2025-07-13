@@ -18,33 +18,32 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // 1) Parse any session from the URL (hash or query) and store it
-    supabase.auth
-      .getSessionFromUrl({ storeSession: true })
-      .then(({ data, error }) => {
-        if (error) {
-          setStatus('error')
-          setErrorMsg(error.message)
-        } else if (data.session) {
-          setStatus('verified')
-        } else {
-          // 2) Fallback: check for a `?code=` param and exchange it
-          const url = new URL(window.location.href)
-          const code = url.searchParams.get('code')
-          if (code) {
-            supabase.auth
-              .exchangeCodeForSession(code)
-              .then(({ data, error }) => {
-                if (error) {
-                  setStatus('error')
-                  setErrorMsg(error.message)
-                } else {
-                  setStatus('verified')
-                }
-              })
+    const parseLink = async () => {
+      if (typeof window === 'undefined') return;
+      // Hash flow
+      if (window.location.hash) {
+        const params = new URLSearchParams(window.location.hash.substring(1))
+        const access_token  = params.get('access_token')
+        const refresh_token = params.get('refresh_token')
+        if (access_token && refresh_token) {
+          const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (!error) {
+            setStatus('verified')
+            return
           }
         }
-      }) // supabase.auth.getSessionFromUrl parses tokens and fires recovery events :contentReference[oaicite:0]{index=0}
+      }
+      // Code flow
+      const code = new URLSearchParams(window.location.search).get('code')
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (!error) {
+          setStatus('verified')
+          return
+        }
+      }
+    }
+    parseLink()
 
     // 3) Still listen for PASSWORD_RECOVERY as a backup
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
