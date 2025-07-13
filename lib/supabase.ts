@@ -17,6 +17,7 @@ export const supabase = createClientComponentClient({
   options: {
     auth: {
       flowType: 'pkce',
+      detectSessionInUrl: true
     },
   },
 })
