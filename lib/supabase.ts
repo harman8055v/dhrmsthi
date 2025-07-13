@@ -14,12 +14,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClientComponentClient({
   supabaseUrl,
   supabaseKey: supabaseAnonKey,
-  options: {
-    auth: {
-      flowType: 'pkce',
-      detectSessionInUrl: true
-    },
-  },
 })
 
 // Log successful initialization (only in development)

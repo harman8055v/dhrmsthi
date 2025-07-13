@@ -17,51 +17,27 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // 1) Always listen for PASSWORD_RECOVERY events as a safety net
-    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setStatus('verified')
-      }
-    })
-
-    // 2) Immediately handle PKCE code in query: exchange it for a session
-    const url = new URL(window.location.href)
-    const code = url.searchParams.get('code')
-    if (code) {
-      supabase.auth
-        .exchangeCodeForSession(code)
-        .then(({ error }) => {
-          if (error) {
-            setStatus('error')
-            setErrorMsg(error.message)
-          } else {
-            setStatus('verified')
-          }
-        })
-        .finally(() => {
-          // no further action
-        })
-      return () => {
-        listener.subscription.unsubscribe()
+    if (typeof window === 'undefined') return;
+    if (window.location.hash) {
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
+      if (access_token && refresh_token) {
+        supabase.auth.setSession({ access_token, refresh_token })
+          .then(({ error }) => {
+            if (error) {
+              setStatus('error');
+              setErrorMsg(error.message);
+            } else {
+              setStatus('verified');
+            }
+          });
+        return;
       }
     }
-
-    // 3) Fallback: implicit flow—parse tokens from URL fragment
-    supabase.auth
-      .getSessionFromUrl({ storeSession: true })
-      .then(({ data, error }) => {
-        if (error) {
-          setStatus('error')
-          setErrorMsg(error.message)
-        } else if (data.session) {
-          setStatus('verified')
-        }
-      })
-
-    return () => {
-      listener.subscription.unsubscribe()
-    }
-  }, [])
+    setStatus('error');
+    setErrorMsg('Invalid or expired reset link.');
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
