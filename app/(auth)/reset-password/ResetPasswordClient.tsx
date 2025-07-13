@@ -10,7 +10,6 @@ import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-
   const [status, setStatus] = useState<'verifying'|'verified'|'done'|'error'>('verifying')
   const [errorMsg, setErrorMsg] = useState<string|null>(null)
   const [password, setPassword] = useState('')
@@ -18,39 +17,47 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    const parseLink = async () => {
-      if (typeof window === 'undefined') return;
-      // Hash flow
-      if (window.location.hash) {
-        const params = new URLSearchParams(window.location.hash.substring(1))
-        const access_token  = params.get('access_token')
-        const refresh_token = params.get('refresh_token')
-        if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-          if (!error) {
-            setStatus('verified')
-            return
-          }
-        }
-      }
-      // Code flow
-      const code = new URLSearchParams(window.location.search).get('code')
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (!error) {
-          setStatus('verified')
-          return
-        }
-      }
-    }
-    parseLink()
-
-    // 3) Still listen for PASSWORD_RECOVERY as a backup
+    // 1) Always listen for PASSWORD_RECOVERY events as a safety net
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setStatus('verified')
       }
     })
+
+    // 2) Immediately handle PKCE code in query: exchange it for a session
+    const url = new URL(window.location.href)
+    const code = url.searchParams.get('code')
+    if (code) {
+      supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ error }) => {
+          if (error) {
+            setStatus('error')
+            setErrorMsg(error.message)
+          } else {
+            setStatus('verified')
+          }
+        })
+        .finally(() => {
+          // no further action
+        })
+      return () => {
+        listener.subscription.unsubscribe()
+      }
+    }
+
+    // 3) Fallback: implicit flow—parse tokens from URL fragment
+    supabase.auth
+      .getSessionFromUrl({ storeSession: true })
+      .then(({ data, error }) => {
+        if (error) {
+          setStatus('error')
+          setErrorMsg(error.message)
+        } else if (data.session) {
+          setStatus('verified')
+        }
+      })
+
     return () => {
       listener.subscription.unsubscribe()
     }
