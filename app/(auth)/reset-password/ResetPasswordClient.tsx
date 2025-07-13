@@ -18,17 +18,25 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // Handle the password-reset redirect by extracting session info from the URL
-    (supabase.auth as any)
-      .getSessionFromUrl({ storeSession: true })
-      .then(({ data, error }: any) => {
-        if (error || !data.session) {
-          setErrorMsg(error?.message ?? 'Invalid or expired reset link')
-          setStatus('error')
-        } else {
-          setStatus('verified')
-        }
-      })
+    // Listen for PASSWORD_RECOVERY event
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event, session)
+      if (event === 'PASSWORD_RECOVERY') {
+        setStatus('verified')
+      }
+    })
+
+    // As a safety net, if already signed in, go straight to form
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setStatus('verified')
+      }
+    })
+
+    // Clean up listener on unmount
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
