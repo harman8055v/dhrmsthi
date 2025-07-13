@@ -19,20 +19,33 @@ export default function ResetPasswordClient() {
 
   useEffect(() => {
     const doVerify = async () => {
-      // 1️⃣ If you already have a valid session, skip straight to the form:
       const { data: sessData } = await supabase.auth.getSession()
       if (sessData.session) {
         setStatus('verified')
         return
       }
-      // 2️⃣ Otherwise, exchange the code/hash from the URL:
       const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true })
       if (error || !data.session) {
         console.error('getSessionFromUrl error:', error)
-        setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
-        setStatus('error')
+        // Listen for any session that may come in shortly (hash flow setSession side-effect)
       } else {
         setStatus('verified')
+        return
+      }
+      // Attach listener for late session
+      const { data: listener } = supabase.auth.onAuthStateChange((evt, session) => {
+        if (session) {
+          setStatus('verified')
+        }
+      })
+      // Timeout after 5 s if still nothing
+      const t = setTimeout(() => {
+        setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
+        setStatus('error')
+      }, 5000)
+      return () => {
+        listener.subscription.unsubscribe()
+        clearTimeout(t)
       }
     }
     doVerify()
