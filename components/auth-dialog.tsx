@@ -358,17 +358,12 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           }
         }
 
-        // Close dialog and redirect based on onboarding status from verify response
-        onClose()
-        
-        // Add a small delay to ensure session is properly set
-        setTimeout(() => {
-          if (data.isOnboarded) {
-            router.push("/dashboard")
-          } else {
-            router.push("/onboarding")
-          }
-        }, 100)
+        // Redirect the user BEFORE unmounting the dialog so the router reference remains valid
+        const target = data.isOnboarded ? "/dashboard" : "/onboarding"
+        router.replace(target)
+
+        // Close the dialog after the navigation request is queued (next tick)
+        setTimeout(onClose, 0)
       } else if (!data.isExistingUser && activeTab === "signup") {
         // Mobile signup flow - continue with creating auth user
         // Generate a temporary password for phone-only signup

@@ -27,6 +27,9 @@ export default function ResetPasswordClient() {
   // 2) Implicit flow – ?/#!access_token=…&refresh_token=… (setSession)
   // 3) Supabase already placed a valid session in localStorage (getSession)
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null
+    let subscriptionCleanup: (() => void) | null = null
+
     const verify = async () => {
       // We re-parse search / hash here to capture possible tokens that weren’t
       // available through the initial useSearchParams (hash is not included).
@@ -49,14 +52,30 @@ export default function ResetPasswordClient() {
           refresh_token: refreshToken,
         }))
       } else {
-        // Maybe Supabase already created a session (redirect_to flow)
-        const { data } = await supabase.auth.getSession()
-        if (data.session) {
+        // Maybe Supabase already created a session (redirect_to flow) but it can
+        // take a brief moment for the client to hydrate from localStorage. We
+        // check once immediately and, if no session found, we subscribe to the
+        // auth state change event for up to ~3 seconds before giving up.
+        const attemptImmediate = await supabase.auth.getSession()
+        if (attemptImmediate.data.session) {
           setStatus("verified")
           return
-        } else {
-          authError = new Error("Missing credentials")
         }
+
+        // Wait for a future auth event.
+        timeoutId = setTimeout(() => {
+          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
+          setStatus("error")
+        }, 3000)
+
+        const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_IN" && session) {
+            if (timeoutId) clearTimeout(timeoutId)
+            setStatus("verified")
+          }
+        })
+
+        subscriptionCleanup = () => listener.subscription.unsubscribe()
       }
 
       if (authError) {
@@ -69,6 +88,12 @@ export default function ResetPasswordClient() {
     }
 
     verify()
+
+    // Cleanup when effect unmounts
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      if (subscriptionCleanup) subscriptionCleanup()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
