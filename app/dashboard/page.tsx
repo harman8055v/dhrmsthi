@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { debugLog } from "@/lib/logger"
@@ -16,95 +16,60 @@ import NewUserWelcome from "@/components/dashboard/new-user-welcome"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 
 export default function DashboardPage() {
-  // Include refreshProfile so we can manually trigger a fetch on first mount
-  const { user, profile, loading: isLoading, error, isVerified, refreshProfile, isMobileLogin } = useAuthContext()
+  const { user, profile, loading } = useAuthContext()
   const router = useRouter()
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [hasReferrals, setHasReferrals] = useState(false)
+  
+  // Check if user is verified
+  const isVerified = profile ? isUserVerified(profile) : false
 
-  const {
-    data: profiles = [],
-    isLoading: profilesLoading,
-    refetch: refetchProfiles,
-  } = useQuery({
-    queryKey: ["profiles", "discover"],
-    queryFn: async () => {
-      const res = await fetch("/api/profiles/discover?limit=5", { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch profiles")
-      const data = await res.json()
-      return (data.profiles || []).slice(0, 5)
-    },
-    enabled: isVerified,
-  })
+  // Fetch profiles and stats
+  const loadData = async () => {
+    try {
+      // Fetch profiles
+      const profilesRes = await fetch("/api/profiles/discover")
+      const profilesData = await profilesRes.json()
+      if (profilesData.profiles) {
+        setProfiles(profilesData.profiles)
+      }
 
-  const {
-    data: swipeStats,
-    isLoading: statsLoading,
-    refetch: refetchStats,
-  } = useQuery({
-    queryKey: ["swipe", "stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/swipe/stats", { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch swipe stats")
-      return res.json()
-    },
-    enabled: isVerified,
-  })
+      // Fetch stats
+      const statsRes = await fetch("/api/swipe/stats")
+      const statsData = await statsRes.json()
+      if (statsData) {
+        setStats(statsData)
+      }
 
-  // Redirect unauthenticated users and handle onboarding status
+      // Check referrals
+      const referralsRes = await fetch("/api/referrals")
+      const referralsData = await referralsRes.json()
+      if (referralsData.referrals && referralsData.referrals.length > 0) {
+        setHasReferrals(true)
+      }
+    } catch (error) {
+      console.error("Error loading dashboard data:", error)
+    }
+  }
+
+  const refetchStats = () => {
+    loadData()
+  }
+
+  // Simple redirect logic
   useEffect(() => {
-    console.log('[Dashboard]', { isLoading, error, profile, user, isMobileLogin });
-    if (isLoading) return;
-    
-    // For mobile login users, only check profile
-    if (isMobileLogin) {
-      if (!profile) {
-        console.log('[Dashboard] Mobile login but no profile, redirecting to home');
-        router.replace("/");
-        return;
-      }
-      
-      if (!(profile as any)?.is_onboarded) {
-        console.log('[Dashboard] Mobile login not onboarded → redirecting');
+    if (!loading) {
+      if (!user) {
+        router.replace("/login");
+      } else if (profile && !profile.is_onboarded) {
         router.replace('/onboarding');
-        return;
-      }
-    } else {
-      // Regular auth flow
-      if (!user && !profile) {
-        router.replace("/")
-        return;
-      }
-      
-      if (!(profile as any)?.is_onboarded) {
-        console.log('[Dashboard] not onboarded → redirecting');
-        router.replace('/onboarding');
-        return;
+      } else if (profile && isVerified) {
+        // Load dashboard data when profile is ready and verified
+        loadData();
       }
     }
-    
-    if (error) {
-      console.error('[Dashboard] profile load error:', error);
-      // Don't redirect on error for mobile login users
-      if (!isMobileLogin) {
-        return;
-      }
-    }
-    
-    // When verified, fetch page-specific data
-    if (isVerified) {
-      refetchProfiles();
-      refetchStats();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, error, profile, user, isVerified, isMobileLogin])
-
-  // If the component mounts with a user but no profile (fresh after onboarding),
-  // trigger one manual refresh so the dashboard shows real data without reload.
-  useEffect(() => {
-    if (!isLoading && user && !profile) {
-      console.log('[Dashboard] profile missing → calling refreshProfile()')
-      refreshProfile()
-    }
-  }, [isLoading, user, profile, refreshProfile])
+  }, [loading, user, profile, router, isVerified])
 
   const calculateProfileCompleteness = () => {
     if (!profile) return 0
@@ -177,7 +142,7 @@ export default function DashboardPage() {
     refetchStats()
   }
 
-  if (isLoading) {
+  if (loading) {
     return <>{require("./loading").default()}</>;
   }
 

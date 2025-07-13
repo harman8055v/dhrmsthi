@@ -20,55 +20,16 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function getUser() {
       try {
-        // Check if this is a mobile login
-        const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
-        const mobileLoginUserId = typeof window !== 'undefined' ? localStorage.getItem('mobileLoginUserId') : null;
-
         // Get the current user session
         const {
           data: { user },
           error: userError,
         } = await supabase.auth.getUser()
 
-        // If we reach here and there's no session yet (OTP not verified), fall back to buffered data
         if (userError || !user) {
-          console.warn("No auth session yet – checking for mobile login or buffered signup data")
+          console.warn("No auth session, checking for buffered signup data")
 
-          // Check if this is a mobile login
-          if (isMobileLogin && mobileLoginUserId) {
-            console.log("Mobile login detected, fetching user profile")
-            
-            // Fetch user profile using the mobile login user ID
-            const { data: profileData, error: profileError } = await supabase
-              .from("users")
-              .select("*")
-              .eq("id", mobileLoginUserId)
-              .single()
-
-            if (profileError || !profileData) {
-              console.error("Error fetching mobile login user profile:", profileError)
-              // Clear mobile login data
-              localStorage.removeItem('isMobileLogin')
-              localStorage.removeItem('mobileLoginUserId')
-              router.push('/')
-              return
-            }
-
-            // Check if already onboarded
-            if (profileData.is_onboarded) {
-              debugLog("Mobile login user already onboarded, redirecting to dashboard")
-              router.push("/dashboard")
-              return
-            }
-
-            // Set up profile for onboarding
-            setUser(null) // No auth user for mobile login
-            setProfile(profileData)
-            setLoading(false)
-            return
-          }
-
-          // Original buffered data logic
+          // Check for buffered signup data
           let buffered: any = null
           if (typeof window !== 'undefined') {
             try {
@@ -83,56 +44,29 @@ export default function OnboardingPage() {
             return
           }
 
-          const placeholderProfile = {
-            id: 'temp',
-            phone: buffered.phone || buffered.mobileNumber || '',
-            email: buffered.email || '',
-            first_name: buffered.first_name || null,
-            last_name: buffered.last_name || null,
-            full_name: buffered.full_name || null,
-            mobile_verified: false,
-            email_verified: false,
+          // Use buffered data to pre-populate profile
+          debugLog("Using buffered signup data:", buffered)
+          const newProfile = {
+            id: '', // Will be set when user is created
+            email: buffered.email,
+            first_name: buffered.first_name || buffered.firstName,
+            last_name: buffered.last_name || buffered.lastName,
+            full_name: buffered.full_name || `${buffered.first_name || buffered.firstName} ${buffered.last_name || buffered.lastName}`,
+            phone: buffered.mobileNumber || '',
+            birthdate: buffered.birthdate,
+            gender: buffered.gender,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
             is_onboarded: false,
-            // Personal & physical
-            gender: null,
-            birthdate: null,
-            height_ft: null,
-            height_in: null,
-            // Location
-            country_id: null,
-            state_id: null,
-            city_id: null,
-            // Professional
-            education: null,
-            profession: null,
-            annual_income: null,
-            marital_status: null,
-            // Spiritual
-            diet: null,
-            temple_visit_freq: null,
-            vanaprastha_interest: null,
-            artha_vs_moksha: null,
-            spiritual_org: [],
-            daily_practices: [],
-            user_photos: [],
-            ideal_partner_notes: null,
-            about_me: null,
-            favorite_spiritual_quote: null,
-            // Counters
-            super_likes_count: 5,
-            swipe_count: 50,
-            message_highlights_count: 3,
-            profile_score: 5,
-          } as unknown as OnboardingProfile
-
-          setUser(null)
-          setProfile(placeholderProfile)
+          }
+          setProfile(newProfile as any)
           setLoading(false)
           return
         }
 
-        debugLog("Authenticated user found:", user.id)
+        // User is authenticated
         setUser(user)
+        debugLog("Authenticated user:", user.id)
 
         // Fetch user profile data using user ID
         const { data: profileData, error: profileError } = await supabase

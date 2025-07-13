@@ -8,9 +8,8 @@ function AuthLoadingContent() {
   const searchParams = useSearchParams()
   const userId = searchParams.get("userId")
   const isNewUser = searchParams.get("isNew") === "true"
-  const isMobileLogin = searchParams.get("mobileLogin") === "true"
 
-  return <AuthLoadingScreen userId={userId || undefined} isNewUser={isNewUser} isMobileLogin={isMobileLogin} />
+  return <AuthLoadingScreen userId={userId || undefined} isNewUser={isNewUser} />
 }
 
 export default function AuthLoadingPage() {

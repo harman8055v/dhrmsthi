@@ -9,7 +9,6 @@ import { Shield, Users, CheckCircle, Lock } from "lucide-react"
 interface AuthLoadingScreenProps {
   userId?: string
   isNewUser?: boolean
-  isMobileLogin?: boolean
 }
 
 const inspirationalMessages = [
@@ -28,125 +27,13 @@ const trustElements = [
   { icon: Lock, text: "Private & Secure", subtext: "Protected messaging" },
 ]
 
-export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: AuthLoadingScreenProps) {
+export default function AuthLoadingScreen({ userId, isNewUser }: AuthLoadingScreenProps) {
   const [progress, setProgress] = useState(0)
   const [currentMessage, setCurrentMessage] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
-    // Handle mobile login with improved flow
-    if (isMobileLogin && userId) {
-      const handleMobileLogin = async () => {
-        try {
-          // Check if we have a magic token in URL params
-          const urlParams = new URLSearchParams(window.location.search);
-          const magicToken = urlParams.get('token');
-          
-          if (magicToken) {
-            console.log('Found magic token, verifying...');
-            
-            // Use the magic link token to establish session
-            const { error } = await supabase.auth.verifyOtp({
-              token_hash: magicToken,
-              type: 'magiclink'
-            });
-            
-            if (!error) {
-              console.log('Magic link verified successfully');
-              
-              // Clear mobile login flags - we have a real session now
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('mobileLoginUserId');
-                localStorage.removeItem('isMobileLogin');
-              }
-              
-              // Get user profile to check onboarding
-              const { data: profile } = await supabase
-                .from('users')
-                .select('is_onboarded')
-                .eq('id', userId)
-                .single();
-                
-              console.log('User onboarding status:', profile?.is_onboarded);
-              router.push(profile?.is_onboarded ? '/dashboard' : '/onboarding');
-              return;
-            } else {
-              console.error('Magic link verification failed:', error);
-            }
-          }
-          
-          // Check if we already have an active session
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session?.user?.id === userId) {
-            console.log('Active session found for user');
-            
-            // Clear mobile login flags
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('mobileLoginUserId');
-              localStorage.removeItem('isMobileLogin');
-            }
-            
-            // Get user profile to check onboarding
-            const { data: profile } = await supabase
-              .from('users')
-              .select('is_onboarded')
-              .eq('id', userId)
-              .single();
-              
-            router.push(profile?.is_onboarded ? '/dashboard' : '/onboarding');
-            return;
-          }
-          
-          // Fallback: Use the mobile session API
-          console.log('No active session, using mobile session API');
-          
-          const response = await fetch(`/api/auth/mobile-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId })
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            
-            // Clear localStorage flags after successful verification
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('mobileLoginUserId');
-              localStorage.removeItem('isMobileLogin');
-            }
-            
-            const isOnboarded = data.user?.isOnboarded ?? false;
-            console.log('Mobile session verified, redirecting. Onboarded:', isOnboarded);
-            
-            // Small delay to ensure state is updated
-            setTimeout(() => {
-              router.push(isOnboarded ? '/dashboard' : '/onboarding');
-            }, 500);
-          } else {
-            throw new Error('Mobile session verification failed');
-          }
-        } catch (error) {
-          console.error("Mobile login error:", error);
-          
-          // Clear invalid session data
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('mobileLoginUserId');
-            localStorage.removeItem('isMobileLogin');
-          }
-          
-          // Redirect to home with error message
-          router.push("/?error=mobile_login_failed");
-        }
-      };
-
-      // Start mobile login immediately
-      handleMobileLogin();
-      return;
-    }
-
-    // Regular auth flow (non-mobile login)
     // Progress animation
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
@@ -154,57 +41,35 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
           clearInterval(progressInterval)
           return 100
         }
-        return prev + 2
+        return prev + 5
       })
-    }, 100)
+    }, 50)
 
     // Message rotation
     const messageInterval = setInterval(() => {
       setCurrentMessage((prev) => (prev + 1) % inspirationalMessages.length)
     }, 2000)
 
-    // Complete loading after 5 seconds
-    const completeTimer = setTimeout(async () => {
+    // Complete loading and redirect
+    const completeTimer = setTimeout(() => {
       setIsComplete(true)
-
-      if (userId) {
-        try {
-          // Check onboarding status
-          const { data: profile } = await supabase
-            .from("users")
-            .select("is_onboarded")
-            .eq("id", userId)
-            .single()
-
-          // Redirect based on onboarding status
-          setTimeout(() => {
-            if ((profile as any)?.is_onboarded) {
-              router.push("/dashboard")
-            } else {
-              router.push("/onboarding")
-            }
-          }, 1000)
-        } catch (error) {
-          console.error("Error checking profile:", error)
-          // Fallback redirect
-          setTimeout(() => {
-            router.push(isNewUser ? "/onboarding" : "/dashboard")
-          }, 1000)
+      
+      // Simple redirect after a short delay
+      setTimeout(() => {
+        if (isNewUser) {
+          router.push("/onboarding")
+        } else {
+          router.push("/dashboard")
         }
-      } else {
-        // Fallback if no userId
-        setTimeout(() => {
-          router.push(isNewUser ? "/onboarding" : "/dashboard")
-        }, 1000)
-      }
-    }, 5000)
+      }, 500)
+    }, 2000)
 
     return () => {
       clearInterval(progressInterval)
       clearInterval(messageInterval)
       clearTimeout(completeTimer)
     }
-  }, [userId, isNewUser, router, isMobileLogin])
+  }, [isNewUser, router])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-pink-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -262,16 +127,6 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
           </p>
         </div>
 
-        {/* Processing Message */}
-        <div className="mb-8">
-          <p className="text-gray-600 mb-2">Please wait while we process your account</p>
-          <div className="flex justify-center space-x-1">
-            <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce-dot"></div>
-            <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce-dot animation-delay-150"></div>
-            <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce-dot animation-delay-300"></div>
-          </div>
-        </div>
-
         {/* Trust Elements */}
         <div className="grid grid-cols-2 gap-4 mb-8">
           {trustElements.map((element, index) => (
@@ -293,7 +148,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
-            <p className="text-green-600 font-medium">Account processed successfully!</p>
+            <p className="text-green-600 font-medium">Ready!</p>
             <p className="text-sm text-gray-600 mt-1">Redirecting you now...</p>
           </div>
         )}

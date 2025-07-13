@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { userService, UserProfile } from '@/lib/data-service'
@@ -10,103 +10,88 @@ interface AuthState {
   error: string | null
 }
 
-// Check mobile login synchronously
-const checkIsMobileLogin = () => {
-  if (typeof window === 'undefined') return false;
-  return localStorage.getItem('isMobileLogin') === 'true';
-};
-
 export function useAuth() {
-  // Initialize with mobile login state checked synchronously
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     profile: null,
     loading: true,
     error: null
   })
-  const [authReady, setAuthReady] = useState(false);
-  // Track mobile login state separately for immediate access
-  const [isMobileLoginUser, setIsMobileLoginUser] = useState(checkIsMobileLogin());
 
-  // Check for mobile login on mount
   useEffect(() => {
-    const checkMobileLogin = async () => {
-      if (typeof window === 'undefined') return;
-      
-      const isMobileLogin = localStorage.getItem('isMobileLogin') === 'true';
-      const mobileLoginUserId = localStorage.getItem('mobileLoginUserId');
-      
-      if (isMobileLogin && mobileLoginUserId) {
-        console.log('[useAuth] Mobile login detected, loading profile');
-        setIsMobileLoginUser(true);
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
         
-        try {
-          // Use API endpoint for mobile login users
-          const response = await fetch(`/api/users/profile?userId=${mobileLoginUserId}`);
-          
-          if (!response.ok) {
-            throw new Error('Failed to fetch profile');
+        if (error) {
+          console.error('Session error:', error)
+          setAuthState({
+            user: null,
+            profile: null,
+            loading: false,
+            error: 'Failed to get session'
+          })
+          return
+        }
+
+        if (session?.user) {
+          // Check for temp profile in localStorage for immediate display
+          const tempProfile = localStorage.getItem('tempUserProfile');
+          if (tempProfile) {
+            try {
+              const profile = JSON.parse(tempProfile);
+              if (profile.id === session.user.id) {
+                setAuthState({
+                  user: session.user,
+                  profile,
+                  loading: false,
+                  error: null
+                });
+                localStorage.removeItem('tempUserProfile');
+              }
+            } catch (e) {
+              console.error('Failed to parse temp profile:', e);
+            }
           }
           
-          const { profile } = await response.json();
-          
-          if (profile) {
+          // Fetch fresh profile
+          try {
+            const profile = await userService.getCurrentProfile(session.user.id)
             setAuthState({
-              user: null, // No auth user for mobile login
+              user: session.user,
               profile,
               loading: false,
               error: null
-            });
-            // Don't clear mobile login data here - let components handle it
-            return true; // Indicate mobile login was handled
+            })
+          } catch (error) {
+            console.error('Profile fetch error:', error)
+            setAuthState({
+              user: session.user,
+              profile: null,
+              loading: false,
+              error: 'Failed to load profile'
+            })
           }
-        } catch (error) {
-          console.error('[useAuth] Mobile login profile fetch error:', error);
-          // Clear invalid mobile login data
-          localStorage.removeItem('isMobileLogin');
-          localStorage.removeItem('mobileLoginUserId');
-          setIsMobileLoginUser(false);
+        } else {
+          setAuthState({
+            user: null,
+            profile: null,
+            loading: false,
+            error: null
+          })
         }
+      } catch (error) {
+        console.error('Auth init error:', error)
+        setAuthState({
+          user: null,
+          profile: null,
+          loading: false,
+          error: 'Authentication error'
+        })
       }
-      return false;
-    };
+    }
 
-    checkMobileLogin().then(isMobileLogin => {
-      if (!isMobileLogin) {
-        // Only initialize regular auth if not mobile login
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          console.log('[useAuth] initial getSession done', { session });
-          setAuthReady(true);
-        });
-      } else {
-        // For mobile login, set authReady without waiting for session
-        setAuthReady(true);
-      }
-    });
-
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      console.log('[useAuth] onAuthStateChange', { session });
-      // Clear mobile login data if a real session is established
-      if (session && typeof window !== 'undefined') {
-        localStorage.removeItem('isMobileLogin');
-        localStorage.removeItem('mobileLoginUserId');
-        setIsMobileLoginUser(false);
-      }
-    });
-    
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    // Skip auth listener for mobile login users
-    const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
-    if (isMobileLogin) return;
-
-    if (!authReady) return;
-    console.log('[useAuth] authReady effect fired');
-    // Get initial session
-    getInitialSession()
+    initAuth()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -114,7 +99,23 @@ export function useAuth() {
         console.log('Auth state changed:', event, session?.user?.id)
         
         if (session?.user) {
-          await handleUserSession(session.user)
+          try {
+            const profile = await userService.getCurrentProfile(session.user.id)
+            setAuthState({
+              user: session.user,
+              profile,
+              loading: false,
+              error: null
+            })
+          } catch (error) {
+            console.error('Profile fetch error:', error)
+            setAuthState({
+              user: session.user,
+              profile: null,
+              loading: false,
+              error: 'Failed to load profile'
+            })
+          }
         } else {
           setAuthState({
             user: null,
@@ -127,154 +128,51 @@ export function useAuth() {
     )
 
     return () => subscription.unsubscribe()
-  }, [authReady])
+  }, [])
 
-  const getInitialSession = async () => {
+  const signOut = async () => {
     try {
-      setAuthState(prev => ({ ...prev, loading: true, error: null }))
-      
-      const { data: { session }, error } = await supabase.auth.getSession()
-      console.log('[useAuth] getInitialSession result', { session, error });
-      
-      if (error) {
-        console.error('Session error:', error)
-        setAuthState({
-          user: null,
-          profile: null,
-          loading: false,
-          error: 'Failed to get session'
-        })
-        return
-      }
-
-      if (session?.user) {
-        console.log('[useAuth] session.user present, calling handleUserSession');
-        await handleUserSession(session.user)
-      } else {
-        setAuthState({
-          user: null,
-          profile: null,
-          loading: false,
-          error: null
-        })
-      }
-    } catch (error) {
-      console.error('Initial session error:', error)
+      await supabase.auth.signOut()
       setAuthState({
         user: null,
         profile: null,
-        loading: false,
-        error: 'Authentication error'
-      })
-    }
-  }
-
-  const handleUserSession = async (user: User) => {
-    if (!authReady) return;    // ← do not fetch until token set
-    
-    try {
-      // Get user profile
-      console.time('[useAuth] getCurrentProfile');
-      const profile = await userService.getCurrentProfile(user.id)
-      console.timeEnd('[useAuth] getCurrentProfile');
-      console.log('[useAuth] profile loaded', profile);
-      
-      setAuthState({
-        user,
-        profile,
         loading: false,
         error: null
       })
     } catch (error) {
-      console.error('[useAuth] profile fetch error:', error)
-      setAuthState({
-        user,
-        profile: null,
-        loading: false,
-        error: 'Failed to load profile'
-      })
-    }
-  }
-
-  const signOut = async () => {
-    try {
-      // Start sign-out flow – ensure UI shows spinner, clear any previous errors
-      setAuthState(prev => ({ ...prev, loading: true, error: null }))
-
-      // Always clear any mobile-login flags so future auth logic is clean
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('isMobileLogin')
-        localStorage.removeItem('mobileLoginUserId')
-      }
-
-      // Only call Supabase signOut when we actually have a Supabase session
-      if (!isMobileLoginUser) {
-        const { error } = await supabase.auth.signOut()
-
-        // Many times signOut() can return "No session" or similar when the
-        // refresh token has already been removed. Treat these as benign and
-        // proceed rather than surfacing an error to the UI.
-        if (error && error.message && !/no session/i.test(error.message)) {
-          console.error('Sign out error:', error)
-        }
-      }
-
-      // Regardless of Supabase response, reset local auth state so the app
-      // behaves as signed-out.
-      setAuthState({
-        user: null,
-        profile: null,
-        loading: false,
-        error: null,
-      })
-    } catch (error) {
-      // This catch is only for unexpected errors (e.g. network failures). We
-      // still complete the sign-out locally to avoid trapping the user.
-      console.error('Unexpected sign out error:', error)
-      setAuthState({
-        user: null,
-        profile: null,
-        loading: false,
-        error: null,
-      })
+      console.error('Sign out error:', error)
     }
   }
 
   const refreshProfile = async () => {
     if (!authState.user) return
-    if (!authReady) return;    // ← do not fetch until token set
-
+    
     try {
-      console.log('[useAuth] refreshProfile()');
-      setAuthState(prev => ({ ...prev, loading: true }))
-      console.time('[useAuth] refreshProfile.getCurrentProfile');
       const profile = await userService.getCurrentProfile(authState.user.id)
-      console.timeEnd('[useAuth] refreshProfile.getCurrentProfile');
-      
       setAuthState(prev => ({
         ...prev,
         profile,
-        loading: false,
         error: null
       }))
     } catch (error) {
-      console.error('[useAuth] Profile refresh error:', error)
+      console.error('Profile refresh error:', error)
       setAuthState(prev => ({
         ...prev,
-        loading: false,
         error: 'Failed to refresh profile'
       }))
     }
   }
 
   return {
-    ...authState,
-    signOut,
-    refreshProfile,
-    isAuthenticated: !!authState.user || !!authState.profile, // Mobile login users have profile but no user
-    isProfileComplete: !!authState.profile?.is_onboarded,
+    user: authState.user,
+    profile: authState.profile,
+    loading: authState.loading,
+    error: authState.error,
+    isAuthenticated: !!authState.user,
+    isMobileLogin: false, // Always false now - no special mobile handling
     isVerified: authState.profile?.verification_status === 'verified',
     isPremium: authState.profile?.account_status === 'premium' || authState.profile?.account_status === 'elite',
-    isMobileLogin: isMobileLoginUser // Use the synchronously checked state
+    refreshProfile,
+    signOut
   }
 } 

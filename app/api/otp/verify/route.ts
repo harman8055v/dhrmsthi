@@ -154,39 +154,9 @@ export async function POST(req: NextRequest) {
         })
         .eq('id', existingUser.id);
         
-      // For login purpose, create a more reliable session
+      // For login purpose, create a simple and reliable session
       if (purpose === 'login' && existingUser.email) {
         try {
-          // Try magic link approach first
-          const { data: magicLinkData, error: magicLinkError } = await supabase.auth.admin.generateLink({
-            type: 'magiclink',
-            email: existingUser.email,
-            options: {
-              redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth-loading?userId=${existingUser.id}&mobileLogin=true`
-            }
-          });
-
-          if (!magicLinkError && magicLinkData) {
-            // Extract the token from the magic link
-            const url = new URL(magicLinkData.properties.action_link);
-            const token = url.searchParams.get('token');
-            
-            console.log('Magic link created successfully for mobile login');
-            
-            return NextResponse.json({
-              success: true,
-              message: 'OTP verified successfully',
-              isExistingUser: true,
-              userId: existingUser.id,
-              isOnboarded: existingUser.is_onboarded || false,
-              magicToken: token,
-              firstName: existingUser.first_name
-            });
-          }
-          
-          // Fallback to password-based session if magic link fails
-          console.log('Magic link failed, trying password-based session');
-          
           // Generate a secure temporary password
           const tempPassword = `OTP_${crypto.randomUUID()}_${Date.now()}`;
 
@@ -214,7 +184,14 @@ export async function POST(req: NextRequest) {
           }
 
           if (signInData.session) {
-            console.log('Session created successfully with temp password');
+            console.log('Session created successfully');
+            
+            // Get full user profile to include in response
+            const { data: fullProfile } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', existingUser.id)
+              .single();
             
             return NextResponse.json({
               success: true,
@@ -226,12 +203,17 @@ export async function POST(req: NextRequest) {
                 access_token: signInData.session.access_token,
                 refresh_token: signInData.session.refresh_token,
               },
-              firstName: existingUser.first_name
+              profile: fullProfile || existingUser,
+              redirectUrl: existingUser.is_onboarded ? '/dashboard' : '/onboarding'
             });
           }
-        } catch (sessionError) {
+        } catch (sessionError: any) {
           console.error('Session creation failed:', sessionError);
-          // Continue without session - frontend will handle with localStorage fallback
+          return NextResponse.json({
+            error: 'Failed to create session. Please try again.',
+            code: 'SESSION_FAILED',
+            details: sessionError.message
+          }, { status: 500 });
         }
       }
     }

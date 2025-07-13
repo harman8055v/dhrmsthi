@@ -161,9 +161,35 @@ export default function SignupSection() {
       if (authError) throw authError
 
       if (authData.user) {
-        // Optionally, create user profile in your users table here
+        // Create user profile
+        try {
+          const profileData = {
+            id: authData.user.id,
+            email: formData.email,
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            full_name: `${formData.firstName} ${formData.lastName}`,
+            phone: formData.mobileNumber,
+            email_verified: false,
+            mobile_verified: false,
+            verification_status: "pending",
+            is_onboarded: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+
+          const { error: profileError } = await supabase.from("users").insert(profileData)
+          
+          if (profileError) {
+            console.error("Profile creation error:", profileError)
+          }
+        } catch (profileError) {
+          console.error("Profile creation failed:", profileError)
+        }
+        
         setIsSuccess(true)
-        router.push(`/auth-loading?userId=${authData.user.id}&isNew=true`)
+        // Direct redirect to onboarding
+        router.push('/onboarding')
       }
     } catch (error: any) {
       console.error('Sign up error:', error)

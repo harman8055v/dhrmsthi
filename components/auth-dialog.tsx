@@ -354,20 +354,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
       if (data.isExistingUser && activeTab === "login") {
         // Mobile login flow - user exists
         
-        // Check if we got a magic token (new flow)
-        if (data.magicToken) {
-          console.log('Received magic token for mobile login');
-          
-          // Navigate to auth-loading with the magic token
-          const loadingUrl = `/auth-loading?userId=${data.userId}&mobileLogin=true&token=${data.magicToken}`;
-          router.push(loadingUrl);
-          
-          // Close the dialog
-          onClose();
-          return;
-        }
-        
-        // Check if session data was returned from OTP verify (fallback)
+        // Check if session data was returned from OTP verify
         if (data.session?.access_token && data.session?.refresh_token) {
           try {
             // Set the session using the tokens from the server
@@ -378,41 +365,27 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
             
             if (sessionError) {
               console.error('Failed to set session:', sessionError);
-              // Fall back to localStorage method
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('mobileLoginUserId', data.userId);
-                localStorage.setItem('isMobileLogin', 'true');
-              }
-            } else {
-              // Success! Clear any mobile login flags since we have a real session
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('mobileLoginUserId');
-                localStorage.removeItem('isMobileLogin');
-              }
-              console.log('Session set successfully, redirecting to dashboard');
+              throw new Error('Failed to establish session');
             }
+            
+            // Store profile temporarily for immediate access
+            if (data.profile && typeof window !== 'undefined') {
+              localStorage.setItem('tempUserProfile', JSON.stringify(data.profile));
+            }
+            
+            console.log('Session set successfully, redirecting...');
+            
+            // Close dialog and redirect directly
+            onClose();
+            router.push(data.redirectUrl || '/dashboard');
+            return;
           } catch (error) {
             console.error('Session creation error:', error);
-            // Fall back to localStorage method
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('mobileLoginUserId', data.userId);
-              localStorage.setItem('isMobileLogin', 'true');
-            }
+            throw new Error('Failed to sign in. Please try again.');
           }
         } else {
-          // No session data, use localStorage fallback
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('mobileLoginUserId', data.userId);
-            localStorage.setItem('isMobileLogin', 'true');
-          }
+          throw new Error('No session returned from server. Please try again.');
         }
-
-        // Navigate via auth-loading screen which handles profile fetch & final redirect
-        const loadingUrl = `/auth-loading?userId=${data.userId}&mobileLogin=true`
-        router.push(loadingUrl)
-
-        // Close the dialog after successful verification
-        onClose()
       } else if (!data.isExistingUser && activeTab === "signup") {
         // Mobile signup flow - continue with creating auth user
         // Generate a temporary password for phone-only signup
@@ -470,7 +443,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           
           // Close dialog and redirect
           onClose()
-          router.push(`/auth-loading?userId=${authData.user.id}&isNew=true`)
+          router.push(`/onboarding`)
         }
       } else if (data.isExistingUser && activeTab === "signup") {
         // User already exists, they should login instead
@@ -622,9 +595,20 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
       if (error) throw error
 
       if (data.user) {
-        // Close dialog and redirect to loading screen
+        // Get user profile
+        const { data: profile } = await supabase
+          .from("users")
+          .select("is_onboarded")
+          .eq("id", data.user.id)
+          .single()
+        
+        // Close dialog and redirect directly
         onClose()
-        router.push(`/auth-loading?userId=${data.user.id}&isNew=false`)
+        if (profile?.is_onboarded) {
+          router.push("/dashboard")
+        } else {
+          router.push("/onboarding")
+        }
       }
     } catch (error: any) {
       console.error("Login error:", error)
