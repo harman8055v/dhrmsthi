@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
 import { Loader2, CheckCircle, AlertTriangle } from "lucide-react"
 
 export default function ResetPasswordClient() {
-  const searchParams = useSearchParams()
+  // Removed unused searchParams
   const router = useRouter()
 
   // Patch: Supabase sends ?token=... but expects ?code=... for exchangeCodeForSession
@@ -51,19 +51,7 @@ export default function ResetPasswordClient() {
   const [confirm, setConfirm] = useState("")
   const [updating, setUpdating] = useState(false)
 
-  useEffect(() => {
-    const doVerify = async () => {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        console.error("exchangeCodeForSession error:", error);
-        setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
-        setStatus("error");
-      } else {
-        setStatus("verified");
-      }
-    }
-    doVerify()
-  }, [])
+  // Removed duplicate useEffect that referenced undefined 'code'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
