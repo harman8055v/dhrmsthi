@@ -18,24 +18,42 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // Listen for PASSWORD_RECOVERY event
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event, session)
+    // 1) Parse any session from the URL (hash or query) and store it
+    supabase.auth
+      .getSessionFromUrl({ storeSession: true })
+      .then(({ data, error }) => {
+        if (error) {
+          setStatus('error')
+          setErrorMsg(error.message)
+        } else if (data.session) {
+          setStatus('verified')
+        } else {
+          // 2) Fallback: check for a `?code=` param and exchange it
+          const url = new URL(window.location.href)
+          const code = url.searchParams.get('code')
+          if (code) {
+            supabase.auth
+              .exchangeCodeForSession(code)
+              .then(({ data, error }) => {
+                if (error) {
+                  setStatus('error')
+                  setErrorMsg(error.message)
+                } else {
+                  setStatus('verified')
+                }
+              })
+          }
+        }
+      }) // supabase.auth.getSessionFromUrl parses tokens and fires recovery events :contentReference[oaicite:0]{index=0}
+
+    // 3) Still listen for PASSWORD_RECOVERY as a backup
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setStatus('verified')
       }
     })
-
-    // As a safety net, if already signed in, go straight to form
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setStatus('verified')
-      }
-    })
-
-    // Clean up listener on unmount
     return () => {
-      authListener.subscription.unsubscribe()
+      listener.subscription.unsubscribe()
     }
   }, [])
 
