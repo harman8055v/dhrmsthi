@@ -10,6 +10,7 @@ import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
+
   const [status, setStatus] = useState<'verifying'|'verified'|'done'|'error'>('verifying')
   const [errorMsg, setErrorMsg] = useState<string|null>(null)
   const [password, setPassword] = useState('')
@@ -17,27 +18,26 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (window.location.hash) {
-      const params = new URLSearchParams(window.location.hash.substring(1));
-      const access_token = params.get('access_token');
-      const refresh_token = params.get('refresh_token');
-      if (access_token && refresh_token) {
-        supabase.auth.setSession({ access_token, refresh_token })
-          .then(({ error }) => {
-            if (error) {
-              setStatus('error');
-              setErrorMsg(error.message);
-            } else {
-              setStatus('verified');
-            }
-          });
-        return;
+    // Listen for PASSWORD_RECOVERY event
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event, session)
+      if (event === 'PASSWORD_RECOVERY') {
+        setStatus('verified')
       }
+    })
+
+    // As a safety net, if already signed in, go straight to form
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setStatus('verified')
+      }
+    })
+
+    // Clean up listener on unmount
+    return () => {
+      authListener.subscription.unsubscribe()
     }
-    setStatus('error');
-    setErrorMsg('Invalid or expired reset link.');
-  }, []);
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
