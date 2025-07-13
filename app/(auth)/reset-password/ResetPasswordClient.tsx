@@ -18,25 +18,27 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // Listen for PASSWORD_RECOVERY event
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event, session)
-      if (event === 'PASSWORD_RECOVERY') {
-        setStatus('verified')
-      }
-    })
+    // Extract the `code` param from the URL (e.g. /reset-password?code=xyz)
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
 
-    // As a safety net, if already signed in, go straight to form
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setStatus('verified')
-      }
-    })
-
-    // Clean up listener on unmount
-    return () => {
-      authListener.subscription.unsubscribe()
+    if (!code) {
+      setErrorMsg('Invalid or missing reset code')
+      setStatus('error')
+      return
     }
+
+    // Exchange the code for a session (PKCE flow)
+    supabase.auth.exchangeCodeForSession(code)
+      .then(({ error }) => {
+        if (error) {
+          console.error('Error exchanging code for session:', error)
+          setErrorMsg(error.message || 'Invalid or expired reset link')
+          setStatus('error')
+        } else {
+          setStatus('verified')
+        }
+      })
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

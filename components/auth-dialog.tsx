@@ -308,7 +308,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                     value={form.password}
                     onChange={e => handleChange("password", e.target.value)}
                     className={`pl-10 pr-10 ${errors.password ? "border-red-500" : ""}`}
-                    placeholder="Create password"
+                    placeholder={mode === 'signup' ? 'Create password' : 'Password'}
                     disabled={loading}
                   />
                   <button
