@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,6 @@ import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [status, setStatus] = useState<'verifying'|'verified'|'done'|'error'>('verifying')
   const [errorMsg, setErrorMsg] = useState<string|null>(null)
@@ -19,37 +18,26 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // 1️⃣ Listen for the PASSWORD_RECOVERY event
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' && session) {
+    // Listen for PASSWORD_RECOVERY event
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event, session)
+      if (event === 'PASSWORD_RECOVERY') {
         setStatus('verified')
       }
     })
 
-    // 2️⃣ If you already have a session (e.g. testing from dashboard), skip straight to form
+    // As a safety net, if already signed in, go straight to form
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setStatus('verified')
       }
     })
 
-    // 3️⃣ Fallback: if a token or code param is present, exchange it
-    const token = searchParams.get('token') || searchParams.get('code')
-    if (token) {
-      supabase.auth.exchangeCodeForSession(token).then(({ data, error }) => {
-        if (error || !data.session) {
-          setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
-          setStatus('error')
-        } else {
-          setStatus('verified')
-        }
-      })
-    }
-
+    // Clean up listener on unmount
     return () => {
-      listener.subscription.unsubscribe()
+      authListener.subscription.unsubscribe()
     }
-  }, [searchParams])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,12 +46,13 @@ export default function ResetPasswordClient() {
       return
     }
     if (password.length < 8) {
-      setErrorMsg('Password must be at least 8 characters long')
+      setErrorMsg('Must be at least 8 characters')
       return
     }
 
     setUpdating(true)
     setErrorMsg(null)
+
     const { error } = await supabase.auth.updateUser({ password })
     setUpdating(false)
 
@@ -122,7 +111,9 @@ export default function ResetPasswordClient() {
           />
           <Button type="submit" disabled={updating} className="w-full">
             {updating
-              ? <><Loader2 className="w-4 h-4 animate-spin mr-2"/>Updating…</>
+              ? <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2"/>Updating…
+                </>
               : 'Update password'}
           </Button>
         </form>
@@ -137,7 +128,7 @@ export default function ResetPasswordClient() {
         <CardTitle>Password updated!</CardTitle>
       </CardHeader>
       <CardContent className="text-center text-sm text-muted-foreground">
-        You’ll be redirected to sign-in shortly…
+        Redirecting to sign-in…
       </CardContent>
     </Card>
   )
