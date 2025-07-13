@@ -17,20 +17,55 @@ export default function ResetPasswordClient() {
   const [confirm, setConfirm] = useState('')
   const [updating, setUpdating] = useState(false)
 
-  // 1️⃣ Verify the recovery link & establish session:
+  /* ----------------------------------------------------
+     Handle BOTH Supabase recovery link formats:
+     1) Hash flow   → #access_token=...&refresh_token=...
+     2) PKCE / code → ?code=...&type=recovery
+  ---------------------------------------------------- */
   useEffect(() => {
-    const doVerify = async () => {
-      const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true })
-      if (error || !data.session) {
-        console.error('getSessionFromUrl error:', error)
-        setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
-        setStatus('error')
-      } else {
-        setStatus('verified')
+    const processLink = async () => {
+      if (typeof window === 'undefined') return;
+
+      // 1️⃣ If we have a token param but no code param, normalise it → code
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('token') && !urlParams.get('code')) {
+        urlParams.set('code', urlParams.get('token')!);
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
       }
-    }
-    doVerify()
-  }, [])
+
+      // 2️⃣ HASH (implicit) FLOW
+      if (window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const access_token = hashParams.get('access_token');
+        const refresh_token = hashParams.get('refresh_token');
+        if (access_token && refresh_token) {
+          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (!error) {
+            setStatus('verified');
+            return;
+          }
+          console.error('setSession error:', error);
+        }
+      }
+
+      // 3️⃣ CODE (PKCE) FLOW
+      const code = new URLSearchParams(window.location.search).get('code');
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
+          setStatus('verified');
+          return;
+        }
+        console.error('exchangeCodeForSession error:', error);
+      }
+
+      // 4️⃣ Fallback → invalid link
+      setErrorMsg('This reset link is invalid or has expired. Please request a new one.');
+      setStatus('error');
+    };
+
+    processLink();
+  }, []);
 
   // 2️⃣ Handle the password update
   const handleSubmit = async (e: React.FormEvent) => {
