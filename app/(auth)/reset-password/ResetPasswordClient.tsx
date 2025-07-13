@@ -25,12 +25,13 @@ export default function ResetPasswordClient() {
   // Robust validation: existing session → code param → hash tokens.
   useEffect(() => {
     const validate = async () => {
-      // 1. Session already present?
-      const { data: existing } = await supabase.auth.getSession()
-      if (existing.session) {
-        setStatus("verified")
-        return
-      }
+      try {
+        // 1. Session already present?
+        const { data: existing } = await supabase.auth.getSession()
+        if (existing.session) {
+          setStatus("verified")
+          return
+        }
 
       // 2. PKCE code param?
       const search = new URLSearchParams(window.location.search)
@@ -60,6 +61,11 @@ export default function ResetPasswordClient() {
       // If all strategies fail → error
       setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
       setStatus("error")
+    } catch (err) {
+      console.error("validation error", err)
+      setErrorMsg("Something went wrong validating your reset link.")
+      setStatus("error")
+    }
     }
 
     validate()

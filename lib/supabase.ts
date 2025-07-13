@@ -10,13 +10,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// Create Supabase client with implicit flow for cross-device compatibility
+// Create Supabase client with PKCE flow for reliable email links on mobile
 export const supabase = createClient(
   supabaseUrl || "",
   supabaseAnonKey || "",
   {
     auth: {
-      flowType: "implicit",
+      flowType: "pkce",
       detectSessionInUrl: true,
       persistSession: true,
       autoRefreshToken: true,
