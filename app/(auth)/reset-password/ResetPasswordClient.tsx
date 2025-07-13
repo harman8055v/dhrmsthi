@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
-import { Loader2, CheckCircle, AlertTriangle } from "lucide-react"
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card'
+import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [status, setStatus] = useState<'verifying'|'verified'|'done'|'error'>('verifying')
   const [errorMsg, setErrorMsg] = useState<string|null>(null)
   const [password, setPassword] = useState('')
@@ -17,58 +19,46 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    const verifyLink = async () => {
-      console.log("🔄 verifying reset link…")
-
-      // 1) If already signed in, go straight to form
-      const { data: sessData } = await supabase.auth.getSession()
-      if (sessData.session) {
-        console.log("✅ existing session")
+    // 1️⃣ Listen for the PASSWORD_RECOVERY event
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' && session) {
         setStatus('verified')
-        return
       }
+    })
 
-      // 2) Try the PKCE / hash flow
-      const { data: urlData, error: urlError } = await supabase.auth.getSessionFromUrl({ storeSession: true })
-      if (urlError || !urlData.session) {
-        console.log("⚠️ getSessionFromUrl didn’t yield a session:", urlError)
+    // 2️⃣ If you already have a session (e.g. testing from dashboard), skip straight to form
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setStatus('verified')
+      }
+    })
 
-        // 3) Fallback: query-string `?code=...` flow
-        const code = new URLSearchParams(window.location.search).get('code')
-        if (code) {
-          console.log("🔄 exchanging code for session…")
-          const { data: exData, error: exError } = await supabase.auth.exchangeCodeForSession(code)
-          if (exError || !exData.session) {
-            console.error("❌ exchangeCodeForSession error:", exError)
-            setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
-            setStatus('error')
-            return
-          }
-          console.log("✅ code exchange success")
+    // 3️⃣ Fallback: if a token or code param is present, exchange it
+    const token = searchParams.get('token') || searchParams.get('code')
+    if (token) {
+      supabase.auth.exchangeCodeForSession(token).then(({ data, error }) => {
+        if (error || !data.session) {
+          setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
+          setStatus('error')
+        } else {
           setStatus('verified')
-          return
         }
-
-        // 4) No session, no code → error
-        setErrorMsg('Invalid or expired reset link.')
-        setStatus('error')
-      } else {
-        console.log("✅ getSessionFromUrl success")
-        setStatus('verified')
-      }
+      })
     }
 
-    verifyLink()
-  }, [])
+    return () => {
+      listener.subscription.unsubscribe()
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (password !== confirm) {
-      setErrorMsg("Passwords do not match")
+      setErrorMsg('Passwords do not match')
       return
     }
     if (password.length < 8) {
-      setErrorMsg("Password must be at least 8 characters long")
+      setErrorMsg('Password must be at least 8 characters long')
       return
     }
 
@@ -78,7 +68,6 @@ export default function ResetPasswordClient() {
     setUpdating(false)
 
     if (error) {
-      console.error("updateUser error:", error)
       setErrorMsg(error.message)
     } else {
       setStatus('done')
@@ -87,7 +76,6 @@ export default function ResetPasswordClient() {
     }
   }
 
-  // ── Render helpers ───────────────────────────────────────────────────────────
   const renderVerifying = (
     <Card className="w-full max-w-md">
       <CardContent className="flex flex-col items-center gap-4 py-10">
@@ -134,10 +122,7 @@ export default function ResetPasswordClient() {
           />
           <Button type="submit" disabled={updating} className="w-full">
             {updating
-              ? <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Updating…
-                </>
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2"/>Updating…</>
               : 'Update password'}
           </Button>
         </form>
