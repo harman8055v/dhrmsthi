@@ -12,8 +12,37 @@ export default function ResetPasswordClient() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const code = searchParams.get("code")
-  const type = searchParams.get("type")
+  // Patch: Supabase sends ?token=... but expects ?code=... for exchangeCodeForSession
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("token") && !params.get("code")) {
+        params.set("code", params.get("token")!);
+        window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const code = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("code") : null;
+    if (!code) {
+      setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
+      setStatus("error");
+      return;
+    }
+    const doVerify = async () => {
+      // code is guaranteed to be a string here
+      const { error } = await supabase.auth.exchangeCodeForSession(code as string);
+      if (error) {
+        console.error("exchangeCodeForSession error:", error);
+        setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
+        setStatus("error");
+      } else {
+        setStatus("verified");
+      }
+    };
+    doVerify();
+  }, []);
 
   const [status, setStatus] = useState<"verifying" | "verified" | "done" | "error">("verifying")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -24,13 +53,13 @@ export default function ResetPasswordClient() {
 
   useEffect(() => {
     const doVerify = async () => {
-      const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true })
-      if (error || !data.session) {
-        console.error("getSessionFromUrl error:", error)
-        setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-        setStatus("error")
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        console.error("exchangeCodeForSession error:", error);
+        setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
+        setStatus("error");
       } else {
-        setStatus("verified")
+        setStatus("verified");
       }
     }
     doVerify()
