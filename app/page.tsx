@@ -68,7 +68,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && (user || profile)) {
-      router.replace("/dashboard");
+      // Only redirect to dashboard if user is authenticated AND onboarded
+      if (profile?.is_onboarded) {
+        router.replace("/dashboard");
+      }
     }
   }, [loading, user, profile, router]);
   return (
