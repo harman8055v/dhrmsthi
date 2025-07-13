@@ -10,11 +10,7 @@ interface AuthState {
   error: string | null
 }
 
-// Check mobile login synchronously
-const checkIsMobileLogin = () => {
-  if (typeof window === 'undefined') return false;
-  return localStorage.getItem('isMobileLogin') === 'true';
-};
+// Mobile-login flow has been removed; the hook now relies solely on Supabase auth sessions.
 
 export function useAuth() {
   // Initialize with mobile login state checked synchronously
@@ -25,84 +21,19 @@ export function useAuth() {
     error: null
   })
   const [authReady, setAuthReady] = useState(false);
-  // Track mobile login state separately for immediate access
-  const [isMobileLoginUser, setIsMobileLoginUser] = useState(checkIsMobileLogin());
+  // Mobile login has been removed; this flag is always false but preserved for backward compatibility.
+  const isMobileLoginUser = false;
 
   // Check for mobile login on mount
   useEffect(() => {
-    const checkMobileLogin = async () => {
-      if (typeof window === 'undefined') return;
-      
-      const isMobileLogin = localStorage.getItem('isMobileLogin') === 'true';
-      const mobileLoginUserId = localStorage.getItem('mobileLoginUserId');
-      
-      if (isMobileLogin && mobileLoginUserId) {
-        console.log('[useAuth] Mobile login detected, loading profile');
-        setIsMobileLoginUser(true);
-        
-        try {
-          // Use API endpoint for mobile login users
-          const response = await fetch(`/api/users/profile?userId=${mobileLoginUserId}`);
-          
-          if (!response.ok) {
-            throw new Error('Failed to fetch profile');
-          }
-          
-          const { profile } = await response.json();
-          
-          if (profile) {
-            setAuthState({
-              user: null, // No auth user for mobile login
-              profile,
-              loading: false,
-              error: null
-            });
-            // Don't clear mobile login data here - let components handle it
-            return true; // Indicate mobile login was handled
-          }
-        } catch (error) {
-          console.error('[useAuth] Mobile login profile fetch error:', error);
-          // Clear invalid mobile login data
-          localStorage.removeItem('isMobileLogin');
-          localStorage.removeItem('mobileLoginUserId');
-          setIsMobileLoginUser(false);
-        }
-      }
-      return false;
-    };
-
-    checkMobileLogin().then(isMobileLogin => {
-      if (!isMobileLogin) {
-        // Only initialize regular auth if not mobile login
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          console.log('[useAuth] initial getSession done', { session });
-          setAuthReady(true);
-        });
-      } else {
-        // For mobile login, set authReady without waiting for session
-        setAuthReady(true);
-      }
+    // Initialise session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[useAuth] initial getSession done', { session });
+      setAuthReady(true);
     });
-
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      console.log('[useAuth] onAuthStateChange', { session });
-      // Clear mobile login data if a real session is established
-      if (session && typeof window !== 'undefined') {
-        localStorage.removeItem('isMobileLogin');
-        localStorage.removeItem('mobileLoginUserId');
-        setIsMobileLoginUser(false);
-      }
-    });
-    
-    return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    // Skip auth listener for mobile login users
-    const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
-    if (isMobileLogin) return;
-
     if (!authReady) return;
     console.log('[useAuth] authReady effect fired');
     // Get initial session
@@ -259,10 +190,10 @@ export function useAuth() {
     ...authState,
     signOut,
     refreshProfile,
-    isAuthenticated: !!authState.user || !!authState.profile, // Mobile login users have profile but no user
+    isAuthenticated: !!authState.user,
     isProfileComplete: !!authState.profile?.is_onboarded,
     isVerified: authState.profile?.verification_status === 'verified',
     isPremium: authState.profile?.account_status === 'premium' || authState.profile?.account_status === 'elite',
-    isMobileLogin: isMobileLoginUser // Use the synchronously checked state
+    isMobileLogin: isMobileLoginUser
   }
 } 

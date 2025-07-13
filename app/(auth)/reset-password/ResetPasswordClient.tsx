@@ -24,8 +24,20 @@ export default function ResetPasswordClient() {
 
   useEffect(() => {
     const verify = async () => {
+      // 1️⃣ Check if Supabase has already established a session (new PKCE flow does this automatically)
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (session && !sessionError) {
+        // Session already valid – proceed directly to password form
+        setStatus("verified")
+        return
+      }
+
+      // 2️⃣ Fallback: legacy flow where we still need to exchange the `code` param for a session
       if (code) {
-        // New Supabase flow: single code param
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) {
           console.error("exchangeCodeForSession error", error)
@@ -35,10 +47,12 @@ export default function ResetPasswordClient() {
           setStatus("verified")
         }
       } else {
-        setErrorMsg("Invalid reset link.")
+        // No code and no existing session – invalid link
+        setErrorMsg("Invalid or expired reset link.")
         setStatus("error")
       }
     }
+
     verify()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
