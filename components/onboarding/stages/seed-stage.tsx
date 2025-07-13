@@ -79,7 +79,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       return
     }
     if (!isValidPhoneE164(mobileNumber)) {
-      setLocalError("Please enter a valid mobile number in international format")
+      setLocalError("Please enter a valid mobile number with country code (e.g., +91XXXXXXXXXX)")
       return
     }
 
@@ -100,14 +100,28 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       })
       const data = await res.json()
       if (!res.ok) {
-        setLocalError(data.error || 'Failed to send OTP. Please try again.')
+        // Handle specific error codes
+        const errorMessage = (() => {
+          switch(data.code) {
+            case 'PHONE_NOT_ON_WHATSAPP':
+              return 'This phone number is not registered on WhatsApp. Please ensure WhatsApp is installed.';
+            case 'WATI_CONNECTION_ERROR':
+              return 'Unable to connect to WhatsApp. Please try again.';
+            case 'MAX_RETRIES_EXCEEDED':
+              return 'Failed to send OTP. Please try again later.';
+            default:
+              return data.error || 'Failed to send OTP. Please try again.';
+          }
+        })();
+        setLocalError(errorMessage)
         return
       }
       setOtpSent(true)
       setCountdown(60)
       onChange({ phone: formattedNumber })
     } catch (error) {
-      setLocalError('Failed to send OTP. Please try again.')
+      console.error('Send OTP error:', error)
+      setLocalError('Failed to send OTP. Please check your connection and try again.')
     } finally {
       setSendingOtp(false)
     }
@@ -116,6 +130,10 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
   const handleVerifyOtp = async () => {
     if (!otp.trim()) {
       setLocalError("Please enter the OTP")
+      return
+    }
+    if (otp.length !== 6) {
+      setLocalError("OTP must be 6 digits")
       return
     }
     if (!mobileNumber.trim()) {
@@ -134,7 +152,22 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       })
       const data = await res.json()
       if (!res.ok) {
-        setLocalError(data.error || 'Invalid OTP. Please try again.')
+        // Handle specific error codes
+        const errorMessage = (() => {
+          switch(data.code) {
+            case 'OTP_EXPIRED':
+              return 'This OTP has expired. Please request a new one.';
+            case 'TOO_MANY_ATTEMPTS':
+              return 'Too many failed attempts. Please wait 30 minutes.';
+            case 'INVALID_OTP':
+              return 'Invalid OTP. Please check the code.';
+            case 'NO_OTP_FOUND':
+              return 'No OTP found. Please request a new one.';
+            default:
+              return data.error || 'Invalid OTP. Please try again.';
+          }
+        })();
+        setLocalError(errorMessage)
         return
       }
       // Mark as verified and proceed

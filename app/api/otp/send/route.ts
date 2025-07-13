@@ -13,6 +13,25 @@ function generateOtp(length = 6) {
   return Math.floor(100000 + Math.random() * 900000).toString().slice(0, length);
 }
 
+// Normalize phone numbers for consistent handling
+function normalizePhoneNumber(phone: string): { 
+  e164: string,      // +919876543210 (for DB storage)
+  watiFormat: string // 919876543210 (for WATI API)
+} {
+  // Remove all non-digit characters
+  let digitsOnly = phone.replace(/[^\d]/g, '');
+  
+  // Handle Indian numbers without country code
+  if (digitsOnly.length === 10 && !digitsOnly.startsWith('91')) {
+    digitsOnly = '91' + digitsOnly;
+  }
+  
+  return {
+    e164: '+' + digitsOnly,
+    watiFormat: digitsOnly
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { phone, purpose, userId } = await req.json();
@@ -41,10 +60,19 @@ export async function POST(req: NextRequest) {
 
     console.log('Generated OTP:', otp);
 
-    // Store OTP in DB with user_id if provided
+    // Normalize phone number
+    const { e164, watiFormat } = normalizePhoneNumber(phone);
+    
+    console.log('Phone number normalized:', {
+      original: phone,
+      e164: e164,
+      watiFormat: watiFormat
+    });
+
+    // Store OTP in DB with E164 format
     const { error: dbError } = await supabase.from('otp_verifications').insert({
       user_id: userId || null,
-      mobile_number: phone,
+      mobile_number: e164, // Store in E164 format
       otp_code: otp,
       purpose,
       expires_at: expiresAt,
@@ -57,29 +85,84 @@ export async function POST(req: NextRequest) {
 
     console.log('OTP stored in database successfully');
 
-    // Clean phone number for Wati - remove + and any non-numeric characters
-    // Wati expects phone numbers in format like "919876543210" (country code + number, no +)
-    let cleanPhone = phone.replace(/[^\d]/g, ''); // Remove all non-numeric characters
-    
-    // If phone doesn't start with country code, assume it's an Indian number
-    if (cleanPhone.length === 10) {
-      cleanPhone = '91' + cleanPhone;
-    }
-    
-    // Also try without country code
-    const phoneWithoutCountryCode = cleanPhone.replace(/^91/, '');
-    
-    console.log('Phone number formats:', {
-      original: phone,
-      cleaned: cleanPhone,
-      withoutCountryCode: phoneWithoutCountryCode
-    });
-    
-    console.log('Cleaned phone number for Wati:', cleanPhone);
-    
-    // Send OTP via Wati
-    console.log('Cleaned phone number for Wati:', cleanPhone);
-    
+    // Helper function to send OTP via WATI with retry logic
+    const sendWithRetry = async (payload: any, phoneFormat: string, maxRetries = 2) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`WATI send attempt ${attempt + 1} of ${maxRetries + 1}`);
+          
+          const response = await fetch(
+            `${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${phoneFormat}`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${WATI_ACCESS_TOKEN}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(10000) // 10 second timeout
+            }
+          );
+          
+          const responseText = await response.text();
+          let data;
+          
+          try {
+            data = JSON.parse(responseText);
+          } catch (e) {
+            console.error('Failed to parse WATI response:', responseText);
+            data = { rawResponse: responseText };
+          }
+          
+          console.log(`WATI attempt ${attempt + 1} response:`, {
+            status: response.status,
+            data: data
+          });
+          
+          // Check for success
+          if (response.ok || data.result === true || data.success === true) {
+            return { success: true, data };
+          }
+          
+          // If phone not on WhatsApp, don't retry
+          if (data.validWhatsAppNumber === false) {
+            return { 
+              success: false, 
+              error: 'This phone number is not registered on WhatsApp. Please ensure WhatsApp is installed and active on this number.',
+              code: 'PHONE_NOT_ON_WHATSAPP',
+              data 
+            };
+          }
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const waitTime = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+            console.log(`Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+        } catch (error) {
+          console.error(`WATI attempt ${attempt + 1} failed:`, error);
+          
+          // On final attempt, throw the error
+          if (attempt === maxRetries) {
+            return { 
+              success: false, 
+              error: 'Failed to connect to WhatsApp service. Please try again later.',
+              code: 'WATI_CONNECTION_ERROR',
+              details: error
+            };
+          }
+        }
+      }
+      
+      return { 
+        success: false, 
+        error: 'Failed to send OTP after multiple attempts. Please try again.',
+        code: 'MAX_RETRIES_EXCEEDED'
+      };
+    };
+
+    // Send OTP via Wati with retry
     const watiPayload = {
       template_name: 'otp',
       broadcast_name: 'otp',
@@ -91,71 +174,26 @@ export async function POST(req: NextRequest) {
       ]
     };
 
-    console.log('Wati API Request - Full Details:', {
-      url: `${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${cleanPhone}`,
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${WATI_ACCESS_TOKEN.substring(0, 15)}...`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(watiPayload, null, 2)
-    });
-
-    const watiResponse = await fetch(`${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${WATI_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(watiPayload)
-    });
+    console.log('Sending OTP via WATI to:', watiFormat);
     
-    const responseText = await watiResponse.text();
-    let watiData;
+    const result = await sendWithRetry(watiPayload, watiFormat);
     
-    try {
-      watiData = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Failed to parse Wati response:', responseText);
-      watiData = { rawResponse: responseText };
-    }
-    
-    console.log('Wati API Response:', {
-      status: watiResponse.status,
-      statusText: watiResponse.statusText,
-      data: watiData,
-      headers: Object.fromEntries(watiResponse.headers.entries())
-    });
-    
-    // Check various success indicators
-    if (watiResponse.status === 200 || watiResponse.status === 201 || 
-        (watiData && (watiData.result === true || watiData.success === true))) {
+    if (result.success) {
       console.log('OTP sent successfully!');
       return NextResponse.json({ 
         success: true, 
         message: 'OTP sent successfully via WhatsApp',
         otp: process.env.NODE_ENV === 'development' ? otp : undefined, // Show OTP in dev mode for testing
-        details: watiData
+        details: result.data
       });
     }
     
-    // If the response indicates invalid phone number, provide helpful error
-    if (watiData && watiData.validWhatsAppNumber === false) {
-      console.error('Invalid WhatsApp number:', cleanPhone);
-      return NextResponse.json({ 
-        error: 'Invalid WhatsApp number. Please ensure the number is registered on WhatsApp.',
-        details: watiData,
-        phoneFormat: cleanPhone
-      }, { status: 400 });
-    }
-    
-    // Try alternative format if first one fails
-    if (!watiResponse.ok || (watiData && watiData.result === false)) {
-      console.log('Trying alternative Wati format...');
+    // If first format fails, try alternative format
+    if (result.code === 'WATI_CONNECTION_ERROR' || result.code === 'MAX_RETRIES_EXCEEDED') {
+      console.log('Trying alternative WATI message format...');
       
-      // Format 2: Alternative format with receivers array
       const altPayload = {
-        receivers: [cleanPhone],
+        receivers: [watiFormat],
         template: {
           name: 'otp',
           language: {
@@ -176,47 +214,32 @@ export async function POST(req: NextRequest) {
         }
       };
       
-      const altRes = await fetch(`${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${WATI_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(altPayload),
-      });
+      const altResult = await sendWithRetry(altPayload, watiFormat, 1); // Only 1 retry for alt format
       
-      const altData = await altRes.json();
-      console.log('Alternative format response:', altData);
-      
-      if (altRes.ok && altData.result === true) {
+      if (altResult.success) {
+        console.log('OTP sent successfully with alternative format!');
         return NextResponse.json({ 
           success: true, 
-          message: 'OTP sent successfully via WhatsApp (alt format)',
+          message: 'OTP sent successfully via WhatsApp',
           otp: process.env.NODE_ENV === 'development' ? otp : undefined,
-          details: altData
+          details: altResult.data
         });
       }
-      
-      console.error('Both Wati formats failed:', { watiData, altData });
-      return NextResponse.json({ 
-        error: 'Failed to send OTP via WhatsApp', 
-        details: { 
-          primary: watiData, 
-          alternative: altData,
-          hint: 'Please check if the phone number is registered on WhatsApp'
-        }
-      }, { status: 500 });
     }
-
+    
+    // Both formats failed
+    console.error('Failed to send OTP via WATI:', result);
     return NextResponse.json({ 
-      error: 'Failed to send OTP via WhatsApp', 
-      details: watiData 
-    }, { status: 500 });
+      error: result.error,
+      code: result.code,
+      hint: 'Please ensure your phone number is registered on WhatsApp and try again.'
+    }, { status: 400 });
     
   } catch (err: any) {
     console.error('Send OTP error:', err);
     return NextResponse.json({ 
       error: err.message || 'Internal error',
+      code: 'INTERNAL_ERROR',
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     }, { status: 500 });
   }

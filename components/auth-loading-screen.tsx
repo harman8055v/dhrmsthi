@@ -35,13 +35,74 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
   const router = useRouter()
 
   useEffect(() => {
-    // Handle mobile login
+    // Handle mobile login with improved flow
     if (isMobileLogin && userId) {
-      // For mobile login, we need to verify the user and redirect appropriately
       const handleMobileLogin = async () => {
         try {
-          // Call the mobile login API to verify the session
-          const response = await fetch('/api/auth/mobile-session', {
+          // Check if we have a magic token in URL params
+          const urlParams = new URLSearchParams(window.location.search);
+          const magicToken = urlParams.get('token');
+          
+          if (magicToken) {
+            console.log('Found magic token, verifying...');
+            
+            // Use the magic link token to establish session
+            const { error } = await supabase.auth.verifyOtp({
+              token_hash: magicToken,
+              type: 'magiclink'
+            });
+            
+            if (!error) {
+              console.log('Magic link verified successfully');
+              
+              // Clear mobile login flags - we have a real session now
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('mobileLoginUserId');
+                localStorage.removeItem('isMobileLogin');
+              }
+              
+              // Get user profile to check onboarding
+              const { data: profile } = await supabase
+                .from('users')
+                .select('is_onboarded')
+                .eq('id', userId)
+                .single();
+                
+              console.log('User onboarding status:', profile?.is_onboarded);
+              router.push(profile?.is_onboarded ? '/dashboard' : '/onboarding');
+              return;
+            } else {
+              console.error('Magic link verification failed:', error);
+            }
+          }
+          
+          // Check if we already have an active session
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session?.user?.id === userId) {
+            console.log('Active session found for user');
+            
+            // Clear mobile login flags
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mobileLoginUserId');
+              localStorage.removeItem('isMobileLogin');
+            }
+            
+            // Get user profile to check onboarding
+            const { data: profile } = await supabase
+              .from('users')
+              .select('is_onboarded')
+              .eq('id', userId)
+              .single();
+              
+            router.push(profile?.is_onboarded ? '/dashboard' : '/onboarding');
+            return;
+          }
+          
+          // Fallback: Use the mobile session API
+          console.log('No active session, using mobile session API');
+          
+          const response = await fetch(`/api/auth/mobile-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId })
@@ -49,51 +110,38 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
 
           if (response.ok) {
             const data = await response.json();
-
-            // 1️⃣  If the API returned a token/type (older flow), establish session.
-            if (data.token && data.type) {
-              const { error: sessionError } = await supabase.auth.verifyOtp({
-                token_hash: data.token,
-                type: data.type,
-              });
-
-              if (sessionError) {
-                console.error('Session creation error:', sessionError);
-                // Fallback – try exchangeCodeForSession
-                const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(data.token);
-                if (exchangeError) {
-                  console.error('Session exchange error:', exchangeError);
-                  router.push('/');
-                  return;
-                }
-              }
-            }
-
-            // 2️⃣  Whether or not we created a session above, clear localStorage flags.
+            
+            // Clear localStorage flags after successful verification
             if (typeof window !== 'undefined') {
               localStorage.removeItem('mobileLoginUserId');
+              localStorage.removeItem('isMobileLogin');
             }
-
-            // 3️⃣  Determine onboarding status.
-            const isOnboarded =
-              // New API shape: user.isOnboarded
-              data.user?.isOnboarded ??
-              // Fallback older shape: top-level isOnboarded
-              data.isOnboarded ??
-              false;
-
-            // 4️⃣  Redirect.
-            router.push(isOnboarded ? '/dashboard' : '/onboarding');
+            
+            const isOnboarded = data.user?.isOnboarded ?? false;
+            console.log('Mobile session verified, redirecting. Onboarded:', isOnboarded);
+            
+            // Small delay to ensure state is updated
+            setTimeout(() => {
+              router.push(isOnboarded ? '/dashboard' : '/onboarding');
+            }, 500);
           } else {
-            // Mobile login failed, redirect to home
-            router.push("/")
+            throw new Error('Mobile session verification failed');
           }
         } catch (error) {
-          console.error("Mobile login error:", error)
-          router.push("/")
+          console.error("Mobile login error:", error);
+          
+          // Clear invalid session data
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('mobileLoginUserId');
+            localStorage.removeItem('isMobileLogin');
+          }
+          
+          // Redirect to home with error message
+          router.push("/?error=mobile_login_failed");
         }
       };
 
+      // Start mobile login immediately
       handleMobileLogin();
       return;
     }

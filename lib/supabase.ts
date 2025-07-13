@@ -1,4 +1,4 @@
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@supabase/supabase-js"
 
 // Validate environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -10,11 +10,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// Create Supabase client with explicit configuration
-export const supabase = createClientComponentClient({
-  supabaseUrl,
-  supabaseKey: supabaseAnonKey,
-})
+// Create Supabase client with implicit flow for cross-device compatibility
+export const supabase = createClient(
+  supabaseUrl || "",
+  supabaseAnonKey || "",
+  {
+    auth: {
+      flowType: "implicit",
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  }
+)
 
 // Log successful initialization (only in development)
 if (process.env.NODE_ENV === 'development') {

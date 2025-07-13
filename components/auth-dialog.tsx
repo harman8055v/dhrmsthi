@@ -262,7 +262,25 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
       const data = await res.json()
       
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to send OTP')
+        // Handle specific error codes
+        const errorMessage = (() => {
+          switch(data.code) {
+            case 'PHONE_NOT_ON_WHATSAPP':
+              return '📵 This phone number is not registered on WhatsApp. Please ensure WhatsApp is installed and active.';
+            case 'WATI_CONNECTION_ERROR':
+              return '🔌 Unable to connect to WhatsApp service. Please try again in a few moments.';
+            case 'MAX_RETRIES_EXCEEDED':
+              return '🔄 Failed to send OTP after multiple attempts. Please try again later.';
+            case 'MISSING_FIELDS':
+              return '⚠️ Please enter your phone number.';
+            case 'INTERNAL_ERROR':
+              return '❌ Something went wrong. Please try again.';
+            default:
+              return data.error || '❌ Failed to send OTP. Please try again.';
+          }
+        })();
+        
+        throw new Error(errorMessage);
       }
 
       setOtpSent(true)
@@ -281,7 +299,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
       }, 1000)
     } catch (error: any) {
       console.error("Send OTP error:", error)
-      setErrors({ general: error.message || "Failed to send OTP. Please try again." })
+      setErrors({ general: error.message })
     } finally {
       setIsLoading(false)
     }
@@ -311,14 +329,45 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
       const data = await res.json()
       
       if (!res.ok) {
-        throw new Error(data.error || 'Invalid OTP')
+        // Handle specific error codes with user-friendly messages
+        const errorMessage = (() => {
+          switch(data.code) {
+            case 'OTP_EXPIRED':
+              return '⏰ This OTP has expired. Please request a new one.';
+            case 'TOO_MANY_ATTEMPTS':
+              return '🚫 Too many failed attempts. Please wait 30 minutes before trying again.';
+            case 'INVALID_OTP':
+              return '❌ Invalid OTP. Please check the 6-digit code sent to your WhatsApp.';
+            case 'NO_OTP_FOUND':
+              return '📱 No valid OTP found. Please request a new OTP.';
+            case 'MISSING_FIELDS':
+              return '⚠️ Please enter both your phone number and OTP.';
+            default:
+              return data.error || '❌ Verification failed. Please try again.';
+          }
+        })();
+        
+        throw new Error(errorMessage);
       }
 
       // Check if this is an existing user (login) or new user (signup)
       if (data.isExistingUser && activeTab === "login") {
         // Mobile login flow - user exists
         
-        // Check if session data was returned from OTP verify
+        // Check if we got a magic token (new flow)
+        if (data.magicToken) {
+          console.log('Received magic token for mobile login');
+          
+          // Navigate to auth-loading with the magic token
+          const loadingUrl = `/auth-loading?userId=${data.userId}&mobileLogin=true&token=${data.magicToken}`;
+          router.push(loadingUrl);
+          
+          // Close the dialog
+          onClose();
+          return;
+        }
+        
+        // Check if session data was returned from OTP verify (fallback)
         if (data.session?.access_token && data.session?.refresh_token) {
           try {
             // Set the session using the tokens from the server
@@ -362,14 +411,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
         const loadingUrl = `/auth-loading?userId=${data.userId}&mobileLogin=true`
         router.push(loadingUrl)
 
-        // Hard-refresh fallback – if SPA routing silently fails, force navigation after 1s
-        setTimeout(() => {
-          if (typeof window !== "undefined" && window.location.pathname !== "/auth-loading") {
-            window.location.assign(loadingUrl)
-          }
-        }, 1000)
-
-        // Close the dialog after queuing navigation
+        // Close the dialog after successful verification
         onClose()
       } else if (!data.isExistingUser && activeTab === "signup") {
         // Mobile signup flow - continue with creating auth user
@@ -432,18 +474,14 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
         }
       } else if (data.isExistingUser && activeTab === "signup") {
         // User already exists, they should login instead
-        throw new Error("An account with this phone number already exists. Please sign in instead.")
+        throw new Error("📱 An account with this phone number already exists. Please sign in instead.")
       } else if (!data.isExistingUser && activeTab === "login") {
         // No account found
-        throw new Error("No account found with this phone number. Please sign up first.")
+        throw new Error("🔍 No account found with this phone number. Please sign up first.")
       }
     } catch (error: any) {
-      console.error("Verify OTP error:", error)
-      if (error.message?.includes("Invalid") || error.message?.includes("expired")) {
-        setErrors({ general: "Invalid or expired OTP. Please try again." })
-      } else {
-        setErrors({ general: error.message || "Failed to verify OTP. Please try again." })
-      }
+      console.error("OTP verification error:", error)
+      setErrors({ general: error.message })
     } finally {
       setIsLoading(false)
     }
