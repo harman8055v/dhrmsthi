@@ -362,6 +362,13 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
         const target = data.isOnboarded ? "/dashboard" : "/onboarding"
         router.replace(target)
 
+        // Hard-refresh fallback – if SPA routing silently fails, force navigation
+        setTimeout(() => {
+          if (typeof window !== "undefined" && window.location.pathname !== target) {
+            window.location.assign(target)
+          }
+        }, 500)
+
         // Close the dialog after the navigation request is queued (next tick)
         setTimeout(onClose, 0)
       } else if (!data.isExistingUser && activeTab === "signup") {

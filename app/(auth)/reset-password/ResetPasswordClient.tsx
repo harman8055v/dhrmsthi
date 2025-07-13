@@ -62,20 +62,33 @@ export default function ResetPasswordClient() {
           return
         }
 
-        // Wait for a future auth event.
-        timeoutId = setTimeout(() => {
-          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-          setStatus("error")
-        }, 3000)
+        // Poll every 200 ms for up to 5 s to see if a session shows up.
+        const POLL_INTERVAL = 200
+        const MAX_TIME = 5000
+        let elapsed = 0
 
-        const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-          if (event === "SIGNED_IN" && session) {
+        const intervalId = setInterval(async () => {
+          elapsed += POLL_INTERVAL
+          const { data } = await supabase.auth.getSession()
+          if (data.session) {
+            clearInterval(intervalId)
             if (timeoutId) clearTimeout(timeoutId)
             setStatus("verified")
+          } else if (elapsed >= MAX_TIME) {
+            clearInterval(intervalId)
           }
-        })
+        }, POLL_INTERVAL)
 
-        subscriptionCleanup = () => listener.subscription.unsubscribe()
+        // Hard timeout – if after MAX_TIME no session, show error
+        timeoutId = setTimeout(() => {
+          clearInterval(intervalId)
+          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
+          setStatus("error")
+        }, MAX_TIME)
+
+        subscriptionCleanup = () => {
+          clearInterval(intervalId)
+        }
       }
 
       if (authError) {
