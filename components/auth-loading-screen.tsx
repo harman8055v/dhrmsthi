@@ -41,7 +41,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
       const handleMobileLogin = async () => {
         try {
           // Call the mobile login API to verify the session
-          const response = await fetch('/api/auth/mobile-login', {
+          const response = await fetch('/api/auth/mobile-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId })
@@ -49,50 +49,41 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
 
           if (response.ok) {
             const data = await response.json();
-            
-            // Use the magic link token to establish a session
+
+            // 1️⃣  If the API returned a token/type (older flow), establish session.
             if (data.token && data.type) {
               const { error: sessionError } = await supabase.auth.verifyOtp({
                 token_hash: data.token,
-                type: data.type
+                type: data.type,
               });
 
               if (sessionError) {
                 console.error('Session creation error:', sessionError);
-                // Try alternative approach - exchange session
+                // Fallback – try exchangeCodeForSession
                 const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(data.token);
-                
                 if (exchangeError) {
                   console.error('Session exchange error:', exchangeError);
-                  router.push("/");
+                  router.push('/');
                   return;
                 }
               }
-
-              // Session established, clear localStorage
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('mobileLoginUserId');
-              }
-
-              // Redirect based on onboarding status
-              setTimeout(() => {
-                if (data.isOnboarded) {
-                  router.push("/dashboard")
-                } else {
-                  router.push("/onboarding")
-                }
-              }, 1000)
-            } else {
-              // No token in response – assume session already exists (e.g., via OTP verify)
-              console.log('[AuthLoading] No token provided, using existing session');
-              setTimeout(() => {
-                if (data.isOnboarded) {
-                  router.push("/dashboard");
-                } else {
-                  router.push("/onboarding");
-                }
-              }, 1000);
             }
+
+            // 2️⃣  Whether or not we created a session above, clear localStorage flags.
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mobileLoginUserId');
+            }
+
+            // 3️⃣  Determine onboarding status.
+            const isOnboarded =
+              // New API shape: user.isOnboarded
+              data.user?.isOnboarded ??
+              // Fallback older shape: top-level isOnboarded
+              data.isOnboarded ??
+              false;
+
+            // 4️⃣  Redirect.
+            router.push(isOnboarded ? '/dashboard' : '/onboarding');
           } else {
             // Mobile login failed, redirect to home
             router.push("/")

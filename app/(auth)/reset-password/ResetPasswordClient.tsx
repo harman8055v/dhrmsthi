@@ -22,29 +22,47 @@ export default function ResetPasswordClient() {
   const [confirm, setConfirm] = useState("")
   const [updating, setUpdating] = useState(false)
 
-  // Validate link once: PKCE code must be present.
+  // Robust validation: existing session → code param → hash tokens.
   useEffect(() => {
-    const search = new URLSearchParams(window.location.search)
-    const codeParam = search.get("code")
-
-    const run = async () => {
-      if (!codeParam) {
-        setErrorMsg("Invalid reset link.")
-        setStatus("error")
+    const validate = async () => {
+      // 1. Session already present?
+      const { data: existing } = await supabase.auth.getSession()
+      if (existing.session) {
+        setStatus("verified")
         return
       }
 
-      const { error } = await supabase.auth.exchangeCodeForSession(codeParam)
-      if (error) {
+      // 2. PKCE code param?
+      const search = new URLSearchParams(window.location.search)
+      const codeParam = search.get("code")
+      if (codeParam) {
+        const { error } = await supabase.auth.exchangeCodeForSession(codeParam)
+        if (!error) {
+          setStatus("verified")
+          return
+        }
         console.error("exchangeCodeForSession error", error)
-        setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-        setStatus("error")
-      } else {
-        setStatus("verified")
       }
+
+      // 3. Implicit/hash tokens?
+      const hash = new URLSearchParams(window.location.hash.slice(1))
+      const access_token = hash.get("access_token")
+      const refresh_token = hash.get("refresh_token")
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+        if (!error) {
+          setStatus("verified")
+          return
+        }
+        console.error("setSession error", error)
+      }
+
+      // If all strategies fail → error
+      setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
+      setStatus("error")
     }
 
-    run()
+    validate()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

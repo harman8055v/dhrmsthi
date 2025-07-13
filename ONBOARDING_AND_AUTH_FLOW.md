@@ -1,228 +1,150 @@
-# DharmaSaathi Onboarding, Signup, and Authentication Flow
+# DharmaSaathi On-Boarding & Authentication – July 2025
+
+---
+**This file is the single source-of-truth for how sign-up, login and on-boarding currently work in production.  All obsolete details from the pre-WhatsApp-OTP implementation have been removed.**
+
+> If you change ANYTHING in the flow (frontend or backend) update this document immediately.
 
 ---
 
-**This file documents every granular detail about how onboarding, signup, and login are set up in the current codebase.**
+## 1  High-level Overview
 
-> **NOTE:** Do not edit or update this file without explicit permission from the project owner.
-
----
-
-## 1. Overview
-
-The onboarding and authentication system is built using Supabase for authentication (email/password and phone/OTP), with a multi-stage onboarding process that collects user profile data. The system supports:
-- Email/password signup and login
-- Phone/OTP signup and login
-- Multi-stage onboarding (profile completion)
-- Referral code integration
-- Error handling and validation at every step
-- User state management via Supabase and localStorage
+* Supabase is still the primary auth provider (email / password, server-generated OTP sessions), but **phone verification + login now happens entirely via our own WhatsApp OTP service**.
+* WhatsApp messages are sent through **WATI** (`/api/otp/send`).
+* OTP codes are stored & verified in a first-party table `otp_verifications`.
+* Successful phone-OTP **login** returns a real Supabase session (access / refresh token) so the web app can operate normally.
+* A lightweight "mobile-login" fallback exists for edge cases where cookies cannot be set (certain in-app WebViews).
+* The multi-stage on-boarding wizard writes directly to the `users` table and finishes by setting `is_onboarded = true`.
 
 ---
 
-## 2. Signup Flow
+## 2  Sign-Up Flow
 
-### 2.1. Email/Password Signup
-- **Component:** `components/signup-section.tsx`, `components/auth-dialog.tsx`
-- **API:** `supabase.auth.signUp({ email, password, options: { data: { ...profile } } })`
-- **Data persisted:**
-  - Email, password, first name, last name, full name, phone (optional)
-  - Referral code (if present) is stored in `localStorage` as `signupData`
-- **On success:**
-  - User is redirected to `/auth-loading?userId=...&isNew=true`
-  - Optionally, a user profile is created in the `users` table
+### 2.1  Email / Password
 
-### 2.2. Phone/OTP Signup
-- **Component:** `components/auth-dialog.tsx`, `components/onboarding/stages/seed-stage.tsx`
-- **OTP Delivery:** OTP is delivered **via WhatsApp** using the custom `/api/otp/send` route which integrates with **WATI**. (SMS fallback coming soon.)
-- **API:** `supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true, data: { ...profile } } })`
-- **OTP Verification:**
-  - `supabase.auth.verifyOtp({ phone, token, type: 'sms' })`
-  - On success, user profile is upserted in the `users` table
-  - Handles duplicate/exists errors gracefully
+* UI: `components/signup-section.tsx` or **Auth Dialog** (Signup tab).
+* API call `supabase.auth.signUp({ email, password, options: { data } })` immediately creates the auth user.
+* On success the user is sent to `/auth-loading?userId=<uuid>&isNew=true` where the profile row is created if it doesn’t exist.
 
-### 2.3. Validation
-- All fields are validated for presence and format (email regex, password strength, phone format)
-- Errors are shown inline in the UI
+### 2.2  Phone / WhatsApp-OTP
 
----
+1. **User enters mobile number →** frontend hits `POST /api/otp/send` with `{ phone, purpose: 'signup' }`.
+   * Route generates a 6-digit code, stores a row in `otp_verifications`, and sends a WhatsApp template (`otp`) through WATI.
+2. **User enters the OTP →** frontend hits `POST /api/otp/verify` with `{ phone, otp, purpose: 'signup' }`.
+3. On success the server returns `{ success: true, isExistingUser: false }`.
+4. **Frontend now creates the real Supabase user**
+   * Generates a temporary password and email alias `<E164>@phone.dharmasaathi.com`.
+   * Calls `supabase.auth.signUp()` – this yields a proper `user.id`.
+5. A profile stub is inserted / upserted into `users` (mobile_verified = true, is_onboarded = false).
+6. User is redirected to `/auth-loading?userId=<uuid>&isNew=true` → on-boarding wizard.
 
-## 3. Login Flow
-
-### 3.1. Email/Password Login
-- **Component:** `components/auth-dialog.tsx`
-- **API:** `supabase.auth.signInWithPassword({ email, password })`
-- **On success:**
-  - User is redirected to `/auth-loading?userId=...&isNew=false`
-
-### 3.2. Phone/OTP Login
-- **Component:** `components/auth-dialog.tsx`, `components/onboarding/stages/seed-stage.tsx`
-- **OTP Delivery:** OTP is delivered **via WhatsApp** using the `/api/otp/send` route backed by WATI.
-- **API:**
-  - `supabase.auth.signInWithOtp({ phone })` to send OTP *(WhatsApp message)*
-  - `supabase.auth.verifyOtp({ phone, token, type: 'sms' })` to verify
-- **On success:**
-  - User is redirected to `/auth-loading?userId=...&isNew=false`
-
-### 3.3. Password Reset
-- **API:** `supabase.auth.resetPasswordForEmail(email, { redirectTo })`
-- **Redirect:** `/reset-password?email=...`
-
-### 3.4. Mobile Login Flow (OTP-only / WebView)
-- **Use-case:** When a user completes OTP verification inside the mobile app’s WebView (or a special deep-link) we cannot rely on secure HTTP-only cookies for Supabase. Instead, the backend returns only the verified `userId`.
-- **State flags:** The front-end sets two keys in `localStorage`:
-  - `isMobileLogin` → `'true'`
-  - `mobileLoginUserId` → Supabase `uuid` of the verified user.
-- **Auth handling:**
-  - `hooks/use-auth.ts` detects these flags synchronously and bypasses `supabase.auth.getSession()`. It fetches the user profile directly via `/api/users/profile?userId=${mobileLoginUserId}`.
-  - `user` is `null`; only `profile` is populated. A computed flag `isMobileLogin` is exposed to all consumers via `useAuth()`.
-- **Navigation rules:**
-  - On the Dashboard, onboarding and verification redirects honour `isMobileLogin` so users without a Supabase session are still allowed after profile fetch.
-- **Sign-out:**
-  - `signOut()` first clears the two localStorage keys.
-  - It then calls `supabase.auth.signOut()` **only** if a regular session exists. “No session” responses are treated as benign.
-  - Local auth state is reset regardless, so the UI always returns to an unauthenticated state.
-- **API considerations:** Many `/api/*` routes accept an optional `mobileUserId` query parameter which, when present, is authorised via server-role RLS bypass.
+### 2.3  Validation & Error Handling
+* Phone is validated against E.164; duplicate numbers trigger a friendly error.
+* Incorrect / expired OTP → 400 with `Invalid or expired OTP` – surfaced inline.
 
 ---
 
-## 4. Onboarding Flow
+## 3  Login Flow
 
-### 4.1. Stages
-- **Component:** `components/onboarding/onboarding-container.tsx`
-- **Stages:**
-  1. Mobile Verification (`SeedStage`)
-  2. Personal Info (`StemStage`)
-  3. Professional Info (`LeavesStage`)
-  4. Spiritual Preferences (`PetalsStage`)
-  5. About You & Photos (`FullBloomStage`)
-- **Progress:** Managed by `stage` state, with validation at each step
-- **Data Structure:** See `lib/types/onboarding.ts` for `OnboardingData` interface
+### 3.1  Email / Password
+* Same as before (`supabase.auth.signInWithPassword`).
+* Success → `/auth-loading?userId=<uuid>&isNew=false`.
 
-#### 4.1.1. Mobile Number Prefill in SeedStage (NEW)
-- The mobile number input in the SeedStage is now prefilled using the following priority:
-  1. If `formData.phone` is set, use that.
-  2. If the authenticated user has a phone, use `user.phone`.
-  3. If neither is set, check `localStorage` for `signupData.mobileNumber` (set during signup).
-  4. If none are available, default to an empty string.
-- This ensures a smoother onboarding experience, especially for users coming from the signup flow or with an existing session.
-- If the user is not authenticated but a mobile number is present (from signup), the OTP input is shown immediately and the countdown starts, skipping the send step.
-- If the user is authenticated and has a phone, the input is prefilled and the form data is updated accordingly.
-- This logic is implemented in `components/onboarding/stages/seed-stage.tsx` using `useEffect` and a helper function for initial value.
+### 3.2  Phone / WhatsApp-OTP (Web)
 
-### 4.2. Data Handling
-- Form data is initialized from Supabase user, profile, or localStorage
-- On each stage, data is validated and merged
-- On final submission, all data is upserted to the `users` table via Supabase
-- Handles duplicate phone/email gracefully (retries upsert without phone if needed)
+1. `POST /api/otp/send` with `{ phone, purpose: 'login' }`.
+2. `POST /api/otp/verify` with the OTP.
+   * The **verify route** now performs three steps:
+     1. Marks the OTP row as `verified_at`.
+     2. Generates a one-time password (`otp_<uuid>`) and sets it on the auth user via `supabase.auth.admin.updateUserById`.
+     3. Immediately signs in **server-side** with that password to obtain an access / refresh token pair.
+   * Those tokens are returned to the client: `{ session: { access_token, refresh_token }, userId, isOnboarded }`.
+3. **Client** calls `supabase.auth.setSession()` with the tokens.
+4. Dialog closes and navigates to `/auth-loading?userId=<uuid>&mobileLogin=true`.
 
-### 4.3. Referral Code
-- If a referral code is present in `localStorage`, it is sent to `/api/referrals/signup` after onboarding completes
-- **API:** `POST /api/referrals/signup` with `{ newUserId, referralCode }`
-- **Backend:** Calls Supabase RPC `handle_referral_signup`
+### 3.3  Mobile-Login Fallback (Cookieless WebView)
 
-### 4.4. Error Handling
-- All API errors are caught and displayed to the user
-- Handles rate limits, duplicate accounts, invalid OTP, expired OTP, etc.
+* If `setSession` fails (or the browser rejects cookies) the client sets
+  ```txt
+  localStorage.isMobileLogin = 'true'
+  localStorage.mobileLoginUserId = '<uuid>'
+  ```
+* `AuthLoadingScreen` posts to `POST /api/auth/mobile-session` with `{ userId }`.
+  * The route verifies `mobile_verified`, inserts a short-lived `mobile_session` token in `otp_verifications` (purpose = `mobile_session`) and returns minimal user data.
+* The fallback then redirects the user based on `isOnboarded` without relying on Supabase cookies.
+* `hooks/use-auth.ts` recognises this state and fetches the profile via `/api/users/profile?userId=` until the user performs a full login later.
+
+### 3.4  Password Reset
+Same as before – email link → `/reset-password`.
 
 ---
 
-## 5. User State & Profile Management
+## 4  On-Boarding Wizard
 
-- **User state:** Managed via Supabase session and `useProfile` hook
-- **Profile upsert:** All onboarding data is upserted to the `users` table
-- **Completion:** `is_onboarded` flag is set to `true` on completion
-- **Redirects:**
-  - If onboarding is complete, user is redirected to `/dashboard`
-  - If not, user is redirected to `/onboarding`
+### 4.1  Stage List
+1. **Seed Stage** – phone verification & basic demography.
+2. **Stem Stage** – personal details.
+3. **Leaves Stage** – profession & education.
+4. **Petals Stage** – spiritual preferences.
+5. **Full Bloom** – about-me & photo upload.
 
----
+Component hierarchy: `onboarding-container.tsx` orchestrates all stages and owns the form state. See `components/onboarding/stages/*` for each page.
 
-## 6. Integrations
+### 4.2  Data Flow
+* On every step partial data is merged into a local draft state.
+* Final **Submit** runs a single `supabase.from('users').upsert()` with the full dataset (+ `is_onboarded=true`).
+* Duplicate-phone constraint is handled – if a conflict on phone occurs the upsert is retried without the phone column (this only happens for very old imported data).
 
-### 6.1. Supabase
-- Used for all authentication (email/password, phone/OTP)
-- Used for user profile storage (`users` table)
-- Used for password reset
-
-### 6.2. LocalStorage
-- Used to buffer signup data between steps and across reloads
-- Stores `signupData` with email, name, phone, referral code, etc.
-- **Mobile login flags:**
-  - `isMobileLogin` → indicates that the session was established via OTP inside the mobile app
-  - `mobileLoginUserId` → the user’s UUID used to fetch profile data when no Supabase session cookie is available
-
-### 6.3. Custom API
-- `/api/referrals/signup` for referral code processing
+### 4.3  Referral Codes
+* `signup-section.tsx` stores `referral_code` in `localStorage.signupData`.
+* After successful onboarding the wizard calls `POST /api/referrals/signup`.
 
 ---
 
-## 7. Security & Privacy
+## 5  WhatsApp Automation
 
-- All sensitive data is validated and sanitized before submission
-- Passwords are never stored in localStorage
-- User data is only upserted to the database after successful verification
-- Privacy policy is referenced in the onboarding UI
-
----
-
-## 8. Error Handling & Edge Cases
-
-- Duplicate phone/email: handled with retry logic
-- Rate limiting: user is notified and asked to wait
-- Expired/invalid OTP: user is prompted to retry
-- Missing session: user is redirected to home or asked to re-authenticate
-
----
-
-## 9. File References
-
-- `components/signup-section.tsx` — Signup form and logic
-- `components/auth-dialog.tsx` — Auth dialog for signup/login/OTP
-- `components/onboarding/onboarding-container.tsx` — Main onboarding logic
-- `components/onboarding/stages/seed-stage.tsx` — Mobile verification
-- `app/onboarding/page.tsx` — Onboarding page and user/profile loading
-- `lib/types/onboarding.ts` — Onboarding data types
-- `hooks/use-profile.ts` — Profile and onboarding completion logic
-- `app/api/referrals/signup/route.ts` — Referral API
-- `components/auth-loading-screen.tsx` — Post-auth loading and redirect
-
----
-
-## 10. Data Model: OnboardingData (from `lib/types/onboarding.ts`)
-
+### 5.1  Table `whatsapp_outbox`
 ```
-interface OnboardingData {
-  phone: string | null
-  mobile_verified: boolean
-  email?: string
-  email_verified: boolean
-  gender: "Male" | "Female" | "Other" | null
-  birthdate: string | null
-  height_ft: number | null
-  height_in: number | null
-  city_id: number | null
-  state_id: number | null
-  country_id: number | null
-  education: string | null
-  profession: string | null
-  annual_income: string | null
-  marital_status: string | null
-  diet: "Vegetarian" | "Vegan" | "Eggetarian" | "Non-Vegetarian" | null
-  temple_visit_freq: "Daily" | "Weekly" | "Monthly" | "Rarely" | "Never" | null
-  vanaprastha_interest: "yes" | "no" | "open" | null
-  artha_vs_moksha: "Artha-focused" | "Moksha-focused" | "Balance" | null
-  spiritual_org: string[]
-  daily_practices: string[]
-  user_photos: string[]
-  ideal_partner_notes: string | null
-  about_me: string | null
-  favorite_spiritual_quote: string | null
-}
+id           bigserial primary key
+user_id      uuid
+phone        text
+template_name text
+payload      jsonb
+send_after   timestamptz
+sent_at      timestamptz
+error        text
 ```
 
+### 5.2  Edge Function `send-whatsapp`
+* Runs every minute (Supabase Schedules `* * * * *`).
+* Picks rows where `sent_at IS NULL AND send_after <= now()`.
+* Calls WATI `/api/v2/sendTemplateMessage`.
+* Updates `sent_at` or `error`.
+* First row is inserted immediately after **signup OTP verification** to send the "onboarding" welcome message 30 minutes later.
+
 ---
 
-## 11. Summary
+## 6  File Reference
+* **Frontend**
+  * `components/auth-dialog.tsx` – all signup / login UIs.
+  * `components/auth-loading-screen.tsx` – post-auth splash, handles mobile-login.
+  * `hooks/use-auth.ts` – single source of truth for user & profile state.
+  * `components/onboarding/**/*` – wizard.
+* **API Routes**
+  * `/api/otp/send` – generate & send OTP (WhatsApp).
+  * `/api/otp/verify` – verify OTP, create Supabase session or return fallback info.
+  * `/api/auth/mobile-session` – create one-time mobile session token for cookieless flows.
+  * `/api/users/profile` – service-role profile fetch (mobile-login).
+* **Edge Functions**
+  * `supabase/functions/send-whatsapp` – WhatsApp outbox cron.
 
-This document captures every detail of the onboarding, signup, and authentication system as currently implemented. For any changes or updates, explicit permission from the project owner is required. 
+---
+
+## 7  Gotchas & Edge cases
+* Browsers that block 3rd-party cookies inside WebViews will fall back to the mobile-login path – always test both!
+* Duplicate phone numbers (legacy imports) – upsert will retry without the phone field.
+* WATI rejects numbers with `+` – they must be sent as `91xxxxxxxxxx`.
+
+---
+
+**Last updated:** 13 Jul 2025 – after WhatsApp OTP session overhaul. 
