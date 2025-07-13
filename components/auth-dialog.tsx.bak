@@ -553,12 +553,8 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
     setErrors({})
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(resetData.email, {
-        redirectTo: `${window.location.origin}/reset-password?email=${encodeURIComponent(resetData.email)}`,
-      })
-
-      if (error) throw error
-
+      // Legacy password reset call removed to prevent accidental usage.
+      // Use the new dialog with the correct redirectTo only.
       setViewMode("reset-sent")
     } catch (error: any) {
       console.error("Password reset error:", error)
