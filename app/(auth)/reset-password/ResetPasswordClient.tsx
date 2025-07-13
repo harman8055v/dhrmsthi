@@ -10,55 +10,65 @@ import { Loader2, CheckCircle, AlertTriangle } from "lucide-react"
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-
-  const [status, setStatus] = useState<'verifying' | 'verified' | 'done' | 'error'>('verifying')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [status, setStatus] = useState<'verifying'|'verified'|'done'|'error'>('verifying')
+  const [errorMsg, setErrorMsg] = useState<string|null>(null)
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    const doVerify = async () => {
+    const verifyLink = async () => {
+      console.log("🔄 verifying reset link…")
+
+      // 1) If already signed in, go straight to form
       const { data: sessData } = await supabase.auth.getSession()
       if (sessData.session) {
+        console.log("✅ existing session")
         setStatus('verified')
         return
       }
-      const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true })
-      if (error || !data.session) {
-        console.error('getSessionFromUrl error:', error)
-        // Listen for any session that may come in shortly (hash flow setSession side-effect)
-      } else {
-        setStatus('verified')
-        return
-      }
-      // Attach listener for late session
-      const { data: listener } = supabase.auth.onAuthStateChange((evt, session) => {
-        if (session) {
+
+      // 2) Try the PKCE / hash flow
+      const { data: urlData, error: urlError } = await supabase.auth.getSessionFromUrl({ storeSession: true })
+      if (urlError || !urlData.session) {
+        console.log("⚠️ getSessionFromUrl didn’t yield a session:", urlError)
+
+        // 3) Fallback: query-string `?code=...` flow
+        const code = new URLSearchParams(window.location.search).get('code')
+        if (code) {
+          console.log("🔄 exchanging code for session…")
+          const { data: exData, error: exError } = await supabase.auth.exchangeCodeForSession(code)
+          if (exError || !exData.session) {
+            console.error("❌ exchangeCodeForSession error:", exError)
+            setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
+            setStatus('error')
+            return
+          }
+          console.log("✅ code exchange success")
           setStatus('verified')
+          return
         }
-      })
-      // Timeout after 5 s if still nothing
-      const t = setTimeout(() => {
-        setErrorMsg('This reset link is invalid or has expired. Please request a new one.')
+
+        // 4) No session, no code → error
+        setErrorMsg('Invalid or expired reset link.')
         setStatus('error')
-      }, 5000)
-      return () => {
-        listener.subscription.unsubscribe()
-        clearTimeout(t)
+      } else {
+        console.log("✅ getSessionFromUrl success")
+        setStatus('verified')
       }
     }
-    doVerify()
+
+    verifyLink()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (password !== confirm) {
-      setErrorMsg('Passwords do not match')
+      setErrorMsg("Passwords do not match")
       return
     }
     if (password.length < 8) {
-      setErrorMsg('Password must be at least 8 characters long')
+      setErrorMsg("Password must be at least 8 characters long")
       return
     }
 
@@ -68,7 +78,7 @@ export default function ResetPasswordClient() {
     setUpdating(false)
 
     if (error) {
-      console.error('updateUser error:', error)
+      console.error("updateUser error:", error)
       setErrorMsg(error.message)
     } else {
       setStatus('done')
@@ -77,6 +87,7 @@ export default function ResetPasswordClient() {
     }
   }
 
+  // ── Render helpers ───────────────────────────────────────────────────────────
   const renderVerifying = (
     <Card className="w-full max-w-md">
       <CardContent className="flex flex-col items-center gap-4 py-10">
@@ -122,13 +133,12 @@ export default function ResetPasswordClient() {
             disabled={updating}
           />
           <Button type="submit" disabled={updating} className="w-full">
-            {updating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />Updating…
-              </>
-            ) : (
-              'Update password'
-            )}
+            {updating
+              ? <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Updating…
+                </>
+              : 'Update password'}
           </Button>
         </form>
       </CardContent>
@@ -150,9 +160,9 @@ export default function ResetPasswordClient() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted p-4">
       {status === 'verifying' && renderVerifying}
-      {status === 'error' && renderError}
-      {status === 'verified' && renderForm}
-      {status === 'done' && renderDone}
+      {status === 'error'     && renderError}
+      {status === 'verified'  && renderForm}
+      {status === 'done'      && renderDone}
     </div>
   )
 }
