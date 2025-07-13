@@ -18,24 +18,10 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    // 1️⃣ Log the raw URL
-    console.log('🔍 Reset-password URL:', window.location.href)
-
-    // 2️⃣ Grab the code param
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    console.log('🔑 code param:', code)
-
-    if (!code) {
-      setErrorMsg('Invalid or missing reset code')
-      setStatus('error')
-      return
-    }
-
-    // 3️⃣ Try the exchange
-    supabase.auth.exchangeCodeForSession(code)
-      .then(({ data, error }) => {
-        console.log('⚙️ exchangeCodeForSession →', { data, error })
+    // Handle the password-reset redirect by extracting session info from the URL
+    (supabase.auth as any)
+      .getSessionFromUrl({ storeSession: true })
+      .then(({ data, error }: any) => {
         if (error || !data.session) {
           setErrorMsg(error?.message ?? 'Invalid or expired reset link')
           setStatus('error')
