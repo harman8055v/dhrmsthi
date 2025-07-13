@@ -17,7 +17,6 @@ interface AuthDialogProps {
   isOpen: boolean
   onClose: () => void
   defaultMode: "signup" | "login"
-  prefillMobile?: string
 }
 
 interface FormData {
@@ -48,7 +47,7 @@ interface FormErrors {
 
 type ViewMode = "auth" | "forgot-password" | "reset-sent"
 
-export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile }: AuthDialogProps) {
+export default function AuthDialog({ isOpen, onClose, defaultMode }: AuthDialogProps) {
   const [signupData, setSignupData] = useState<FormData>({
     firstName: "",
     lastName: "",
@@ -69,27 +68,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
   const [activeTab, setActiveTab] = useState(defaultMode)
   const [viewMode, setViewMode] = useState<ViewMode>("auth")
   const router = useRouter()
-
-  // Add these new state variables after the existing state declarations
-  const [mobileAuthData, setMobileAuthData] = useState({
-    mobileNumber: "",
-    otp: "",
-    firstName: "",
-    lastName: "",
-  })
-
-  // Prefill mobile if provided (once on open)
-  useEffect(() => {
-    if (prefillMobile) {
-      setMobileAuthData((prev) => ({ ...prev, mobileNumber: prefillMobile }))
-      setAuthMethod("mobile")
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillMobile])
-  const [mobileAuthStep, setMobileAuthStep] = useState<"phone" | "otp">("phone")
-  const [authMethod, setAuthMethod] = useState<"email" | "mobile">("email")
-  const [otpSent, setOtpSent] = useState(false)
-  const [resendTimer, setResendTimer] = useState(0)
 
   const validateMobileNumber = (mobile: string): boolean => {
     return isValidPhoneE164(mobile)
@@ -196,322 +174,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
     }
   }
 
-  const handleMobileAuthChange = (field: keyof typeof mobileAuthData, value: string) => {
-    let processedValue = value
-
-    if (field === "mobileNumber") {
-      processedValue = formatMobileNumber(value)
-    }
-
-    setMobileAuthData((prev) => ({ ...prev, [field]: processedValue }))
-    if (errors[field as keyof FormErrors]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }))
-    }
-  }
-
-  const validateMobileAuthForm = (step: "phone" | "otp"): boolean => {
-    const newErrors: FormErrors = {}
-
-    if (step === "phone") {
-      if (activeTab === "signup") {
-        if (!mobileAuthData.firstName.trim()) {
-          newErrors.firstName = "First name is required"
-        }
-        if (!mobileAuthData.lastName.trim()) {
-          newErrors.lastName = "Last name is required"
-        }
-      }
-
-      if (!mobileAuthData.mobileNumber.trim()) {
-        newErrors.mobileNumber = "Mobile number is required"
-      } else if (!validateMobileNumber(mobileAuthData.mobileNumber)) {
-        newErrors.mobileNumber = "Please enter a valid mobile number"
-      }
-    } else if (step === "otp") {
-      if (!mobileAuthData.otp.trim()) {
-        newErrors.general = "Please enter the OTP"
-      } else if (mobileAuthData.otp.length !== 6) {
-        newErrors.general = "OTP must be 6 digits"
-      }
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validateMobileAuthForm("phone")) return
-
-    setIsLoading(true)
-    setErrors({})
-
-    const phoneE164 = formatPhoneE164(mobileAuthData.mobileNumber)
-
-    try {
-      // Call new backend API to send OTP via WhatsApp
-      const res = await fetch('/api/otp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: phoneE164, 
-          purpose: activeTab === 'signup' ? 'signup' : 'login'
-        }),
-      })
-      
-      const data = await res.json()
-      
-      if (!res.ok) {
-        // Handle specific error codes
-        const errorMessage = (() => {
-          switch(data.code) {
-            case 'PHONE_NOT_ON_WHATSAPP':
-              return '📵 This phone number is not registered on WhatsApp. Please ensure WhatsApp is installed and active.';
-            case 'WATI_CONNECTION_ERROR':
-              return '🔌 Unable to connect to WhatsApp service. Please try again in a few moments.';
-            case 'MAX_RETRIES_EXCEEDED':
-              return '🔄 Failed to send OTP after multiple attempts. Please try again later.';
-            case 'MISSING_FIELDS':
-              return '⚠️ Please enter your phone number.';
-            case 'INTERNAL_ERROR':
-              return '❌ Something went wrong. Please try again.';
-            default:
-              return data.error || '❌ Failed to send OTP. Please try again.';
-          }
-        })();
-        
-        throw new Error(errorMessage);
-      }
-
-      setOtpSent(true)
-      setMobileAuthStep("otp")
-      setResendTimer(60)
-
-      // Start countdown timer
-      const timer = setInterval(() => {
-        setResendTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    } catch (error: any) {
-      console.error("Send OTP error:", error)
-      setErrors({ general: error.message })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validateMobileAuthForm("otp")) return
-
-    setIsLoading(true)
-    setErrors({})
-
-    const phoneE164Verify = formatPhoneE164(mobileAuthData.mobileNumber)
-
-    try {
-      // Call new backend API to verify OTP
-      const res = await fetch('/api/otp/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: phoneE164Verify, 
-          otp: mobileAuthData.otp,
-          purpose: activeTab === 'signup' ? 'signup' : 'login'
-        }),
-      })
-      
-      const data = await res.json()
-      
-      if (!res.ok) {
-        // Handle specific error codes with user-friendly messages
-        const errorMessage = (() => {
-          switch(data.code) {
-            case 'OTP_EXPIRED':
-              return '⏰ This OTP has expired. Please request a new one.';
-            case 'TOO_MANY_ATTEMPTS':
-              return '🚫 Too many failed attempts. Please wait 30 minutes before trying again.';
-            case 'INVALID_OTP':
-              return '❌ Invalid OTP. Please check the 6-digit code sent to your WhatsApp.';
-            case 'NO_OTP_FOUND':
-              return '📱 No valid OTP found. Please request a new OTP.';
-            case 'MISSING_FIELDS':
-              return '⚠️ Please enter both your phone number and OTP.';
-            default:
-              return data.error || '❌ Verification failed. Please try again.';
-          }
-        })();
-        
-        throw new Error(errorMessage);
-      }
-
-      // Check if this is an existing user (login) or new user (signup)
-      if (data.isExistingUser && activeTab === "login") {
-        // Mobile login flow - user exists
-        
-        // Check if session data was returned from OTP verify
-        if (data.session?.access_token && data.session?.refresh_token) {
-          try {
-            // Set the session using the tokens from the server
-            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token
-            });
-            
-            if (sessionError) {
-              console.error('Failed to set session:', sessionError);
-              throw new Error('Failed to establish session');
-            }
-            
-            // Store profile temporarily for immediate access
-            if (data.profile && typeof window !== 'undefined') {
-              localStorage.setItem('tempUserProfile', JSON.stringify(data.profile));
-            }
-            
-            console.log('Session set successfully, redirecting...');
-            
-            // Close dialog and redirect directly
-            onClose();
-            router.push(data.redirectUrl || '/dashboard');
-            return;
-          } catch (error) {
-            console.error('Session creation error:', error);
-            throw new Error('Failed to sign in. Please try again.');
-          }
-        } else {
-          throw new Error('No session returned from server. Please try again.');
-        }
-      } else if (!data.isExistingUser && activeTab === "signup") {
-        // Mobile signup flow - continue with creating auth user
-        // Generate a temporary password for phone-only signup
-        const tempPassword = `Phone${phoneE164Verify}${Date.now()}`
-        const tempEmail = `${phoneE164Verify.replace(/[^0-9]/g, '')}@phone.dharmasaathi.com`
-        
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: tempEmail,
-          password: tempPassword,
-          options: {
-            data: {
-              first_name: mobileAuthData.firstName,
-              last_name: mobileAuthData.lastName,
-              full_name: `${mobileAuthData.firstName} ${mobileAuthData.lastName}`,
-              phone: phoneE164Verify,
-            },
-          },
-        })
-
-        if (authError) throw authError
-
-        if (authData.user) {
-          // Create user profile
-          const profileData = {
-            id: authData.user.id,
-            email: tempEmail,
-            first_name: mobileAuthData.firstName,
-            last_name: mobileAuthData.lastName,
-            full_name: `${mobileAuthData.firstName} ${mobileAuthData.lastName}`,
-            phone: phoneE164Verify,
-            email_verified: false,
-            mobile_verified: true,
-            verification_status: "pending",
-            is_onboarded: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-
-          await supabase.from("users").upsert(profileData)
-
-          // 📲 Enqueue onboarding WhatsApp message (30-min delay)
-          try {
-            fetch('/api/whatsapp/onboarding', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: authData.user.id,
-                phone: phoneE164Verify,
-                firstName: mobileAuthData.firstName,
-              }),
-            }).catch((err) => console.error('WhatsApp enqueue error:', err))
-          } catch (err) {
-            console.error('Failed to enqueue WhatsApp message', err)
-          }
-          
-          // Close dialog and redirect
-          onClose()
-          router.push(`/onboarding`)
-        }
-      } else if (data.isExistingUser && activeTab === "signup") {
-        // User already exists, they should login instead
-        throw new Error("📱 An account with this phone number already exists. Please sign in instead.")
-      } else if (!data.isExistingUser && activeTab === "login") {
-        // No account found
-        throw new Error("🔍 No account found with this phone number. Please sign up first.")
-      }
-    } catch (error: any) {
-      console.error("OTP verification error:", error)
-      setErrors({ general: error.message })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleResendOtp = async () => {
-    if (resendTimer > 0) return
-
-    setIsLoading(true)
-    try {
-      const phoneE164Resend = formatPhoneE164(mobileAuthData.mobileNumber)
-
-      // Call new backend API to send OTP via WhatsApp
-      const res = await fetch('/api/otp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: phoneE164Resend, 
-          purpose: activeTab === 'signup' ? 'signup' : 'login'
-        }),
-      })
-      
-      const data = await res.json()
-      
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to resend OTP')
-      }
-
-      setResendTimer(60)
-      const timer = setInterval(() => {
-        setResendTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    } catch (error: any) {
-      console.error("Resend OTP error:", error)
-      setErrors({ general: "Failed to resend OTP. Please try again." })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const resetMobileAuth = () => {
-    setMobileAuthData({
-      mobileNumber: "",
-      otp: "",
-      firstName: "",
-      lastName: "",
-    })
-    setMobileAuthStep("phone")
-    setOtpSent(false)
-    setResendTimer(0)
-  }
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -653,11 +315,9 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
     setSignupData({ firstName: "", lastName: "", email: "", mobileNumber: "", password: "" })
     setLoginData({ email: "", password: "" })
     setResetData({ email: "" })
-    resetMobileAuth() // Add this line
     setErrors({})
     setShowPassword(false)
     setViewMode("auth")
-    setAuthMethod("email") // Add this line
   }
 
   const handleClose = () => {
@@ -818,7 +478,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           value={activeTab}
           onValueChange={(value: string) => {
             setActiveTab(value as "signup" | "login")
-            resetMobileAuth()
             setErrors({})
           }}
           className="w-full"
@@ -949,38 +608,8 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
           </TabsContent>
 
           <TabsContent value="login">
-            {/* Auth Method Selection */}
-            <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod("email")
-                  resetMobileAuth()
-                  setErrors({})
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  authMethod === "email" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                📧 Email
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod("mobile")
-                  setErrors({})
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  authMethod === "mobile" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                📱 Mobile
-              </button>
-            </div>
-
-            {authMethod === "email" ? (
-              // Keep existing email login form
-              <form onSubmit={handleLogin} className="space-y-4">
+            {/* Email login */}
+            <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <Label htmlFor="login-email" className="text-gray-700 font-medium">
                     Email Address *
@@ -1047,121 +676,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode, prefillMobile
                   </button>
                 </div>
               </form>
-            ) : (
-              // Mobile login form (login only, no signup)
-              <div className="space-y-4">
-                {mobileAuthStep === "phone" ? (
-                  <form onSubmit={handleSendOtp} className="space-y-4">
-                    <div>
-                      <Label className="text-gray-700 font-medium">Mobile Number *</Label>
-                      <div className="mt-1">
-                        <PhoneInput
-                          value={mobileAuthData.mobileNumber}
-                          onChange={(val) => handleMobileAuthChange("mobileNumber", val)}
-                          disabled={isLoading}
-                          error={!!errors.mobileNumber}
-                        />
-                      </div>
-                      {errors.mobileNumber && <p className="mt-1 text-xs text-red-600">{errors.mobileNumber}</p>}
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Sending OTP...
-                        </>
-                      ) : (
-                        "Send OTP via WhatsApp"
-                      )}
-                    </Button>
-
-                    <p className="text-xs text-gray-500 text-center mt-3">
-                      Mobile login is only available for existing users. New users must sign up with email first.
-                    </p>
-                  </form>
-                ) : (
-                  // OTP verification form
-                  <div className="space-y-4">
-                    <div className="text-center mb-6">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Phone className="w-6 h-6 text-green-600" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Verify Your Mobile</h3>
-                      <p className="text-gray-600 text-sm">
-                        We've sent a 6-digit code via WhatsApp to:
-                        <br />
-                        <span className="font-semibold text-gray-900">{mobileAuthData.mobileNumber}</span>
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                      <div>
-                        <Label htmlFor="mobile-login-otp" className="text-gray-700 font-medium">
-                          Enter OTP *
-                        </Label>
-                        <Input
-                          id="mobile-login-otp"
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={6}
-                          value={mobileAuthData.otp}
-                          onChange={(e) => handleMobileAuthChange("otp", e.target.value.replace(/\D/g, ""))}
-                          className={`mt-1 text-center text-lg tracking-widest ${errors.general ? "border-red-500" : ""}`}
-                          placeholder="000000"
-                          disabled={isLoading}
-                          autoFocus
-                        />
-                        {errors.general && <p className="mt-1 text-xs text-red-600">{errors.general}</p>}
-                      </div>
-
-                      <Button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Verifying...
-                          </>
-                        ) : (
-                          "Verify & Sign In"
-                        )}
-                      </Button>
-                    </form>
-
-                    <div className="text-center space-y-2">
-                      <button
-                        type="button"
-                        onClick={handleResendOtp}
-                        disabled={resendTimer > 0 || isLoading}
-                        className="text-sm text-orange-600 hover:text-orange-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : "Resend OTP via WhatsApp"}
-                      </button>
-                      <br />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileAuthStep("phone")
-                          setOtpSent(false)
-                          setErrors({})
-                        }}
-                        className="text-sm text-gray-600 hover:text-gray-800 font-medium"
-                      >
-                        Change mobile number
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -26,7 +26,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const { user, profile, loading } = useAuthContext()
   const router = useRouter()
 
-  // Redirect to /login only if we have neither Supabase user nor profile (covers mobile login)
+  // Redirect to /login only if we have neither Supabase user nor profile
   useEffect(() => {
     if (!loading && !user && !profile) {
       router.replace("/login")

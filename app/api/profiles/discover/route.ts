@@ -9,24 +9,7 @@ export async function GET(request: NextRequest) {
 
     let userId: string | null = null;
 
-    // Check for mobile login user via query parameter
-    const searchParams = request.nextUrl.searchParams;
-    const mobileUserId = searchParams.get('mobileUserId');
-    
-    if (mobileUserId) {
-      // Mobile login user - verify they exist
-      const { data: mobileUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("id", mobileUserId)
-        .single();
-      
-      if (mobileUser) {
-        userId = mobileUserId;
-      }
-    } else {
-      // Regular auth flow
-      const authHeader = request.headers.get("authorization")
+    const authHeader = request.headers.get("authorization")
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
@@ -43,8 +26,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
       
-      userId = user.id;
-    }
+    userId = user.id;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

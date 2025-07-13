@@ -154,68 +154,6 @@ export async function POST(req: NextRequest) {
         })
         .eq('id', existingUser.id);
         
-      // For login purpose, create a simple and reliable session
-      if (purpose === 'login' && existingUser.email) {
-        try {
-          // Generate a secure temporary password
-          const tempPassword = `OTP_${crypto.randomUUID()}_${Date.now()}`;
-
-          // Update user password
-          const { error: pwdErr } = await supabase.auth.admin.updateUserById(existingUser.id, {
-            password: tempPassword,
-            email_confirm: true,
-            phone_confirm: true
-          });
-          
-          if (pwdErr) {
-            console.error('Failed to update password:', pwdErr);
-            throw pwdErr;
-          }
-
-          // Sign in with the temporary password
-          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-            email: existingUser.email,
-            password: tempPassword,
-          });
-          
-          if (signInErr) {
-            console.error('Failed to sign in with temp password:', signInErr);
-            throw signInErr;
-          }
-
-          if (signInData.session) {
-            console.log('Session created successfully');
-            
-            // Get full user profile to include in response
-            const { data: fullProfile } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', existingUser.id)
-              .single();
-            
-            return NextResponse.json({
-              success: true,
-              message: 'OTP verified successfully',
-              isExistingUser: true,
-              userId: existingUser.id,
-              isOnboarded: existingUser.is_onboarded || false,
-              session: {
-                access_token: signInData.session.access_token,
-                refresh_token: signInData.session.refresh_token,
-              },
-              profile: fullProfile || existingUser,
-              redirectUrl: existingUser.is_onboarded ? '/dashboard' : '/onboarding'
-            });
-          }
-        } catch (sessionError: any) {
-          console.error('Session creation failed:', sessionError);
-          return NextResponse.json({
-            error: 'Failed to create session. Please try again.',
-            code: 'SESSION_FAILED',
-            details: sessionError.message
-          }, { status: 500 });
-        }
-      }
     }
 
     // Removed WhatsApp outbox insertion here to avoid duplicates.

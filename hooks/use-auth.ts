@@ -56,7 +56,7 @@ export function useAuth() {
           
           // Fetch fresh profile
           try {
-            const profile = await userService.getCurrentProfile(session.user.id)
+            const profile = await userService.getCurrentProfile()
             setAuthState({
               user: session.user,
               profile,
@@ -100,7 +100,7 @@ export function useAuth() {
         
         if (session?.user) {
           try {
-            const profile = await userService.getCurrentProfile(session.user.id)
+            const profile = await userService.getCurrentProfile()
             setAuthState({
               user: session.user,
               profile,
@@ -148,7 +148,7 @@ export function useAuth() {
     if (!authState.user) return
     
     try {
-      const profile = await userService.getCurrentProfile(authState.user.id)
+      const profile = await userService.getCurrentProfile()
       setAuthState(prev => ({
         ...prev,
         profile,
@@ -169,7 +169,6 @@ export function useAuth() {
     loading: authState.loading,
     error: authState.error,
     isAuthenticated: !!authState.user,
-    isMobileLogin: false, // Always false now - no special mobile handling
     isVerified: authState.profile?.verification_status === 'verified',
     isPremium: authState.profile?.account_status === 'premium' || authState.profile?.account_status === 'elite',
     refreshProfile,
