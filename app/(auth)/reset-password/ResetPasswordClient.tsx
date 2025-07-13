@@ -24,38 +24,56 @@ export default function ResetPasswordClient() {
 
   useEffect(() => {
     const verify = async () => {
-      // 1️⃣ Check if Supabase has already established a session (new PKCE flow does this automatically)
+      // 1️⃣ Handle PKCE flow: check for access_token and refresh_token in the URL hash
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        if (hash) {
+          const params = new URLSearchParams(hash.replace(/^#/, ''));
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (error) {
+              setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
+              setStatus("error");
+            } else {
+              setStatus("verified");
+            }
+            return;
+          }
+        }
+      }
+
+      // 2️⃣ Check for existing Supabase session (for other flows)
       const {
         data: { session },
         error: sessionError,
-      } = await supabase.auth.getSession()
+      } = await supabase.auth.getSession();
 
       if (session && !sessionError) {
-        // Session already valid – proceed directly to password form
-        setStatus("verified")
-        return
+        setStatus("verified");
+        return;
       }
 
-      // 2️⃣ Fallback: legacy flow where we still need to exchange the `code` param for a session
+      // 3️⃣ Fallback: legacy flow where we still need to exchange the `code` param for a session
       if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
-          console.error("exchangeCodeForSession error", error)
-          setErrorMsg("This reset link is invalid or has expired. Please request a new one.")
-          setStatus("error")
+          console.error("exchangeCodeForSession error", error);
+          setErrorMsg("This reset link is invalid or has expired. Please request a new one.");
+          setStatus("error");
         } else {
-          setStatus("verified")
+          setStatus("verified");
         }
       } else {
-        // No code and no existing session – invalid link
-        setErrorMsg("Invalid or expired reset link.")
-        setStatus("error")
+        setErrorMsg("Invalid or expired reset link.");
+        setStatus("error");
       }
-    }
+    };
 
-    verify()
+    verify();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
