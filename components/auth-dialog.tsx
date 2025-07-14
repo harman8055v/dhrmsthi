@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,16 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
   const [resetSent, setResetSent] = useState(false);
   const [resetJustSent, setResetJustSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  // Capture referral code from URL
+  const searchParams = useSearchParams();
+  const [referralCode, setReferralCode] = useState<string>("");
+
+  React.useEffect(() => {
+    const refParam = searchParams.get('ref');
+    if (refParam) {
+      setReferralCode(refParam);
+    }
+  }, [searchParams]);
 
   // Reset the sent state after a short delay for button feedback
   React.useEffect(() => {
@@ -82,6 +92,23 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
     setGeneralError(null);
     try {
       if (mode === "signup") {
+        // Persist signup data in localStorage so SeedStage can prefill mobile & other details
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(
+            'signupData',
+            JSON.stringify({
+              email: form.email,
+              first_name: form.firstName,
+              last_name: form.lastName,
+              full_name: `${form.firstName} ${form.lastName}`,
+              mobileNumber: form.mobile,
+              gender: null,
+              birthdate: null,
+              referral_code: referralCode || null,
+            })
+          );
+        }
+
         const { data, error } = await supabase.auth.signUp({
           email: form.email,
           password: form.password,
