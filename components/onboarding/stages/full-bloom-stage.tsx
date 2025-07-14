@@ -37,6 +37,7 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
   const [photoUrls, setPhotoUrls] = useState<string[]>(user_photos)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submissionSuccess, setSubmissionSuccess] = useState(false)
   const [cropModalOpen, setCropModalOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -265,7 +266,10 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       }
 
       // Pass the data directly to onNext, which will handle saving and moving to the next stage
-      onNext(dataToSave)
+      await onNext(dataToSave)
+      // Mark submission as successful for UI feedback
+      setSubmissionSuccess(true)
+      toast.success("Profile created!")
     } catch (error) {
       console.error("Error submitting form:", error)
       // You might want to set a local error state here if photo upload fails
@@ -436,10 +440,14 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
         <div className="flex gap-4">
           <button
             type="submit"
-            disabled={isLoading || uploading || photoUrls.length < 3}
-            className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground py-2 px-4 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={submissionSuccess || isLoading || uploading || photoUrls.length < 3}
+            className={`flex-1 py-2 px-4 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${
+              submissionSuccess ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+            }`}
           >
-            {isLoading || uploading ? (
+            {submissionSuccess ? (
+              "Profile Created!"
+            ) : isLoading || uploading ? (
               <span className="flex items-center justify-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {uploading ? "Uploading photos..." : "Processing..."}

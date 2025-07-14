@@ -142,6 +142,43 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
         phone: formattedNumber,
         mobile_verified: true,
       }
+
+      /* ────────────────────────────────
+       * Queue WhatsApp onboarding message 20 min later
+       * Inserts into public.whatsapp_outbox with:
+       *   - phone (without leading +)
+       *   - template_name = "onboarding"
+       *   - payload = { name: <first name from localStorage> }
+       *   - send_after = now + 20 minutes
+       * Fails silently so user flow is never blocked.
+       * ──────────────────────────────── */
+      try {
+        // Grab first name saved during signup (see signup-section.tsx)
+        let firstName: string | null = null
+        if (typeof window !== "undefined") {
+          const raw = localStorage.getItem("signupData")
+          if (raw) {
+            try {
+              const sd = JSON.parse(raw)
+              firstName = sd.first_name || sd.firstName || null
+            } catch (_) {}
+          }
+        }
+
+        const cleanPhone = formattedNumber.replace(/^\+/, "")
+        const sendAfter = new Date(Date.now() + 20 * 60 * 1000).toISOString() // +20 min
+
+        await supabase.from("whatsapp_outbox").insert({
+          phone: cleanPhone,
+          template_name: "initiate",
+          payload: { name: firstName },
+          send_after: sendAfter,
+        })
+      } catch (e) {
+        // Log but do not interrupt onboarding flow
+        console.error("Failed to enqueue WhatsApp message:", e)
+      }
+
       onChange(verificationData)
       onNext(verificationData)
     } catch (error) {
