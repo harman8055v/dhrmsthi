@@ -272,17 +272,6 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     }
   }
 
-  const handleSkip = () => {
-    const dataToSave: Partial<OnboardingData> = {
-      about_me: null,
-      ideal_partner_notes: null,
-      favorite_spiritual_quote: null,
-      user_photos: [],
-    }
-    onChange(dataToSave) // Update local form data
-    onNext(dataToSave) // Trigger save and next stage
-  }
-
   return (
     <div className="space-y-6">
       <div className="text-center mb-6">
@@ -354,7 +343,7 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
 
         {/* Photo Upload */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-foreground">Upload Photos (Max 6)</label>
+          <label className="block text-sm font-medium text-foreground">Upload Photos (Min 3, Max 6)</label>
           <div className="grid grid-cols-3 gap-2 mb-4">
             {photoUrls.map((url, index) => (
               <div key={`uploaded-${index}`} className="relative aspect-square bg-muted rounded-md overflow-hidden">
@@ -381,7 +370,10 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
             )}
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
-          <p className="text-xs text-gray-500 text-center">Add up to 6 photos. Max 10MB per image.</p>
+          <p className="text-xs text-gray-500 text-center">Add at least 3 photos to continue. Max 10MB per image.</p>
+          {photoUrls.length > 0 && photoUrls.length < 3 && (
+            <p className="text-red-500 text-sm text-center">Please upload at least 3 photos to complete your profile.</p>
+          )}
         </div>
         {/* Crop Modal */}
         <Dialog open={cropModalOpen} onOpenChange={setCropModalOpen}>
@@ -444,7 +436,7 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
         <div className="flex gap-4">
           <button
             type="submit"
-            disabled={isLoading || uploading}
+            disabled={isLoading || uploading || photoUrls.length < 3}
             className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground py-2 px-4 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading || uploading ? (
@@ -457,11 +449,12 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
             )}
           </button>
 
+          {/* Remove or disable Skip button */}
           <button
             type="button"
-            onClick={handleSkip}
-            disabled={isLoading || uploading}
-            className="px-6 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors"
+            disabled
+            className="px-6 py-2 text-gray-400 font-medium cursor-not-allowed bg-gray-100 rounded-md"
+            style={{ pointerEvents: 'none' }}
           >
             Skip
           </button>

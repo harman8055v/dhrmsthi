@@ -181,11 +181,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 </div>
               </div>
               {resetError && <p className="text-xs text-red-600 mt-1">{resetError}</p>}
-              {resetSent && <p className="text-xs text-green-600 mt-1">Check your inbox for a reset link.</p>}
               <Button
                 type="submit"
                 disabled={loading || resetJustSent}
-                className={`w-full bg-gradient-to-r from-[#8b0000] to-[#a30000] hover:from-[#a30000] hover:to-[#8b0000] text-white font-semibold py-3 transition-all duration-200 rounded-lg shadow-lg flex items-center justify-center gap-2 ${resetJustSent ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                className={`w-full font-semibold py-3 transition-all duration-200 rounded-lg shadow-lg flex items-center justify-center gap-2 ${resetJustSent ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gradient-to-r from-[#8b0000] to-[#a30000] hover:from-[#a30000] hover:to-[#8b0000] text-white'}`}
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -197,9 +196,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   "Send reset link"
                 )}
               </Button>
-              <button
+              <Button
                 type="button"
-                className="text-sm underline text-center w-full mt-2"
+                variant="outline"
+                className="w-full mt-2 flex items-center justify-center gap-2 text-sm text-gray-700 border-gray-300 hover:bg-gray-50 transition-colors"
                 onClick={() => {
                   setShowForgot(false);
                   setResetEmail("");
@@ -207,8 +207,13 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   setResetSent(false);
                 }}
               >
-                ← Back to login
-              </button>
+                <ArrowRight className="w-4 h-4 mr-1 rotate-180" /> Back to login
+              </Button>
+              {resetJustSent && (
+                <p className="text-sm text-gray-700 text-center mt-3">
+                  Please check your inbox (or spam folder) for the reset link.
+                </p>
+              )}
             </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
