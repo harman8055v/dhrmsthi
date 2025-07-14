@@ -23,9 +23,36 @@ export default function Hero() {
   }
 
   const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId)
+    // Detect mobile device
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const headerOffset = 96; // Increased offset for more space above the form
+    if (sectionId === "signup" && isMobile) {
+      const form = document.getElementById("signup-form");
+      if (form) {
+        // Find the container with the form (auth container)
+        const container = form.closest(".bg-white");
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          window.scrollTo({
+            top: rect.top + scrollTop - headerOffset,
+            behavior: "smooth"
+          });
+          return;
+        }
+        // fallback to form
+        const rect = form.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        window.scrollTo({
+          top: rect.top + scrollTop - headerOffset,
+          behavior: "smooth"
+        });
+        return;
+      }
+    }
+    const element = document.getElementById(sectionId);
     if (element) {
-      element.scrollIntoView({ behavior: "smooth" })
+      element.scrollIntoView({ behavior: "smooth" });
     }
   }
 
