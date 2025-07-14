@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Heart, Sparkles, Shield, ArrowRight, Compass } from "lucide-react"
 import Image from "next/image"
 import AuthDialog from "./auth-dialog"
+import { Suspense } from "react"
 
 export default function Hero() {
   const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -202,8 +203,14 @@ export default function Hero() {
         </div>
       </section>
 
-      {/* Auth Dialog */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode={authMode} />
+      {/* Auth Dialog (wrapped in Suspense to avoid CSR bailout error) */}
+      <Suspense fallback={null}>
+        <AuthDialog
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          defaultMode={authMode}
+        />
+      </Suspense>
     </>
   )
 }

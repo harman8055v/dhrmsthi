@@ -165,11 +165,10 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
           }
         }
 
-        const cleanPhone = formattedNumber.replace(/^\+/, "")
         const sendAfter = new Date(Date.now() + 20 * 60 * 1000).toISOString() // +20 min
 
         await supabase.from("whatsapp_outbox").insert({
-          phone: cleanPhone,
+          phone: formattedNumber,
           template_name: "initiate",
           payload: { name: firstName },
           send_after: sendAfter,

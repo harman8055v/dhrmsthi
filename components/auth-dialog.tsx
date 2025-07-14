@@ -15,6 +15,7 @@ interface AuthDialogProps {
   isOpen: boolean;
   onClose: () => void;
   defaultMode?: "signup" | "login";
+  prefillMobile?: string;
 }
 
 interface FormState {

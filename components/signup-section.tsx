@@ -10,6 +10,7 @@ import { Heart, Sparkles, ArrowRight, Mail, User, Lock, Eye, EyeOff, Loader2 } f
 import { supabase } from "@/lib/supabase"
 import { useRouter, useSearchParams } from "next/navigation"
 import AuthDialog from "./auth-dialog"
+import { Suspense } from "react"
 import FullScreenLoading from "./full-screen-loading"
 import { formatPhoneE164, isValidPhoneE164 } from "@/lib/utils"
 import PhoneInput from "@/components/ui/phone-input"
@@ -406,8 +407,15 @@ export default function SignupSection() {
         </div>
       </section>
 
-      {/* Auth Dialog for Login */}
-      <AuthDialog isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} defaultMode="login" prefillMobile={prefillMobile} />
+      {/* Auth Dialog for Login (wrapped in Suspense) */}
+      <Suspense fallback={null}>
+        <AuthDialog
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          defaultMode="login"
+          prefillMobile={prefillMobile}
+        />
+      </Suspense>
     </>
   )
 }

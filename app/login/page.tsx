@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import AuthDialog from "@/components/auth-dialog"
@@ -71,8 +71,14 @@ export default function LoginPage() {
       {/* Footer */}
       <Footer />
 
-      {/* Auth Dialog */}
-      <AuthDialog isOpen={dialogOpen} onClose={() => setDialogOpen(false)} defaultMode="login" />
+      {/* Auth Dialog (wrapped in Suspense to avoid CSR bailout error) */}
+      <Suspense fallback={null}>
+        <AuthDialog
+          isOpen={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          defaultMode="login"
+        />
+      </Suspense>
     </main>
   )
 } 
