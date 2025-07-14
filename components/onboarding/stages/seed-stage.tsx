@@ -169,7 +169,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
 
         await supabase.from("whatsapp_outbox").insert({
           phone: formattedNumber,
-          template_name: "initiate",
+          template_name: "complete_profile",
           payload: { name: firstName },
           send_after: sendAfter,
         })
