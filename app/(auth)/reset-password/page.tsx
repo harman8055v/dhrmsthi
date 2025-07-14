@@ -1,12 +1,8 @@
-import { Suspense } from "react"
 import ResetPasswordClient from "./ResetPasswordClient"
 
-export const dynamic = "force-static"; // page can be statically generated, inner handles client-side
+// This page MUST be dynamic to handle auth state and URL parameters
+export const dynamic = "force-dynamic"
 
-export default function ResetPasswordPageWrapper() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <ResetPasswordClient />
-    </Suspense>
-  )
+export default function ResetPasswordPage() {
+  return <ResetPasswordClient />
 } 
