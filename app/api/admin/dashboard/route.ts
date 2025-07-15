@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       spiritual_org, daily_practices, diet, temple_visit_freq, artha_vs_moksha,
       vanaprastha_interest, favorite_spiritual_quote, education, profession, annual_income,
       marital_status, super_likes_count, swipe_count, message_highlights_count,
-      onboarding_completed, is_verified, account_status, preferred_gender, preferred_age_min,
+      is_onboarded, is_verified, account_status, preferred_gender, preferred_age_min,
       preferred_age_max, preferred_height_min, preferred_height_max, preferred_location,
       preferred_diet, preferred_profession, created_at, updated_at, daily_swipe_count,
       daily_superlike_count, last_swipe_date, is_banned, is_kyc_verified, flagged_reason,
