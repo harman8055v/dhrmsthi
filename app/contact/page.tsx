@@ -144,7 +144,7 @@ export default function ContactPage() {
                     </div>
                     <h3 className="text-lg font-semibold mb-2">Location</h3>
                     <p className="text-muted-foreground text-sm">
-                      39, Shiv Business Hub, Nikol, Ahmedabad 382350 Gujarat
+                      Dharma Next, Shiv Business Hub, Nikol, Ahmedabad, 382350
                     </p>
                   </CardContent>
                 </Card>
