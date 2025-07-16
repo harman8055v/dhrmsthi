@@ -143,40 +143,39 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
         mobile_verified: true,
       }
 
-      /* ────────────────────────────────
-       * Queue WhatsApp onboarding message 20 min later
-       * Inserts into public.whatsapp_outbox with:
-       *   - phone (without leading +)
-       *   - template_name = "onboarding"
-       *   - payload = { name: <first name from localStorage> }
-       *   - send_after = now + 20 minutes
-       * Fails silently so user flow is never blocked.
-       * ──────────────────────────────── */
+      // --- new code: immediately create / update the users row ---
       try {
-        // Grab first name saved during signup (see signup-section.tsx)
-        let firstName: string | null = null
-        if (typeof window !== "undefined") {
-          const raw = localStorage.getItem("signupData")
-          if (raw) {
-            try {
-              const sd = JSON.parse(raw)
-              firstName = sd.first_name || sd.firstName || null
-            } catch (_) {}
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        const targetId = authUser?.id || user?.id || null
+        if (targetId) {
+          const minimalProfile = {
+            id: targetId,
+            phone: formattedNumber,
+            mobile_verified: true,
+            is_onboarded: false,
+          }
+
+          let { error: upErr } = await supabase
+            .from('users')
+            .upsert(minimalProfile, { onConflict: 'id', ignoreDuplicates: false })
+            .single()
+
+          // Handle duplicate phone constraint by retrying without phone
+          if (upErr && upErr.code === '23505' && upErr.message?.includes('phone')) {
+            const { phone: _p, ...withoutPhone } = minimalProfile as any
+            ;({ error: upErr } = await supabase
+              .from('users')
+              .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false })
+              .single())
+          }
+          if (upErr) {
+            console.error('[SeedStage] minimal upsert failed:', upErr)
           }
         }
-
-        const sendAfter = new Date(Date.now() + 20 * 60 * 1000).toISOString() // +20 min
-
-        await supabase.from("whatsapp_outbox").insert({
-          phone: formattedNumber,
-          template_name: "complete_profile",
-          payload: { name: firstName },
-          send_after: sendAfter,
-        })
       } catch (e) {
-        // Log but do not interrupt onboarding flow
-        console.error("Failed to enqueue WhatsApp message:", e)
+        console.error('[SeedStage] error during minimal upsert:', e)
       }
+      // --- end new code ---
 
       onChange(verificationData)
       onNext(verificationData)

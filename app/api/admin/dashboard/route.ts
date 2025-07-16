@@ -218,13 +218,55 @@ export async function GET(request: NextRequest) {
       };
     }));
 
+    // -----------------------------------------------------------------------------
+    // Enrich users with city and state names for the admin dashboard
+    // -----------------------------------------------------------------------------
+    const cityIds = Array.from(new Set((transformedUsers || []).map((u: any) => u.city_id).filter(Boolean)));
+    const stateIds = Array.from(new Set((transformedUsers || []).map((u: any) => u.state_id).filter(Boolean)));
+
+    // Fetch cities in bulk
+    let cityMap: Record<number, string> = {};
+    if (cityIds.length > 0) {
+      const { data: citiesData, error: citiesError } = await supabase
+        .from("cities")
+        .select("id, name")
+        .in("id", cityIds);
+
+      if (citiesError) {
+        console.error("Failed to fetch cities:", citiesError);
+      } else {
+        cityMap = Object.fromEntries((citiesData || []).map((c: any) => [c.id, c.name]));
+      }
+    }
+
+    // Fetch states in bulk
+    let stateMap: Record<number, string> = {};
+    if (stateIds.length > 0) {
+      const { data: statesData, error: statesError } = await supabase
+        .from("states")
+        .select("id, name")
+        .in("id", stateIds);
+
+      if (statesError) {
+        console.error("Failed to fetch states:", statesError);
+      } else {
+        stateMap = Object.fromEntries((statesData || []).map((s: any) => [s.id, s.name]));
+      }
+    }
+
+    const enrichedUsers = transformedUsers.map((u: any) => ({
+      ...u,
+      city: u.city_id ? cityMap[u.city_id] || null : null,
+      state: u.state_id ? stateMap[u.state_id] || null : null,
+    }));
+
     if (error) {
       console.error("Database error:", error)
       return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
     }
 
     // Filter by profile completion if needed (client-side filtering for complex logic)
-    let filteredUsers = transformedUsers || []
+    let filteredUsers = enrichedUsers || []
     if (profileCompletionFilter !== "all") {
       filteredUsers = filteredUsers.filter((user) => {
         const completionScore = calculateProfileCompletion(user)

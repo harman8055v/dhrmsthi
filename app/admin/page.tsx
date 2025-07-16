@@ -128,6 +128,10 @@ interface UserType {
   referral_code?: string
   referral_count?: number
   premium_expires_at?: string
+  mobile_number?: string | null
+  kyc_status?: string | null
+  smoking?: string | null
+  drinking?: string | null
 }
 
 interface AdminStats {
@@ -2241,6 +2245,10 @@ export default function AdminDashboard() {
       {/* Image Zoom Modal */}
       <Dialog open={imageZoomModal.open} onOpenChange={closeImageZoom}>
         <DialogContent className="max-w-4xl max-h-[95vh] p-0">
+          <DialogHeader>
+            {/* Visually hidden title for accessibility */}
+            <DialogTitle className="sr-only">Image Zoom</DialogTitle>
+          </DialogHeader>
           <div className="relative">
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 z-10 bg-black bg-opacity-50 text-white p-4 flex items-center justify-between">
@@ -2609,4 +2617,9 @@ export default function AdminDashboard() {
       </Dialog>
     </div>
   )
+}
+
+// Fetch contact/support messages (hoisted inside component)
+async function fetchContactMessages(page: number = 1) {
+  /* duplicate implementation removed */
 }
