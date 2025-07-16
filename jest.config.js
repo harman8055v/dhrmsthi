@@ -14,4 +14,6 @@ module.exports = {
   },
   moduleDirectories: ['node_modules', '<rootDir>'],
   testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  collectCoverage: true,
+  collectCoverageFrom: ['<rootDir>/lib/**/*.{ts,tsx}', '<rootDir>/components/ui/button.tsx'],
 }; 
