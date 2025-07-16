@@ -162,7 +162,26 @@ export default function SignupSection() {
       if (authError) throw authError
 
       if (authData.user) {
-        // Optionally, create user profile in your users table here
+        // Create a minimal profile row immediately after account creation so that the same UUID is reused in the public `users` table
+        const { error: profileError } = await supabase
+          .from('users')
+          .upsert(
+            {
+              id: authData.user.id,
+              email: formData.email,
+              first_name: formData.firstName,
+              last_name: formData.lastName,
+              full_name: `${formData.firstName} ${formData.lastName}`,
+              phone: formData.mobileNumber,
+              is_onboarded: false,
+            },
+            { onConflict: 'id', ignoreDuplicates: true }
+          )
+          .single()
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError)
+        }
         setIsSuccess(true)
         router.push(`/auth-loading?userId=${authData.user.id}&isNew=true`)
       }

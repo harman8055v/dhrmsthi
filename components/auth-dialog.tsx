@@ -124,6 +124,26 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
         });
         if (error) throw error;
         if (data.user) {
+          // Create a minimal profile row immediately after account creation
+          const { error: profileError } = await supabase
+            .from('users')
+            .upsert(
+              {
+                id: data.user.id,
+                email: form.email,
+                first_name: form.firstName,
+                last_name: form.lastName,
+                full_name: `${form.firstName} ${form.lastName}`,
+                phone: form.mobile,
+                is_onboarded: false,
+              },
+              { onConflict: 'id', ignoreDuplicates: true }
+            )
+            .single()
+
+          if (profileError) {
+            console.error('Profile creation error:', profileError)
+          }
           onClose();
           router.push(`/auth-loading?userId=${data.user.id}&isNew=true`);
         }

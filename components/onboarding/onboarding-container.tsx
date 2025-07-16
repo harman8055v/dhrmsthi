@@ -323,41 +323,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       // Build a merged version of form data including latest stage inputs
       const mergedFormData = { ...formData, ...stageData }
 
-      // --- new code: persist incremental data after each stage ---
-      try {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (authUser) {
-          const partialUpdate = sanitizePayload({
-            id: authUser.id,
-            phone: mergedFormData.phone || authUser.phone,
-            email: (mergedFormData as any).email || authUser.email,
-            ...stageData,
-            is_onboarded: false,
-          })
-
-          if (Object.keys(partialUpdate).length > 1) { // ensure more than just id
-            let { error: upErr } = await supabase
-              .from('users')
-              .upsert(partialUpdate, { onConflict: 'id', ignoreDuplicates: false })
-              .single()
-
-            if (upErr && upErr.code === '23505' && upErr.message?.includes('phone')) {
-              const { phone: _p, ...withoutPhone } = partialUpdate as any
-              ;({ error: upErr } = await supabase
-                .from('users')
-                .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false })
-                .single())
-            }
-            if (upErr) {
-              console.error('[Onboard] stage upsert failed:', upErr)
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[Onboard] error during stage upsert:', e)
-      }
-      // --- end new code ---
-
       // Move to next stage or complete
       if (stage < 5) {
         setStage(stage + 1)
