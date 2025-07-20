@@ -686,52 +686,57 @@ export default function AdminDashboard() {
   }
 
   const getProfileCompletionScore = (user: UserType) => {
-    let score = 0
-    const totalFields = 16
-
-    const fields = [
-      user.first_name,
-      user.last_name,
-      user.email,
-      user.phone,
-      user.birthdate,
-      user.gender,
-      user.education,
-      user.profession,
-      user.about_me,
-      user.ideal_partner_notes,
-      user.height_ft,
-      user.height_in,
-      user.marital_status,
-      user.diet,
-      user.annual_income,
-      user.temple_visit_freq,
+    // List of simple (string/number/boolean) fields to count
+    const simpleFields: (keyof UserType)[] = [
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "birthdate",
+      "gender",
+      "education",
+      "profession",
+      "about_me",
+      "ideal_partner_notes",
+      "height_ft",
+      "height_in",
+      "marital_status",
+      "diet",
+      "annual_income",
+      "temple_visit_freq",
+      "spiritual_org",
+      "daily_practices",
     ]
 
-    fields.forEach((field) => {
-      if (field && field.toString().trim() !== "") score += 1
+    const arrayFields: (keyof UserType)[] = ["user_photos"]
+
+    const isValuePresent = (val: any): boolean => {
+      if (!val) return false
+      if (Array.isArray(val)) return val.length > 0
+      if (typeof val === "string") {
+        try {
+          const parsed = JSON.parse(val)
+          if (Array.isArray(parsed)) return parsed.length > 0
+        } catch {
+          /* not JSON */
+        }
+        return val.trim() !== ""
+      }
+      return true
+    }
+
+    let completed = 0
+
+    simpleFields.forEach((field) => {
+      if (isValuePresent(user[field])) completed++
     })
 
-    const validPhotos = getValidPhotos(user.user_photos)
-    if (validPhotos.length > 0) score += 1
-    
-    // Handle daily_practices which might be a string or array
-    let hasDailyPractices = false;
-    if (user.daily_practices) {
-      if (Array.isArray(user.daily_practices)) {
-        hasDailyPractices = user.daily_practices.length > 0;
-      } else if (typeof user.daily_practices === 'string') {
-        try {
-          const practices = JSON.parse(user.daily_practices);
-          hasDailyPractices = Array.isArray(practices) && practices.length > 0;
-        } catch {
-          hasDailyPractices = user.daily_practices && user.daily_practices.length > 0;
-        }
-      }
-    }
-    if (hasDailyPractices) score += 1
+    arrayFields.forEach((field) => {
+      if (isValuePresent(user[field])) completed++
+    })
 
-    return Math.round((score / totalFields) * 100)
+    const totalFields = simpleFields.length + arrayFields.length
+    return Math.min(100, Math.round((completed / totalFields) * 100))
   }
 
   const openImageZoom = (images: string[], startIndex: number, userName: string) => {

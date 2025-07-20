@@ -460,8 +460,10 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       {/* Main content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-4xl">
-          {/* Progress bar */}
-          <ProgressBar currentStage={stage} totalStages={5} stageName={stageNames[stage - 1]} />
+          {/* Progress bar – hidden on Seed stage */}
+          {stage !== 1 && (
+            <ProgressBar currentStage={stage} totalStages={5} stageName={stageNames[stage - 1]} />
+          )}
 
           {/* Error message */}
           {error && (

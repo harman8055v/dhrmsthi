@@ -59,10 +59,19 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     )
   }
 
-  // Fetch swipe stats and profiles on mount
+  // Fetch swipe stats and profiles on mount – but avoid triggering the
+  // loading spinner if the parent already supplied a non-empty profile list.
   useEffect(() => {
     console.log("SwipeStack useEffect running")
-    fetchData()
+
+    // If we already have profiles from the Dashboard query cache just fetch
+    // the swipe stats silently. Skip the extra network call + spinner.
+    if (initialProfiles && initialProfiles.length > 0) {
+      setLoading(false)
+      fetchSwipeStats().catch(console.error)
+    } else {
+      fetchData()
+    }
   }, [])
 
   const fetchData = async () => {
@@ -171,11 +180,22 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     setSwiping(true)
 
     try {
+      // Obtain current access token so the API can authenticate us
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch("/api/swipe", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        credentials: "include",
+        headers,
         body: JSON.stringify({
           swiped_user_id: profileId,
           action: direction === "left" ? "dislike" : direction === "right" ? "like" : "superlike",
@@ -188,7 +208,11 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         // Handle successful swipe
         const swipedProfile = profiles[currentIndex]
         setUndoStack((prev) => [...prev, { profile: swipedProfile, direction, index: currentIndex }])
-        setCurrentIndex((prev) => prev + 1)
+
+        // Allow the local animation inside SwipeCard to finish (~0.5s)
+        setTimeout(() => {
+          setCurrentIndex((prev) => prev + 1)
+        }, 550)
 
         // Update stats
         fetchSwipeStats()
@@ -289,36 +313,10 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   }
 
   return (
-    <div className="h-full flex flex-col items-center justify-center px-4 relative">
-      {/* Header */}
-      {!headerless && (
-        <div className="absolute top-4 left-4 right-4 z-10">
-          <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-lg border border-orange-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">Discover</h1>
-                <p className="text-sm text-gray-600">Find your spiritual life partner</p>
-              </div>
-              <div className="flex items-center gap-4">
-                {swipeStats && (
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-gray-900">
-                      {swipeStats.swipes_remaining} swipes left
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {swipeStats.super_likes_available} super likes
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div className="min-h-screen flex flex-col overflow-hidden items-center relative">
       {/* Swipe Cards Container - Optimized for mobile */}
-      <div className="flex-1 flex items-center justify-center w-full px-2 sm:px-4">
-        <div className="relative w-full max-w-sm aspect-[3/4] max-h-[calc(100vh-180px)] min-h-[400px]">
+      <div className="flex items-start justify-center w-full mt-6 mb-2">
+        <div className="relative w-full max-w-sm h-[65vh] min-h-[360px]">
           <AnimatePresence>
             {profiles.slice(currentIndex, currentIndex + 3).map((profile, index) => (
               <SwipeCard
@@ -336,42 +334,43 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       </div>
 
       {/* Redesigned Action Buttons */}
-      <div className="flex-shrink-0 pb-6 pt-6">
+      <div className="flex-shrink-0 pb-4 pt-2">
         <div className="flex items-center justify-center gap-6 sm:gap-8">
-          {/* Dislike Button */}
+          {/* Dislike Button - Redesigned */}
           <motion.button
             onClick={() => handleSwipe("left", currentProfile?.id)}
             disabled={swiping}
-            className="group relative w-14 h-14 sm:w-16 sm:h-16 bg-white border-2 border-red-200 rounded-full shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="group relative w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-red-400 via-red-500 to-pink-500 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.97 }}
           >
-            <div className="absolute inset-0 bg-gradient-to-b from-red-50 to-red-100 rounded-full group-hover:from-red-100 group-hover:to-red-200 transition-all duration-200" />
-            <X className="relative w-6 h-6 sm:w-7 sm:h-7 text-red-500 group-hover:text-red-600 transition-colors" />
+            <span className="absolute inset-0 rounded-full ring-2 ring-red-300 group-hover:ring-4 group-hover:ring-pink-400 transition-all duration-200 animate-pulse opacity-60" />
+            <X className="relative w-8 h-8 sm:w-10 sm:h-10 text-white drop-shadow-lg" />
           </motion.button>
 
-          {/* Super Like Button */}
+          {/* Super Like Button - Redesigned */}
           <motion.button
             onClick={() => handleSwipe("superlike", currentProfile?.id)}
             disabled={swiping || !swipeStats?.super_likes_available}
-            className="group relative w-16 h-16 sm:w-20 sm:h-20 bg-white border-2 border-orange-200 rounded-full shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="group relative w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-yellow-300 via-orange-400 to-pink-400 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
+            whileHover={{ scale: 1.18 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <div className="absolute inset-0 bg-gradient-to-b from-orange-50 to-orange-100 rounded-full group-hover:from-orange-100 group-hover:to-orange-200 transition-all duration-200" />
-            <Star className="relative w-7 h-7 sm:w-8 sm:h-8 text-orange-500 group-hover:text-orange-600 transition-colors" fill="currentColor" />
+            <span className="absolute inset-0 rounded-full ring-4 ring-yellow-200 group-hover:ring-8 group-hover:ring-pink-300 transition-all duration-200 animate-pulse opacity-70" />
+            <span className="absolute -top-3 left-1/2 -translate-x-1/2 w-10 h-10 bg-pink-200 rounded-full blur-xl opacity-40 animate-ping" />
+            <Star className="relative w-10 h-10 sm:w-12 sm:h-12 text-white drop-shadow-xl" fill="currentColor" />
           </motion.button>
 
-          {/* Like Button */}
+          {/* Like Button - Redesigned */}
           <motion.button
             onClick={() => handleSwipe("right", currentProfile?.id)}
             disabled={swiping}
-            className="group relative w-14 h-14 sm:w-16 sm:h-16 bg-white border-2 border-green-200 rounded-full shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="group relative w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-green-400 via-emerald-500 to-teal-400 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.97 }}
           >
-            <div className="absolute inset-0 bg-gradient-to-b from-green-50 to-green-100 rounded-full group-hover:from-green-100 group-hover:to-green-200 transition-all duration-200" />
-            <Heart className="relative w-6 h-6 sm:w-7 sm:h-7 text-green-500 group-hover:text-green-600 transition-colors" fill="currentColor" />
+            <span className="absolute inset-0 rounded-full ring-2 ring-green-300 group-hover:ring-4 group-hover:ring-emerald-400 transition-all duration-200 animate-pulse opacity-60" />
+            <Heart className="relative w-8 h-8 sm:w-10 sm:h-10 text-white drop-shadow-lg" fill="currentColor" />
           </motion.button>
         </div>
       </div>

@@ -51,30 +51,38 @@ ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for user_daily_stats
+DROP POLICY IF EXISTS "Users can view their own daily stats" ON user_daily_stats;
 CREATE POLICY "Users can view their own daily stats" ON user_daily_stats
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own daily stats" ON user_daily_stats;
 CREATE POLICY "Users can insert their own daily stats" ON user_daily_stats
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own daily stats" ON user_daily_stats;
 CREATE POLICY "Users can update their own daily stats" ON user_daily_stats
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- RLS Policies for swipe_actions
+DROP POLICY IF EXISTS "Users can view their swipe actions" ON swipe_actions;
 CREATE POLICY "Users can view their swipe actions" ON swipe_actions
   FOR SELECT USING (auth.uid() = swiper_id OR auth.uid() = swiped_id);
 
+DROP POLICY IF EXISTS "Users can insert their swipe actions" ON swipe_actions;
 CREATE POLICY "Users can insert their swipe actions" ON swipe_actions
   FOR INSERT WITH CHECK (auth.uid() = swiper_id);
 
 -- RLS Policies for matches
+DROP POLICY IF EXISTS "Users can view their matches" ON matches;
 CREATE POLICY "Users can view their matches" ON matches
   FOR SELECT USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
+DROP POLICY IF EXISTS "System can insert matches" ON matches;
 CREATE POLICY "System can insert matches" ON matches
   FOR INSERT WITH CHECK (true);
 
 -- RLS Policies for messages
+DROP POLICY IF EXISTS "Users can view messages in their matches" ON messages;
 CREATE POLICY "Users can view messages in their matches" ON messages
   FOR SELECT USING (
     EXISTS (
@@ -84,6 +92,7 @@ CREATE POLICY "Users can view messages in their matches" ON messages
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert messages in their matches" ON messages;
 CREATE POLICY "Users can insert messages in their matches" ON messages
   FOR INSERT WITH CHECK (
     auth.uid() = sender_id AND

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { userService, UserProfile } from '@/lib/data-service'
@@ -100,21 +100,29 @@ export function useAuth() {
     }
   }
 
+  // Track the last loaded userId to avoid redundant fetches (e.g. due to React Strict Mode or repeated auth events)
+  const lastLoadedUserId = useRef<string | null>(null)
+
   const handleUserSession = async (user: User) => {
-    if (!authReady) return;    // ← do not fetch until token set
-    
+    if (!authReady) return // wait until client ready
+
+    // If we've already loaded this user's profile, skip
+    if (lastLoadedUserId.current === user.id && authState.profile) {
+      return
+    }
+
     try {
-      // Get user profile
-      console.time('[useAuth] getCurrentProfile');
+      console.time('[useAuth] getCurrentProfile')
       const profile = await userService.getCurrentProfile(user.id)
-      console.timeEnd('[useAuth] getCurrentProfile');
-      console.log('[useAuth] profile loaded', profile);
-      
+      console.timeEnd('[useAuth] getCurrentProfile')
+
+      lastLoadedUserId.current = user.id
+
       setAuthState({
         user,
         profile,
         loading: false,
-        error: null
+        error: null,
       })
     } catch (error) {
       console.error('[useAuth] profile fetch error:', error)
@@ -122,7 +130,7 @@ export function useAuth() {
         user,
         profile: null,
         loading: false,
-        error: 'Failed to load profile'
+        error: 'Failed to load profile',
       })
     }
   }

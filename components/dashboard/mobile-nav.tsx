@@ -49,14 +49,27 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     const isMobileLogin = typeof window !== 'undefined' && localStorage.getItem('isMobileLogin') === 'true';
     const mobileUserId = typeof window !== 'undefined' ? localStorage.getItem('mobileLoginUserId') : null;
 
-    // Prefetch limited datasets so first navigation is instant
+    // Helper to fetch with auth header if we have a Supabase session
+    const authFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const headers: Record<string, string> = { ...(init.headers as Record<string, string> ?? {}) }
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`
+      }
+      return fetch(input, { ...init, headers, credentials: "include" })
+    }
+
     qc.prefetchQuery({
       queryKey: ["profiles", "discover"],
-      queryFn: () => {
+      queryFn: async () => {
         const url = isMobileLogin && mobileUserId 
           ? `/api/profiles/discover?limit=5&mobileUserId=${mobileUserId}`
-          : "/api/profiles/discover?limit=5";
-        return fetch(url, { credentials: "include" }).then((r) => r.json().then((d) => d.profiles || []))
+          : "/api/profiles/discover?limit=5"
+        const res = await authFetch(url)
+        const json = await res.json()
+        return json.profiles || []
       },
     })
     qc.prefetchQuery({
@@ -171,7 +184,14 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
           <div className="flex items-center justify-between px-4 py-4">
             {/* Logo on left */}
             <div className="flex items-center">
-              <Image src="/logo.png" alt="DharmaSaathi" width={140} height={48} className="h-12 w-auto" />
+              <Image
+                src="/logo.png"
+                alt="DharmaSaathi"
+                width={120}
+                height={40}
+                priority   // above-the-fold LCP image
+                className="h-10 w-auto" // preserve aspect ratio across devices
+              />
             </div>
 
             {/* User Profile Dropdown */}

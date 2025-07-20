@@ -4,8 +4,15 @@ import { matchingEngine } from "@/lib/matching-engine"
 
 export async function GET(request: NextRequest) {
   try {
-    // Create Supabase client with service role key for server-side operations
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    // Create two Supabase clients:
+    // 1) supabaseAdmin – uses the service-role key for privileged database reads
+    // 2) supabaseAuth  – uses the public anon key *only* for verifying the user JWT.
+    //    Using the anon key prevents a new auth session from being generated on every request.
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const supabaseAuth  = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+    // From this point onward, keep using `supabaseAdmin` for database queries.
+    const supabase = supabaseAdmin
 
     let userId: string | null = null;
 
@@ -33,11 +40,11 @@ export async function GET(request: NextRequest) {
 
       const token = authHeader.replace("Bearer ", "")
 
-      // Verify the JWT token
+      // Validate the JWT using the *anon* client to avoid creating a brand-new session row.
       const {
         data: { user },
         error: authError,
-      } = await supabase.auth.getUser(token)
+      } = await supabaseAuth.auth.getUser(token)
 
       if (authError || !user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -67,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get profiles user has already swiped on
-    const { data: swipedProfiles } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", userId)
+    const { data: swipedProfiles } = await supabase.from("swipe_actions").select("swiped_id").eq("swiper_id", userId)
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
 
@@ -80,7 +87,7 @@ export async function GET(request: NextRequest) {
         state:states(name),
         country:countries(name)
       `)
-      .eq("verification_status", "verified")
+      // .eq("verification_status", "verified") // Temporarily disabled to display all profiles
       .eq("is_onboarded", true)
       .neq("id", userId)
 
@@ -138,7 +145,7 @@ export async function GET(request: NextRequest) {
           state:states(name),
           country:countries(name)
         `)
-        .eq("verification_status", "verified")
+        // .eq("verification_status", "verified") // Temporarily disabled for testing
         .eq("is_onboarded", true)
         .neq("id", userId)
 
@@ -173,7 +180,7 @@ export async function GET(request: NextRequest) {
             state:states(name),
             country:countries(name)
           `)
-          .eq("verification_status", "verified")
+          // .eq("verification_status", "verified") // Temporarily disabled for testing
           .eq("is_onboarded", true)
           .neq("id", userId)
 

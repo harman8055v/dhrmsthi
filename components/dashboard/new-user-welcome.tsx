@@ -27,11 +27,17 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
   const router = useRouter()
 
   const calculateProfileCompleteness = () => {
-    if (!profile) return 0
+    /*
+     * Updated logic – 2025-07-20
+     * – Reflects latest users schema (spiritual_org & daily_practices are now TEXT not JSON/array)
+     * – Counts these fields as complete when they are non-empty strings OR non-empty arrays (back-compat)
+     * – Keeps photos as array-based check
+     * – Guarantees percentage is between 0-100
+     */
 
     const fields = [
       "first_name",
-      "last_name", 
+      "last_name",
       "phone",
       "gender",
       "birthdate",
@@ -42,26 +48,41 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
       "profession",
       "diet",
       "ideal_partner_notes",
+      "about_me",
+      "spiritual_org",
+      "daily_practices",
     ]
 
-    const arrayFields = ["spiritual_org", "daily_practices", "user_photos"]
+    const arrayFields = ["user_photos"]
 
     let completed = 0
-    const total = fields.length + arrayFields.length
+
+    const isValuePresent = (val: any): boolean => {
+      if (!val) return false
+      if (Array.isArray(val)) return val.length > 0
+      if (typeof val === "string") {
+        // Attempt to parse JSON arrays stored as strings (legacy data)
+        try {
+          const parsed = JSON.parse(val)
+          if (Array.isArray(parsed)) return parsed.length > 0
+        } catch (_) {
+          /* noop – not JSON */
+        }
+        return val.trim() !== ""
+      }
+      return true
+    }
 
     fields.forEach((field) => {
-      if (profile[field] && profile[field].toString().trim() !== "") {
-        completed++
-      }
+      if (isValuePresent(profile[field])) completed++
     })
 
     arrayFields.forEach((field) => {
-      if (profile[field] && Array.isArray(profile[field]) && profile[field].length > 0) {
-        completed++
-      }
+      if (isValuePresent(profile[field])) completed++
     })
 
-    return Math.round((completed / total) * 100)
+    const total = fields.length + arrayFields.length
+    return Math.min(100, Math.round((completed / total) * 100))
   }
 
   const profileCompleteness = calculateProfileCompleteness()
@@ -178,16 +199,32 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                           style={{ width: `${profileCompleteness}%` }}
                         ></div>
                       </div>
-                      <p className="text-xs text-gray-600">
-                        Complete profiles get verified faster! Add photos, spiritual details, and preferences.
-                      </p>
-                      <Button
-                        onClick={() => router.push("/dashboard/settings")}
-                        className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white w-full sm:w-auto text-sm md:text-base"
-                      >
-                        <Zap className="w-4 h-4 mr-2" />
-                        Complete Profile
-                      </Button>
+                      {profileCompleteness === 100 ? (
+                        <div className="space-y-3 text-center">
+                          <div className="inline-flex items-center gap-2 bg-green-50 border border-green-200 rounded-full px-3 py-1">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-700">Profile 100% Complete</span>
+                          </div>
+                          <p className="text-xs md:text-sm text-gray-700 leading-relaxed">
+                            Thank you for completing your profile! We’re currently receiving a high volume of applications.
+                            To keep our community genuine and spam-free, new profiles may take up to <strong>4–7 business days</strong> to be verified.
+                            You’ll receive an email & WhatsApp notification once your account is approved.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-gray-600">
+                            Complete profiles get verified faster! Add photos, spiritual details, and preferences.
+                          </p>
+                          <Button
+                            onClick={() => router.push("/dashboard/settings")}
+                            className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white w-full sm:w-auto text-sm md:text-base"
+                          >
+                            <Zap className="w-4 h-4 mr-2" />
+                            Complete Profile
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -272,29 +309,31 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
             </div>
           </div>
 
-          {/* Encouragement Footer */}
-          <div className="mt-6 md:mt-8 p-4 md:p-6 bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-200">
-            <div className="text-center space-y-3 md:space-y-4">
-              <div className="flex justify-center">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
+          {/* Encouragement Footer – hide when profile is 100% complete */}
+          {profileCompleteness < 100 && (
+            <div className="mt-6 md:mt-8 p-4 md:p-6 bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-200">
+              <div className="text-center space-y-3 md:space-y-4">
+                <div className="flex justify-center">
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
+                  </div>
+                </div>
+                <h3 className="text-base md:text-lg font-bold text-gray-900">You're Almost There! ✨</h3>
+                <p className="text-sm md:text-base text-gray-700 max-w-2xl mx-auto">
+                  Thousands of genuine spiritual souls are waiting to connect with someone like you. Complete your verification to join this beautiful community and begin your journey to true love.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 md:gap-3 justify-center pt-2">
+                  <Button
+                    onClick={() => router.push("/dashboard/settings")}
+                    className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-300 text-sm md:text-base"
+                  >
+                    Complete My Profile
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
                 </div>
               </div>
-              <h3 className="text-base md:text-lg font-bold text-gray-900">You're Almost There! ✨</h3>
-              <p className="text-sm md:text-base text-gray-700 max-w-2xl mx-auto">
-                Thousands of genuine spiritual souls are waiting to connect with someone like you. Complete your verification to join this beautiful community and begin your journey to true love.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 md:gap-3 justify-center pt-2">
-                <Button
-                  onClick={() => router.push("/dashboard/settings")}
-                  className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-300 text-sm md:text-base"
-                >
-                  Complete My Profile
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

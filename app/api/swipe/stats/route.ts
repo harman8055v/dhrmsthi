@@ -3,8 +3,14 @@ import { createClient } from "@supabase/supabase-js"
 
 export async function GET(request: NextRequest) {
   try {
-    // Create Supabase client with service role key for server-side operations
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    // Create two Supabase clients:
+    // 1) supabaseAdmin – service-role key for reading protected tables
+    // 2) supabaseAuth  – anon key for JWT validation (does not create new sessions)
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const supabaseAuth  = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+    // Use the admin client for all DB queries below.
+    const supabase = supabaseAdmin
 
     // Get the authorization header
     const authHeader = request.headers.get("authorization")
@@ -14,11 +20,11 @@ export async function GET(request: NextRequest) {
 
     const token = authHeader.replace("Bearer ", "")
 
-    // Verify the JWT token
+    // Validate the JWT using the *anon* client to prevent session bloat.
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token)
+    } = await supabaseAuth.auth.getUser(token)
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

@@ -6,6 +6,7 @@ import { useAuthContext } from "@/components/auth-provider"
 import { debugLog } from "@/lib/logger"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 import { Heart, User } from "lucide-react"
 import SettingsCard from "@/components/dashboard/settings-card"
 import dynamic from "next/dynamic"
@@ -27,7 +28,19 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ["profiles", "discover"],
     queryFn: async () => {
-      const res = await fetch("/api/profiles/discover?limit=5", { credentials: "include" })
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      const headers: Record<string, string> = {}
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`
+      }
+
+      const res = await fetch("/api/profiles/discover?limit=5", {
+        credentials: "include",
+        headers,
+      })
       if (!res.ok) throw new Error("Failed to fetch profiles")
       const data = await res.json()
       return (data.profiles || []).slice(0, 5)
@@ -42,7 +55,19 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ["swipe", "stats"],
     queryFn: async () => {
-      const res = await fetch("/api/swipe/stats", { credentials: "include" })
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      const headers: Record<string, string> = {}
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`
+      }
+
+      const res = await fetch("/api/swipe/stats", {
+        credentials: "include",
+        headers,
+      })
       if (!res.ok) throw new Error("Failed to fetch swipe stats")
       return res.json()
     },
@@ -109,8 +134,8 @@ export default function DashboardPage() {
   const calculateProfileCompleteness = () => {
     if (!profile) return 0
 
-    // Cast to any for dynamic key access because UserProfile type does not include all onboarding fields explicitly
-    const prof: any = profile
+    const prof: any = profile // dynamic access
+
     const fields = [
       "first_name",
       "last_name",
@@ -124,26 +149,40 @@ export default function DashboardPage() {
       "profession",
       "diet",
       "ideal_partner_notes",
+      "about_me",
+      "spiritual_org",
+      "daily_practices",
     ]
 
-    const arrayFields = ["spiritual_org", "daily_practices", "user_photos"]
+    const arrayFields = ["user_photos"]
+
+    const isValuePresent = (val: any): boolean => {
+      if (!val) return false
+      if (Array.isArray(val)) return val.length > 0
+      if (typeof val === "string") {
+        try {
+          const parsed = JSON.parse(val)
+          if (Array.isArray(parsed)) return parsed.length > 0
+        } catch {
+          /* not JSON */
+        }
+        return val.trim() !== ""
+      }
+      return true
+    }
 
     let completed = 0
-    const total = fields.length + arrayFields.length
 
     fields.forEach((field) => {
-      if (prof[field] && prof[field].toString().trim() !== "") {
-        completed++
-      }
+      if (isValuePresent(prof[field])) completed++
     })
 
     arrayFields.forEach((field) => {
-      if (prof[field] && Array.isArray(prof[field]) && prof[field].length > 0) {
-        completed++
-      }
+      if (isValuePresent(prof[field])) completed++
     })
 
-    return Math.round((completed / total) * 100)
+    const total = fields.length + arrayFields.length
+    return Math.min(100, Math.round((completed / total) * 100))
   }
 
   const getNextTuesday = () => {
@@ -187,10 +226,8 @@ export default function DashboardPage() {
     <>
       {isVerified ? (
         // VERIFIED USER - Full Swipe Interface
-        <main className="pt-20 pb-32 min-h-screen">
-          <div className="px-4 max-w-4xl mx-auto">
-            <SwipeStack profiles={profiles} onSwipe={handleSwipe} userProfile={profile} headerless={false} />
-          </div>
+        <main className="min-h-screen w-full overflow-hidden">
+          <SwipeStack profiles={profiles} onSwipe={handleSwipe} userProfile={profile} headerless={false} />
         </main>
       ) : (
         // UNVERIFIED USER - Verification Dashboard

@@ -422,7 +422,7 @@ export const swipeService = {
           state:states(name),
           country:countries(name)
         `)
-        .eq('verification_status', 'verified')
+        // .eq('verification_status', 'verified') // Temporarily disabled to include unverified profiles
         .eq('is_onboarded', true)
         .neq('id', user.id)
 
