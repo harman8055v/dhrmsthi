@@ -282,7 +282,7 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
       
       <CardContent>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {data.likes.map((like) => (
+          {data.likes.filter((like) => like?.profile).map((like) => (
             <motion.div
               key={like.id}
               initial={{ opacity: 0, scale: 0.9 }}
