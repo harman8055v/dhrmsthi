@@ -24,9 +24,18 @@ interface NewUserWelcomeProps {
 }
 
 export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
+  if (!profile) {
+    // Profile not loaded yet – show a lightweight placeholder to avoid null reference errors
+    return (
+      <div className="rounded-xl border border-orange-200 p-6 bg-orange-50 text-center animate-pulse">
+        <p className="text-sm text-gray-500">Loading your welcome experience…</p>
+      </div>
+    );
+  }
   const router = useRouter()
 
   const calculateProfileCompleteness = () => {
+    if (!profile) return 0;
     /*
      * Updated logic – 2025-07-20
      * – Reflects latest users schema (spiritual_org & daily_practices are now TEXT not JSON/array)
