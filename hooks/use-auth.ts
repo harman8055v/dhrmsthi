@@ -40,6 +40,10 @@ export function useAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // IGNORE password recovery - let ResetPasswordClient handle it exclusively
+        if (event === 'PASSWORD_RECOVERY') {
+          return
+        }
         
         if (session?.user) {
           await handleUserSession(session.user)
