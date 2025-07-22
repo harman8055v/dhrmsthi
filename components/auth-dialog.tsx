@@ -1,5 +1,4 @@
 "use client";
-
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -10,14 +9,12 @@ import { Button } from "@/components/ui/button";
 import PhoneInput from "@/components/ui/phone-input";
 import { User, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
 import React from "react";
-
 interface AuthDialogProps {
   isOpen: boolean;
   onClose: () => void;
   defaultMode?: "signup" | "login";
   prefillMobile?: string;
 }
-
 interface FormState {
   firstName: string;
   lastName: string;
@@ -25,11 +22,9 @@ interface FormState {
   mobile: string;
   password: string;
 }
-
 interface FormErrors {
   [key: string]: string | undefined;
 }
-
 export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: AuthDialogProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"signup" | "login">(defaultMode);
@@ -46,14 +41,12 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
   // Capture referral code from URL
   const searchParams = useSearchParams();
   const [referralCode, setReferralCode] = useState<string>("");
-
   React.useEffect(() => {
     const refParam = searchParams.get('ref');
     if (refParam) {
       setReferralCode(refParam);
     }
   }, [searchParams]);
-
   // Reset the sent state after a short delay for button feedback
   React.useEffect(() => {
     if (resetJustSent) {
@@ -61,13 +54,11 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
       return () => clearTimeout(t);
     }
   }, [resetJustSent]);
-
   const handleChange = (field: keyof FormState, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
     setErrors(prev => ({ ...prev, [field]: undefined }));
     setGeneralError(null);
   };
-
   const validate = () => {
     const err: FormErrors = {};
     if (mode === "signup") {
@@ -85,7 +76,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
     setErrors(err);
     return Object.keys(err).length === 0;
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
@@ -109,7 +99,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
             })
           );
         }
-
         const { data, error } = await supabase.auth.signUp({
           email: form.email,
           password: form.password,
@@ -140,7 +129,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
               { onConflict: 'id', ignoreDuplicates: true }
             )
             .single()
-
           if (profileError) {
             console.error('Profile creation error:', profileError)
           }
@@ -159,7 +147,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
       setLoading(false);
     }
   };
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md p-0 border border-gray-100 bg-white backdrop-blur-md shadow-xl rounded-2xl overflow-hidden">
@@ -179,13 +166,11 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
               </button>
             )}
           </div>
-
           {generalError && !showForgot && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 text-sm">{generalError}</p>
             </div>
           )}
-
           {/* Forgot Password Flow */}
           {showForgot ? (
             <form
@@ -196,12 +181,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 setResetJustSent(false);
                 setLoading(true);
                 try {
-                  // Use the current domain for redirect URL (works for both dev and production)
-                  const redirectUrl = `${window.location.origin}/reset-password`
                   
                   const { data, error } = await supabase.auth.resetPasswordForEmail(
                     resetEmail,
-                    { redirectTo: redirectUrl }
+                    { redirectTo: 'https://dharmasaathi.com/reset-password' }
                   );
                   if (error) throw error;
                   setResetSent(true);
@@ -312,7 +295,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   </div>
                 </div>
               )}
-
               <div>
                 <Label htmlFor="email" className="text-gray-700 font-medium">
                   Email Address
@@ -333,7 +315,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 </div>
                 {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
               </div>
-
               {mode === "signup" && (
                 <div>
                   <Label className="text-gray-700 font-medium">Mobile Number</Label>
@@ -349,7 +330,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   {errors.mobile && <p className="mt-1 text-xs text-red-600">{errors.mobile}</p>}
                 </div>
               )}
-
               <div>
                 <Label htmlFor="password" className="text-gray-700 font-medium">
                   Password
@@ -378,7 +358,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
                 <p className="mt-1 text-xs text-gray-500">8+ characters with uppercase, lowercase, and number</p>
               </div>
-
               {mode === "login" && (
                 <button
                   type="button"
@@ -388,7 +367,6 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   Forgot password?
                 </button>
               )}
-
               <Button
                 type="submit"
                 disabled={loading}
