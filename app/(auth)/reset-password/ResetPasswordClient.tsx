@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,6 @@ import { Loader2, CheckCircle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [isReady, setIsReady] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -19,73 +18,28 @@ export default function ResetPasswordClient() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    const handlePasswordReset = async () => {
-      try {
-        // Check for URL parameters first (from email link)
-        const accessToken = searchParams.get('access_token')
-        const refreshToken = searchParams.get('refresh_token')
-        const type = searchParams.get('type')
-        
-        // If we have tokens in URL, try to establish a session
-        if (accessToken && refreshToken) {
-          console.log('Found tokens in URL, establishing session...')
-          
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          })
-          
-          if (error) {
-            console.error('Failed to set session from URL tokens:', error)
-            setError('Invalid or expired reset link. Please request a new password reset.')
-            return
-          }
-          
-          if (data.session) {
-            console.log('Session established successfully')
-            setIsReady(true)
-            return
-          }
-        }
-        
-        // Check for existing session
-        const { data: { session } } = await supabase.auth.getSession()
-        console.log('Current session:', session)
-        
-        if (session) {
-          setIsReady(true)
-          return
-        }
-        
-        // Listen for auth state changes (fallback)
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-          console.log('Auth event:', event, 'Session:', session)
-          
-          if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
-            setIsReady(true)
-          }
-        })
-        
-        // If no session and no tokens, show error after a delay
-        const timeout = setTimeout(() => {
-          if (!isReady) {
-            setError('Invalid or expired reset link. Please request a new password reset.')
-          }
-        }, 5000) // Wait 5 seconds before showing error
-        
-        return () => {
-          authListener.subscription.unsubscribe()
-          clearTimeout(timeout)
-        }
-        
-      } catch (err) {
-        console.error('Password reset initialization error:', err)
-        setError('Something went wrong. Please try again.')
+    // Listen for the PASSWORD_RECOVERY event
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event, 'Session:', session)
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        // User has clicked the reset link and is ready to reset password
+        setIsReady(true)
       }
+    })
+
+    // Check if there's already a session (user might have already clicked the link)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Current session:', session)
+      if (session) {
+        setIsReady(true)
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
     }
-    
-    handlePasswordReset()
-  }, [searchParams, isReady])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -128,36 +82,13 @@ export default function ResetPasswordClient() {
   }
 
   // Show loading while checking auth state
-  if (!isReady && !error && !success) {
+  if (!isReady && !success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Verifying reset link...</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Show error if reset link is invalid
-  if (error && !isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-              <span className="text-red-600 text-xl">✕</span>
-            </div>
-            <h2 className="text-xl font-semibold text-red-600">Reset Link Invalid</h2>
-            <p className="text-muted-foreground">{error}</p>
-            <Button 
-              onClick={() => router.push('/login')}
-              className="mt-4"
-            >
-              Back to Login
-            </Button>
+            <p className="text-muted-foreground">Loading...</p>
           </CardContent>
         </Card>
       </div>
