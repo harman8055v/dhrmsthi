@@ -24,153 +24,41 @@ export default function ResetPasswordClient() {
   }
 
   useEffect(() => {
-    addDebug('Component mounted, checking URL and auth state...')
+    addDebug('Component mounted, setting up auth listener...')
+    addDebug(`Full URL: ${window.location.href}`)
     
-    const handleAuth = async () => {
-      // Method 1: Check for PKCE code parameter (most common now)
-      if (typeof window !== 'undefined') {
-        const search = window.location.search
-        const hash = window.location.hash
-        addDebug(`Full URL: ${window.location.href}`)
-        addDebug(`URL search: ${search}`)
-        addDebug(`URL hash: ${hash}`)
-        
-        if (search) {
-          const params = new URLSearchParams(search)
-          addDebug(`All search params: ${Array.from(params.entries()).map(([k,v]) => `${k}=${v.substring(0,20)}...`).join(', ')}`)
-          
-          const code = params.get('code')
-          const tokenHash = params.get('token_hash')
-          const type = params.get('type')
-          
-          addDebug(`PKCE code: ${code ? 'present' : 'none'}`)
-          addDebug(`Token hash: ${tokenHash ? 'present' : 'none'}`)
-          addDebug(`Type: ${type}`)
-          
-          // Try token hash flow first (for password reset)
-          if (tokenHash && type === 'recovery') {
-            addDebug('Found token_hash recovery! Using verifyOtp...')
-            try {
-              const { data, error } = await supabase.auth.verifyOtp({
-                token_hash: tokenHash,
-                type: 'recovery'
-              })
-              
-              if (error) {
-                addDebug(`Token verification error: ${error.message}`)
-                setError('Invalid or expired reset link. Please request a new password reset.')
-                return
-              }
-              
-              if (data.session) {
-                addDebug('Successfully verified token and got session!')
-                setShowForm(true)
-                return
-              }
-            } catch (err: any) {
-              addDebug(`Token verification exception: ${err.message}`)
-              setError('Failed to process reset link. Please try again.')
-              return
-            }
-          }
-          
-          // Try PKCE flow if we have a code
-          if (code) {
-            addDebug('Found PKCE code! Exchanging for session...')
-            try {
-              const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-              
-              if (error) {
-                addDebug(`Code exchange error: ${error.message}`)
-                // Don't return error immediately, try other methods
-              } else if (data.session) {
-                addDebug('Successfully exchanged code for session!')
-                setShowForm(true)
-                return
-              }
-            } catch (err: any) {
-              addDebug(`Code exchange exception: ${err.message}`)
-              // Don't return error immediately, try other methods
-            }
-          }
-        }
-        
-        // Check hash parameters (implicit flow)
-        if (hash) {
-          const params = new URLSearchParams(hash.substring(1))
-          const accessToken = params.get('access_token')
-          const refreshToken = params.get('refresh_token')
-          const type = params.get('type')
-          
-          addDebug(`Hash access_token: ${accessToken ? 'present' : 'none'}`)
-          addDebug(`Hash refresh_token: ${refreshToken ? 'present' : 'none'}`)
-          addDebug(`Hash type: ${type}`)
-          
-          if (accessToken && refreshToken && type === 'recovery') {
-            addDebug('Found hash recovery tokens! Setting session...')
-            try {
-              const { data, error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-              })
-              
-              if (error) {
-                addDebug(`Hash session error: ${error.message}`)
-              } else if (data.session) {
-                addDebug('Successfully set session from hash!')
-                setShowForm(true)
-                return
-              }
-            } catch (err: any) {
-              addDebug(`Hash session exception: ${err.message}`)
-            }
-          }
-        }
-      }
+    // EXACTLY as per Supabase docs - just listen for PASSWORD_RECOVERY
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
-      // Method 2: Check current session
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        if (error) {
-          addDebug(`Session check error: ${error.message}`)
-        } else if (session) {
-          addDebug(`Found existing session, user: ${session.user?.email}`)
-          setShowForm(true)
-          return
-        } else {
-          addDebug('No existing session found')
-        }
-      } catch (err: any) {
-        addDebug(`Session check exception: ${err.message}`)
+      if (event === "PASSWORD_RECOVERY") {
+        addDebug('PASSWORD_RECOVERY event received! Showing form...')
+        setShowForm(true)
       }
+    })
 
-      // Method 3: Listen for auth state changes as fallback
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
-        
-        if (event === "PASSWORD_RECOVERY") {
-          addDebug('PASSWORD_RECOVERY event received! Showing form...')
-          setShowForm(true)
-        }
-        
-        if (event === "SIGNED_IN" && session) {
-          addDebug('SIGNED_IN event with session')
-          setShowForm(true)
-        }
-      })
+    // Check if already has session (in case user refreshed page)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        addDebug(`Found existing session: ${session.user?.email}`)
+        setShowForm(true)
+      } else {
+        addDebug('No existing session')
+      }
+    })
 
-      // Timeout fallback
-      setTimeout(() => {
-        if (!showForm) {
-          addDebug('Timeout reached - no recovery detected. Showing error.')
-          setError('Reset link expired or invalid. Please request a new password reset.')
-        }
-      }, 10000)
+    // Timeout - if no PASSWORD_RECOVERY event after 15 seconds
+    const timeout = setTimeout(() => {
+      if (!showForm) {
+        addDebug('Timeout - PASSWORD_RECOVERY event never fired')
+        setError('Reset link may be invalid. Please check if you clicked the correct link from your email.')
+      }
+    }, 15000)
 
-      return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
     }
-
-    handleAuth()
   }, [showForm])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -188,9 +76,10 @@ export default function ResetPasswordClient() {
     }
 
     setUpdating(true)
-    addDebug('Attempting to update password...')
+    addDebug('Updating password...')
 
     try {
+      // EXACTLY as per Supabase docs
       const { data, error } = await supabase.auth.updateUser({
         password: password
       })
@@ -242,7 +131,7 @@ export default function ResetPasswordClient() {
               onClick={() => router.push('/login')}
               className="mt-4"
             >
-              Back to Login
+              Request New Reset Link
             </Button>
             <div className="text-xs text-gray-400 mt-4 text-left">
               <div className="font-mono">Debug Log:</div>
@@ -262,7 +151,7 @@ export default function ResetPasswordClient() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Processing reset link...</p>
+            <p className="text-muted-foreground">Waiting for password reset verification...</p>
             <div className="text-xs text-gray-400 mt-4 text-left">
               <div className="font-mono">Debug Log:</div>
               {debugLog.map((log, i) => (
