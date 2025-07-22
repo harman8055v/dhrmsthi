@@ -30,14 +30,51 @@ export default function ResetPasswordClient() {
       // Method 1: Check for PKCE code parameter (most common now)
       if (typeof window !== 'undefined') {
         const search = window.location.search
-        addDebug(`URL search: ${search ? 'present' : 'none'}`)
+        const hash = window.location.hash
+        addDebug(`Full URL: ${window.location.href}`)
+        addDebug(`URL search: ${search}`)
+        addDebug(`URL hash: ${hash}`)
         
         if (search) {
           const params = new URLSearchParams(search)
+          addDebug(`All search params: ${Array.from(params.entries()).map(([k,v]) => `${k}=${v.substring(0,20)}...`).join(', ')}`)
+          
           const code = params.get('code')
+          const tokenHash = params.get('token_hash')
+          const type = params.get('type')
           
           addDebug(`PKCE code: ${code ? 'present' : 'none'}`)
+          addDebug(`Token hash: ${tokenHash ? 'present' : 'none'}`)
+          addDebug(`Type: ${type}`)
           
+          // Try token hash flow first (for password reset)
+          if (tokenHash && type === 'recovery') {
+            addDebug('Found token_hash recovery! Using verifyOtp...')
+            try {
+              const { data, error } = await supabase.auth.verifyOtp({
+                token_hash: tokenHash,
+                type: 'recovery'
+              })
+              
+              if (error) {
+                addDebug(`Token verification error: ${error.message}`)
+                setError('Invalid or expired reset link. Please request a new password reset.')
+                return
+              }
+              
+              if (data.session) {
+                addDebug('Successfully verified token and got session!')
+                setShowForm(true)
+                return
+              }
+            } catch (err: any) {
+              addDebug(`Token verification exception: ${err.message}`)
+              setError('Failed to process reset link. Please try again.')
+              return
+            }
+          }
+          
+          // Try PKCE flow if we have a code
           if (code) {
             addDebug('Found PKCE code! Exchanging for session...')
             try {
@@ -45,19 +82,47 @@ export default function ResetPasswordClient() {
               
               if (error) {
                 addDebug(`Code exchange error: ${error.message}`)
-                setError('Invalid or expired reset link. Please request a new password reset.')
-                return
-              }
-              
-              if (data.session) {
+                // Don't return error immediately, try other methods
+              } else if (data.session) {
                 addDebug('Successfully exchanged code for session!')
                 setShowForm(true)
                 return
               }
             } catch (err: any) {
               addDebug(`Code exchange exception: ${err.message}`)
-              setError('Failed to process reset link. Please try again.')
-              return
+              // Don't return error immediately, try other methods
+            }
+          }
+        }
+        
+        // Check hash parameters (implicit flow)
+        if (hash) {
+          const params = new URLSearchParams(hash.substring(1))
+          const accessToken = params.get('access_token')
+          const refreshToken = params.get('refresh_token')
+          const type = params.get('type')
+          
+          addDebug(`Hash access_token: ${accessToken ? 'present' : 'none'}`)
+          addDebug(`Hash refresh_token: ${refreshToken ? 'present' : 'none'}`)
+          addDebug(`Hash type: ${type}`)
+          
+          if (accessToken && refreshToken && type === 'recovery') {
+            addDebug('Found hash recovery tokens! Setting session...')
+            try {
+              const { data, error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              })
+              
+              if (error) {
+                addDebug(`Hash session error: ${error.message}`)
+              } else if (data.session) {
+                addDebug('Successfully set session from hash!')
+                setShowForm(true)
+                return
+              }
+            } catch (err: any) {
+              addDebug(`Hash session exception: ${err.message}`)
             }
           }
         }
