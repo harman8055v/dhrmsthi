@@ -20,13 +20,56 @@ export default function ResetPasswordClient() {
 
   const addDebug = (message: string) => {
     console.log('[Reset Password]', message)
-    setDebugLog(prev => [...prev.slice(-3), `${new Date().toLocaleTimeString()}: ${message}`])
+    setDebugLog(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${message}`])
   }
 
   useEffect(() => {
-    addDebug('Component mounted, setting up auth listener...')
+    addDebug('Component mounted, checking URL and auth state...')
     
-    // Check current session first (in case PASSWORD_RECOVERY already happened)
+    // Method 1: Check URL fragments immediately (most reliable)
+    const checkUrlFragments = () => {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash
+        const search = window.location.search
+        
+        addDebug(`URL hash: ${hash ? 'present' : 'none'}, search: ${search ? 'present' : 'none'}`)
+        
+        if (hash) {
+          const params = new URLSearchParams(hash.substring(1))
+          const accessToken = params.get('access_token')
+          const type = params.get('type')
+          
+          addDebug(`Hash params - access_token: ${accessToken ? 'present' : 'none'}, type: ${type}`)
+          
+          if (accessToken && type === 'recovery') {
+            addDebug('Found recovery tokens in URL hash! Setting session...')
+            return true
+          }
+        }
+        
+        if (search) {
+          const params = new URLSearchParams(search)
+          const tokenHash = params.get('token_hash')
+          const type = params.get('type')
+          
+          addDebug(`Search params - token_hash: ${tokenHash ? 'present' : 'none'}, type: ${type}`)
+          
+          if (tokenHash && type === 'recovery') {
+            addDebug('Found recovery tokens in URL search!')
+            return true
+          }
+        }
+      }
+      return false
+    }
+    
+    // Check URL first
+    if (checkUrlFragments()) {
+      setShowForm(true)
+      return
+    }
+    
+    // Method 2: Check current session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         addDebug(`Session check error: ${error.message}`)
@@ -35,14 +78,13 @@ export default function ResetPasswordClient() {
       
       if (session) {
         addDebug(`Found existing session, user: ${session.user?.email}`)
-        // If we have a session during password reset flow, show the form
         setShowForm(true)
       } else {
         addDebug('No existing session found')
       }
     })
 
-    // Listen for auth state changes
+    // Method 3: Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
@@ -50,15 +92,20 @@ export default function ResetPasswordClient() {
         addDebug('PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
       }
+      
+      if (event === "SIGNED_IN" && session) {
+        addDebug('SIGNED_IN event with session - might be recovery')
+        setShowForm(true)
+      }
     })
 
-    // Add a timeout to prevent endless loading
+    // Method 4: Timeout fallback
     const timeout = setTimeout(() => {
       if (!showForm) {
-        addDebug('Timeout reached - no PASSWORD_RECOVERY event. Showing error.')
+        addDebug('Timeout reached - no recovery detected. Showing error.')
         setError('Reset link expired or invalid. Please request a new password reset.')
       }
-    }, 10000)
+    }, 15000) // 15 second timeout
 
     return () => {
       subscription.unsubscribe()
@@ -157,7 +204,7 @@ export default function ResetPasswordClient() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Waiting for password reset...</p>
+            <p className="text-muted-foreground">Processing reset link...</p>
             {process.env.NODE_ENV === 'development' && debugLog.length > 0 && (
               <div className="text-xs text-gray-400 mt-4 text-left">
                 <div className="font-mono">Debug Log:</div>
