@@ -44,6 +44,12 @@ export function useAuth() {
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.id)
         
+        // IGNORE PASSWORD_RECOVERY - let ResetPasswordClient handle it exclusively
+        if (event === 'PASSWORD_RECOVERY') {
+          console.log('[useAuth] Ignoring PASSWORD_RECOVERY event - handled by reset page')
+          return
+        }
+        
         if (session?.user) {
           await handleUserSession(session.user)
         } else {
