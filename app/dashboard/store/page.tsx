@@ -172,12 +172,12 @@ export default function StorePage() {
               <div className="flex flex-wrap justify-center gap-2 text-xs mb-4">
                 <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Super Likes: <span className="text-orange-600 font-semibold">{profile?.super_likes_count || 0}</span></div>
                 <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Profile Boosts: <span className="text-pink-600 font-semibold">{(profile as any)?.profile_boosts_count || 0}</span></div>
-                {profile?.account_status === "premium" && (
+                {profile?.account_status === "sparsh" && (
                   <div className="bg-yellow-50 text-yellow-800 px-3 py-1 rounded-full border border-yellow-200 flex items-center gap-1 font-medium">
                     <Crown className="w-3 h-3 inline" /> Premium
                   </div>
                 )}
-                {profile?.account_status === "elite" && (
+                {profile?.account_status === "samarpan" && (
                   <div className="bg-gradient-to-r from-yellow-100 to-yellow-300 text-yellow-900 px-3 py-1 rounded-full border border-yellow-300 flex items-center gap-1 font-medium">
                     <Diamond className="w-3 h-3 inline" /> Elite
                   </div>
@@ -339,20 +339,20 @@ export default function StorePage() {
                     <Button
                       onClick={() => handlePlanSelection("sparsh", "monthly")}
                       className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "sparsh" || profile?.account_status === "sangam" || profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "sparsh" || profile?.account_status === "sangam" || profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Monthly - ₹299"}
                     </Button>
                     <Button
                       onClick={() => handlePlanSelection("sparsh", "quarterly")}
                       variant="outline"
                       className="w-full border-blue-500 text-blue-600 hover:bg-blue-50"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "sparsh" || profile?.account_status === "sangam" || profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "sparsh" || profile?.account_status === "sangam" || profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Quarterly - ₹749"}
                     </Button>
                   </div>
@@ -422,20 +422,20 @@ export default function StorePage() {
                     <Button
                       onClick={() => handlePlanSelection("sangam", "monthly")}
                       className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "sangam" || profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "sangam" || profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Monthly - ₹499"}
                     </Button>
                     <Button
                       onClick={() => handlePlanSelection("sangam", "quarterly")}
                       variant="outline"
                       className="w-full border-purple-500 text-purple-600 hover:bg-purple-50"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "sangam" || profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "sangam" || profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Quarterly - ₹1299"}
                     </Button>
                   </div>
@@ -507,20 +507,20 @@ export default function StorePage() {
                     <Button
                       onClick={() => handlePlanSelection("samarpan", "monthly")}
                       className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Monthly - ₹999"}
                     </Button>
                     <Button
                       onClick={() => handlePlanSelection("samarpan", "quarterly")}
                       variant="outline"
                       className="w-full border-yellow-500 text-yellow-600 hover:bg-yellow-50"
-                      disabled={profile?.account_status === "premium" || profile?.account_status === "elite"}
+                      disabled={profile?.account_status === "samarpan"}
                     >
-                      {profile?.account_status === "premium" || profile?.account_status === "elite"
-                        ? "Already Premium"
+                      {profile?.account_status === "samarpan"
+                        ? "Current Plan"
                         : "Quarterly - ₹2499"}
                     </Button>
                   </div>
@@ -672,9 +672,9 @@ export default function StorePage() {
                       <Button
                         onClick={() => handlePlanSelection("elite", "monthly")}
                         className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
-                        disabled={profile?.account_status === "elite"}
+                        disabled={profile?.account_status === "samarpan"}
                       >
-                        {profile?.account_status === "elite" ? (
+                        {profile?.account_status === "samarpan" ? (
                           <>
                             <Diamond className="w-5 h-5 mr-2" />
                             Elite Active
@@ -690,9 +690,9 @@ export default function StorePage() {
                         onClick={() => handlePlanSelection("elite", "quarterly")}
                         variant="outline"
                         className="w-full border-indigo-600 text-indigo-600 hover:bg-indigo-50 px-8 py-3 text-lg font-semibold"
-                        disabled={profile?.account_status === "elite"}
+                        disabled={profile?.account_status === "samarpan"}
                       >
-                        {profile?.account_status === "elite" ? (
+                        {profile?.account_status === "samarpan" ? (
                           <>
                             <Diamond className="w-5 h-5 mr-2" />
                             Elite Active

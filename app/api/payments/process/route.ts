@@ -38,9 +38,13 @@ export async function POST(request: NextRequest) {
       }
 
       // Determine account status based on plan type
-      let accountStatus = "premium"
-      if (item_name.toLowerCase().includes("elite")) {
-        accountStatus = "elite"
+      let accountStatus = "sparsh" // Default to basic paid plan
+      if (item_name.toLowerCase().includes("samarpan")) {
+        accountStatus = "samarpan"
+      } else if (item_name.toLowerCase().includes("sangam")) {
+        accountStatus = "sangam"
+      } else if (item_name.toLowerCase().includes("sparsh")) {
+        accountStatus = "sparsh"
       }
 
       const { error: userUpdateError } = await supabase

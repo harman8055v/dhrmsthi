@@ -11,10 +11,10 @@ export function isUserVerified(profile: any): boolean {
   
   // User is verified if:
   // 1. verification_status is "verified"
-  // 2. account_status is premium/elite (premium users are auto-verified)
+  // 2. account_status is paid plan (paid users are auto-verified)
   return (
     profile.verification_status === "verified" ||
-    ["premium", "elite"].includes(profile?.account_status ?? "")
+    ["sparsh", "sangam", "samarpan"].includes(profile?.account_status ?? "")
   )
 }
 

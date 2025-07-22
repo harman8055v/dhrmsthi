@@ -1852,7 +1852,7 @@ export default function AdminDashboard() {
                           <Badge className={getStatusColor(selectedUser.verification_status)}>
                             {selectedUser.verification_status || "pending"}
                           </Badge>
-                          {selectedUser.account_status === 'premium' && (
+                          {(selectedUser.account_status === 'sparsh' || selectedUser.account_status === 'sangam' || selectedUser.account_status === 'samarpan') && (
                             <Badge className="bg-purple-100 text-purple-800">Premium</Badge>
                           )}
                         </div>
@@ -2182,11 +2182,11 @@ export default function AdminDashboard() {
                           </Button>
                         </>
                       )}
-                      {selectedUser.account_status === 'premium' ? (
+                      {(selectedUser.account_status === 'sparsh' || selectedUser.account_status === 'sangam' || selectedUser.account_status === 'samarpan') ? (
                         <Button
+                          onClick={() => handleUserAction(selectedUser.id, "removePremium")}
                           variant="outline"
                           size="sm"
-                          onClick={() => handleUserAction(selectedUser.id, "removePremium")}
                           disabled={actionLoading === selectedUser.id + "removePremium"}
                         >
                           {actionLoading === selectedUser.id + "removePremium" ? (

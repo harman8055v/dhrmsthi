@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import SwipeCard from "./swipe-card"
 import { Button } from "@/components/ui/button"
-import { Heart, X, Star, RotateCcw, Clock, Zap } from "lucide-react"
+import { Heart, X, Star, Clock, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { isUserVerified } from "@/lib/utils"
@@ -17,243 +17,301 @@ interface SwipeStackProps {
 }
 
 export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerless = false, userProfile }: SwipeStackProps) {
-  const [profiles, setProfiles] = useState(initialProfiles)
+  const [profiles, setProfiles] = useState<any[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [undoStack, setUndoStack] = useState<any[]>([])
+  const [undoStack, setUndoStack] = useState<Array<{ profile: any; direction: string; index: number }>>([])
   const [swipeStats, setSwipeStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [swiping, setSwiping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentSwipeDirection, setCurrentSwipeDirection] = useState<"left" | "right" | "superlike" | null>(null)
+  const [animatingButton, setAnimatingButton] = useState<"left" | "right" | "superlike" | null>(null)
+  const [dragInProgress, setDragInProgress] = useState(false)
+  
+  const lastProfileFetch = useRef<number>(0)
+  const processingProfileId = useRef<string | null>(null)
 
-  console.log("SwipeStack rendered with:", {
-    profilesCount: initialProfiles.length,
-    headerless,
-    currentIndex,
-    hasProfiles: profiles.length > 0,
-    isVerified: userProfile ? isUserVerified(userProfile) : false,
-  })
-
-  // Check if user is verified
-  const isVerified = userProfile ? isUserVerified(userProfile) : false
-
-  // If not verified, show verification required message
-  if (!isVerified) {
-    return (
-      <div className="h-full flex items-center justify-center px-4">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Clock className="w-8 h-8 text-white" />
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Verification Required</h3>
-          <p className="text-gray-600 mb-6">
-            Your profile is currently under review. Once verified, you'll be able to swipe and discover compatible spiritual partners.
-          </p>
-          <Button 
-            onClick={() => window.location.href = "/dashboard"}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Check Verification Status
-          </Button>
-        </div>
-      </div>
-    )
+  // Simple plan check
+  const getUserPlan = () => {
+    return userProfile?.account_status || 'drishti'
   }
 
-  // Fetch swipe stats and profiles on mount – but avoid triggering the
-  // loading spinner if the parent already supplied a non-empty profile list.
-  useEffect(() => {
-    console.log("SwipeStack useEffect running")
+  const hasUndoAccess = () => {
+    const plan = getUserPlan()
+    return plan !== 'drishti'
+  }
 
-    // If we already have profiles from the Dashboard query cache just fetch
-    // the swipe stats silently. Skip the extra network call + spinner.
+  // Initialize with profiles from dashboard
+  useEffect(() => {
     if (initialProfiles && initialProfiles.length > 0) {
+      console.log(`📋 Loaded ${initialProfiles.length} initial profiles`)
+      setProfiles(initialProfiles)
+      setCurrentIndex(0)
       setLoading(false)
-      fetchSwipeStats().catch(console.error)
     } else {
-      fetchData()
+      // Fetch fresh profiles if none provided
+      fetchProfiles()
     }
+    
+    // Always fetch stats
+    fetchSwipeStats()
   }, [])
 
-  const fetchData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      await Promise.all([fetchSwipeStats(), fetchProfiles()])
-    } catch (err) {
-      console.error("Failed to load data:", err)
-      setError("Failed to load profiles. Please try again.")
-    } finally {
+  // Watch for new profiles from dashboard
+  useEffect(() => {
+    if (initialProfiles && initialProfiles.length > 0) {
+      console.log(`🔄 Received ${initialProfiles.length} new profiles from dashboard`)
+      setProfiles(initialProfiles)
+      setCurrentIndex(0)
       setLoading(false)
     }
-  }
+  }, [initialProfiles])
 
   const fetchSwipeStats = async () => {
     try {
-      // Get the current session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
 
-      if (!session?.access_token) {
-        throw new Error("No valid session")
-      }
-
-      // include credentials and authorization header
       const response = await fetch("/api/swipe/stats", {
         credentials: "include",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       })
 
-      // if the response isn't OK, throw to trigger your error state
-      if (!response.ok) {
-        throw new Error(`Failed to fetch swipe stats: ${response.status}`)
+      if (response.ok) {
+        const stats = await response.json()
+        setSwipeStats(stats)
       }
-      // parse and store
-      const stats = await response.json()
-      setSwipeStats(stats)
     } catch (error) {
       console.error("Error fetching swipe stats:", error)
-      throw error
     }
   }
 
   const fetchProfiles = async () => {
     try {
-      console.log("Fetching profiles...")
+      // Prevent spam requests
+      const now = Date.now()
+      if (now - lastProfileFetch.current < 1000) {
+        console.log('⏳ Skipping fetch - too recent')
+        return
+      }
+      lastProfileFetch.current = now
 
-      // Get the current session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         throw new Error("No valid session")
       }
 
+      console.log('🔄 Fetching fresh profiles...')
       const response = await fetch("/api/profiles/discover", {
         credentials: "include",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       })
 
-      console.log("Profiles response:", response.status)
       if (!response.ok) {
         throw new Error(`Failed to fetch profiles: ${response.status}`)
       }
+
       const data = await response.json()
-      console.log("Profiles data:", data)
-      // Filter profiles to only include those with valid photos
-      const profilesWithPhotos = (data.profiles || []).filter((profile: any) => 
-        profile.user_photos && Array.isArray(profile.user_photos) && profile.user_photos.length > 0
-      )
-      setProfiles(profilesWithPhotos)
-      
-      // Show fallback message if expanded search was used
-      if (data.fallback_used && data.profiles?.length > 0) {
-        toast.info("✨ We've expanded your search to show more spiritual partners!", {
-          duration: 4000,
-        })
+      console.log(`✅ Fetched ${data.profiles?.length || 0} profiles`)
+
+      if (data.profiles && data.profiles.length > 0) {
+        setProfiles(data.profiles)
+        setCurrentIndex(0)
+        setError(null)
+      } else {
+        console.log('❌ No profiles returned')
+        setError("No more profiles available right now")
       }
     } catch (error) {
-      console.error("Error fetching profiles:", error)
-      throw error
+      console.error("❌ Error fetching profiles:", error)
+      setError("Failed to load profiles")
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleSwipe = async (direction: "left" | "right" | "superlike", profileId: string) => {
-    if (swiping) return
+    // Prevent multiple swipes
+    if (swiping || !profileId) return
 
-    // Check limits before swiping
+    // Prevent swipes on a profile that's already being processed
+    if (processingProfileId.current === profileId) {
+      console.log(`🚫 Profile ${profileId} is already being processed`)
+      return
+    }
+
+    console.log(`🔄 Swiping ${direction} on ${profileId}`)
+    setSwiping(true)
+    processingProfileId.current = profileId // Mark this profile as being processed
+
+    // Check limits
     if (!swipeStats?.can_swipe) {
       toast.error("Daily swipe limit reached! Come back tomorrow or upgrade your plan.")
+      setSwiping(false)
+      processingProfileId.current = null
       return
     }
 
     if (direction === "superlike" && swipeStats?.super_likes_available <= 0) {
-      toast.error("No Super Likes available! Purchase more or upgrade your plan.")
+      toast.error("Out of Super Likes!", {
+        description: "Would you like to buy more Super Likes?",
+        action: {
+          label: "Go to Store",
+          onClick: () => window.location.href = "/dashboard/store"
+        },
+        duration: 5000,
+      })
+      setSwiping(false)
+      processingProfileId.current = null
       return
     }
 
-    setSwiping(true)
+    // Set animation
+    setCurrentSwipeDirection(direction)
 
+    // Update UI after animation
+    setTimeout(() => {
+      const swipedProfile = profiles[currentIndex]
+      if (swipedProfile && swipedProfile.id === profileId) { // Double-check profile match
+        setUndoStack(prev => [...prev, { profile: swipedProfile, direction, index: currentIndex }])
+        setCurrentIndex(prev => prev + 1)
+        onSwipe(direction, profileId)
+      } else {
+        console.log('🚫 Profile mismatch during swipe, skipping UI update')
+      }
+      
+      setCurrentSwipeDirection(null)
+      setSwiping(false)
+      processingProfileId.current = null // Clear processing flag
+
+      // Fetch more profiles if running low
+      if (currentIndex >= profiles.length - 3) {
+        console.log('📊 Running low on profiles, fetching more...')
+        fetchProfiles()
+      }
+    }, 400)
+
+    // Background API call
     try {
-      // Obtain current access token so the API can authenticate us
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      }
-      if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`
-      }
-
-      const response = await fetch("/api/swipe", {
+      const res = await fetch("/api/swipe", {
         method: "POST",
         credentials: "include",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           swiped_user_id: profileId,
           action: direction === "left" ? "dislike" : direction === "right" ? "like" : "superlike",
         }),
       })
 
-      const result = await response.json()
-
-      if (response.ok) {
-        // Handle successful swipe
-        const swipedProfile = profiles[currentIndex]
-        setUndoStack((prev) => [...prev, { profile: swipedProfile, direction, index: currentIndex }])
-
-        // Allow the local animation inside SwipeCard to finish (~0.5s)
-        setTimeout(() => {
-          setCurrentIndex((prev) => prev + 1)
-        }, 550)
-
-        // Update stats
-        fetchSwipeStats()
-
-        // Show match notification
+      if (res.ok) {
+        const result = await res.json()
         if (result.is_match) {
           toast.success("🎉 It's a match! You can now message each other.")
-        } else if (direction === "superlike") {
-          toast.success("⭐ Super Like sent!")
         }
-
-        // Call parent callback
-        onSwipe(direction, profileId)
-
-        // Load more profiles if running low
-        if (currentIndex >= profiles.length - 3) {
-          fetchProfiles()
-        }
+        // Refresh stats
+        fetchSwipeStats()
       } else {
-        if (result.limit_reached) {
-          toast.error("Daily swipe limit reached! Upgrade your plan for more swipes.")
-        } else {
-          toast.error(result.error || "Failed to swipe")
+        const errorResponse = await res.text()
+        console.error("❌ Swipe API failed:", errorResponse)
+        
+        // Parse error for better user feedback
+        try {
+          const errorData = JSON.parse(errorResponse)
+          if (errorData.error === "Already swiped on this profile") {
+            // This should NOT happen anymore with fixed backend, but just in case
+            console.error("🚨 CRITICAL: Backend returned already-swiped profile! This is a bug.")
+            toast.error("Something went wrong. Please refresh the page.")
+            return
+          }
+          
+          // Handle other specific errors
+          if (errorData.limit_reached) {
+            toast.error("Daily swipe limit reached! Come back tomorrow or upgrade your plan.")
+            return
+          }
+        } catch (parseError) {
+          // Response wasn't JSON, continue with generic error
         }
+        
+        toast.error("Something went wrong. Please try again.")
       }
-    } catch (error) {
-      console.error("Swipe error:", error)
-      toast.error("Something went wrong. Please try again.")
+    } catch (err) {
+      console.error("❌ Swipe request failed:", err)
+      toast.error("Network error. Please check your connection.")
     } finally {
-      setSwiping(false)
+      // Always clear the processing flag when API call completes
+      if (processingProfileId.current === profileId) {
+        processingProfileId.current = null
+      }
     }
   }
 
-  const handleUndo = () => {
+  const handleButtonSwipe = (direction: "left" | "right" | "superlike", profileId?: string) => {
+    if (!profileId || swiping) return
+    
+    setAnimatingButton(direction)
+    setTimeout(() => setAnimatingButton(null), 300)
+    
+    handleSwipe(direction, profileId)
+  }
+
+  const handleUndo = async () => {
     if (undoStack.length === 0) return
+    
+    // Check if user has access to undo feature
+    if (!hasUndoAccess()) {
+      toast.error("Undo Feature Available for Paid Plans", {
+        description: "Would you like to upgrade to access this feature?",
+        action: {
+          label: "Upgrade Plan",
+          onClick: () => window.location.href = "/dashboard/store"
+        },
+        duration: 5000,
+      })
+      return
+    }
 
-    const lastAction = undoStack[undoStack.length - 1]
-    setUndoStack((prev) => prev.slice(0, -1))
-    setCurrentIndex(lastAction.index)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
 
-    toast.success("Last action undone!")
+      const lastAction = undoStack[undoStack.length - 1]
+      
+      const res = await fetch("/api/swipe/undo", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          swiped_user_id: lastAction.profile.id
+        }),
+      })
+
+      if (res.ok) {
+        setUndoStack(prev => prev.slice(0, -1))
+        setCurrentIndex(prev => Math.max(0, prev - 1))
+        toast.success("Undo successful!")
+        fetchSwipeStats()
+      }
+    } catch (error) {
+      console.error("Undo failed:", error)
+    }
+  }
+
+  // Clear localStorage debug function
+  const clearAllData = () => {
+    localStorage.clear()
+    fetchProfiles()
+    toast.success("Cleared cache and refreshing!")
   }
 
   const currentProfile = profiles[currentIndex]
@@ -261,7 +319,9 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center px-4">
+      <div className="h-screen bg-white flex items-center justify-center px-4" style={{
+        paddingBottom: '200px' // Account for fixed buttons + nav bar + safety margin
+      }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading profiles...</p>
@@ -272,14 +332,16 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center px-4">
+      <div className="h-screen bg-white flex items-center justify-center px-4" style={{
+        paddingBottom: '200px' // Account for fixed buttons + nav bar + safety margin
+      }}>
         <div className="text-center max-w-md">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <X className="w-8 h-8 text-red-600" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Profiles</h3>
           <p className="text-gray-600 mb-6">{error}</p>
-          <Button onClick={fetchData} className="bg-orange-600 hover:bg-orange-700">
+          <Button onClick={fetchProfiles} className="bg-orange-600 hover:bg-orange-700">
             Try Again
           </Button>
         </div>
@@ -287,9 +349,11 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     )
   }
 
-  if (!hasMoreProfiles) {
+  if (!hasMoreProfiles || !currentProfile) {
     return (
-      <div className="h-full flex items-center justify-center px-4">
+      <div className="h-screen bg-white flex items-center justify-center px-4" style={{
+        paddingBottom: '200px' // Account for fixed buttons + nav bar + safety margin
+      }}>
         <div className="text-center max-w-md">
           <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Heart className="w-8 h-8 text-white" />
@@ -298,13 +362,16 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
           <p className="text-gray-600 mb-6">
             You've seen all available profiles for now. Check back later for new spiritual partners!
           </p>
-          <div className="flex gap-3 justify-center">
+          <div className="flex gap-3 justify-center flex-wrap">
             <Button onClick={fetchProfiles} className="bg-orange-600 hover:bg-orange-700">
               Refresh
             </Button>
             <Button onClick={handleUndo} variant="outline" disabled={undoStack.length === 0}>
               <RotateCcw className="w-4 h-4 mr-2" />
               Undo
+            </Button>
+            <Button onClick={clearAllData} variant="destructive" className="text-xs">
+              🔧 Clear Cache
             </Button>
           </div>
         </div>
@@ -313,10 +380,15 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   }
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden items-center relative">
-      {/* Swipe Cards Container - Optimized for mobile */}
-      <div className="flex items-start justify-center w-full mt-6 mb-2">
-        <div className="relative w-full max-w-sm h-[65vh] min-h-[360px]">
+    <div className="h-screen bg-white flex flex-col">
+      {/* Main Card Area - Aligned to top to maximize space */}
+      <div className="flex-1 flex items-start justify-center px-4 pt-2 overflow-hidden">
+        {/* Reserve exact space: 88px for our buttons + 72px for nav + 40px safety = 200px */}
+        <div className="w-full max-w-sm relative" style={{ 
+          height: 'calc(100vh - 240px)', // More conservative - reserve 240px total
+          minHeight: '320px',
+          maxHeight: 'calc(100vh - 240px)' // Prevent any overflow
+        }}>
           <AnimatePresence>
             {profiles.slice(currentIndex, currentIndex + 3).map((profile, index) => (
               <SwipeCard
@@ -324,69 +396,76 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
                 profile={profile}
                 index={index}
                 onSwipe={handleSwipe}
-                onUndo={handleUndo}
-                showUndo={undoStack.length > 0 && index === 0}
+                onUndo={() => {}} // Empty function since we handle undo with buttons
+                showUndo={false}
                 isTop={index === 0}
+                swipeDirection={index === 0 ? currentSwipeDirection : null}
+                disabled={swiping} // Pass swiping state to prevent drag during button swipes
               />
             ))}
           </AnimatePresence>
         </div>
       </div>
 
-      {/* Redesigned Action Buttons */}
-      <div className="flex-shrink-0 pb-4 pt-2">
-        <div className="flex items-center justify-center gap-6 sm:gap-8">
-          {/* Dislike Button - Redesigned */}
-          <motion.button
-            onClick={() => handleSwipe("left", currentProfile?.id)}
-            disabled={swiping}
-            className="group relative w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-red-400 via-red-500 to-pink-500 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
-            whileHover={{ scale: 1.12 }}
-            whileTap={{ scale: 0.97 }}
-          >
-            <span className="absolute inset-0 rounded-full ring-2 ring-red-300 group-hover:ring-4 group-hover:ring-pink-400 transition-all duration-200 animate-pulse opacity-60" />
-            <X className="relative w-8 h-8 sm:w-10 sm:h-10 text-white drop-shadow-lg" />
-          </motion.button>
+      {/* Action Buttons - Positioned to not overlap with cards */}
+      <div className="fixed left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-gray-100" style={{
+        bottom: '72px' // Exactly above the nav bar height
+      }}>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-center gap-3 max-w-sm mx-auto">
+            {/* Undo Button */}
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className={`relative w-12 h-12 rounded-full shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center ${
+                hasUndoAccess() 
+                  ? "bg-gradient-to-br from-gray-500 to-gray-600" 
+                  : "bg-gradient-to-br from-orange-400 to-orange-500"
+              }`}
+            >
+              <RotateCcw className="w-5 h-5 text-white" />
+              {!hasUndoAccess() && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
+                  <Star className="w-2 h-2 text-white" fill="currentColor" />
+                </div>
+              )}
+            </button>
 
-          {/* Super Like Button - Redesigned */}
-          <motion.button
-            onClick={() => handleSwipe("superlike", currentProfile?.id)}
-            disabled={swiping || !swipeStats?.super_likes_available}
-            className="group relative w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-yellow-300 via-orange-400 to-pink-400 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
-            whileHover={{ scale: 1.18 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <span className="absolute inset-0 rounded-full ring-4 ring-yellow-200 group-hover:ring-8 group-hover:ring-pink-300 transition-all duration-200 animate-pulse opacity-70" />
-            <span className="absolute -top-3 left-1/2 -translate-x-1/2 w-10 h-10 bg-pink-200 rounded-full blur-xl opacity-40 animate-ping" />
-            <Star className="relative w-10 h-10 sm:w-12 sm:h-12 text-white drop-shadow-xl" fill="currentColor" />
-          </motion.button>
+            {/* Dislike Button */}
+            <button
+              onClick={() => currentProfile && handleButtonSwipe("left", currentProfile.id)}
+              disabled={swiping || !currentProfile}
+              className={`relative w-14 h-14 bg-gradient-to-br from-red-400 to-red-500 rounded-full shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-40 transition-all duration-200 flex items-center justify-center ${
+                animatingButton === "left" ? "scale-110 animate-pulse" : ""
+              }`}
+            >
+              <X className="w-7 h-7 text-white" strokeWidth={2.5} />
+            </button>
 
-          {/* Like Button - Redesigned */}
-          <motion.button
-            onClick={() => handleSwipe("right", currentProfile?.id)}
-            disabled={swiping}
-            className="group relative w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-green-400 via-emerald-500 to-teal-400 rounded-full shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center overflow-visible"
-            whileHover={{ scale: 1.12 }}
-            whileTap={{ scale: 0.97 }}
-          >
-            <span className="absolute inset-0 rounded-full ring-2 ring-green-300 group-hover:ring-4 group-hover:ring-emerald-400 transition-all duration-200 animate-pulse opacity-60" />
-            <Heart className="relative w-8 h-8 sm:w-10 sm:h-10 text-white drop-shadow-lg" fill="currentColor" />
-          </motion.button>
+            {/* Super Like Button */}
+            <button
+              onClick={() => currentProfile && handleButtonSwipe("superlike", currentProfile.id)}
+              disabled={swiping || !currentProfile}
+              className={`relative w-16 h-16 bg-gradient-to-br from-blue-400 via-purple-500 to-purple-600 rounded-full shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-40 transition-all duration-200 flex items-center justify-center ${
+                animatingButton === "superlike" ? "scale-110 animate-pulse" : ""
+              }`}
+            >
+              <Star className="w-8 h-8 text-white" fill="currentColor" strokeWidth={1} />
+            </button>
+
+            {/* Like Button */}
+            <button
+              onClick={() => currentProfile && handleButtonSwipe("right", currentProfile.id)}
+              disabled={swiping || !currentProfile}
+              className={`relative w-14 h-14 bg-gradient-to-br from-green-400 to-green-500 rounded-full shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-40 transition-all duration-200 flex items-center justify-center ${
+                animatingButton === "right" ? "scale-110 animate-pulse" : ""
+              }`}
+            >
+              <Heart className="w-7 h-7 text-white" fill="currentColor" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Undo Button */}
-      {undoStack.length > 0 && !headerless && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="absolute top-4 right-4"
-          onClick={handleUndo}
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Undo
-        </Button>
-      )}
     </div>
   )
 }

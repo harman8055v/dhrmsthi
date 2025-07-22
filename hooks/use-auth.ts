@@ -28,21 +28,18 @@ export function useAuth() {
   useEffect(() => {
     // Initialise session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('[useAuth] initial getSession done', { session });
       setAuthReady(true);
     });
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
-    console.log('[useAuth] authReady effect fired');
     // Get initial session
     getInitialSession()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.id)
         
         if (session?.user) {
           await handleUserSession(session.user)
@@ -65,7 +62,6 @@ export function useAuth() {
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
       const { data: { session }, error } = await supabase.auth.getSession()
-      console.log('[useAuth] getInitialSession result', { session, error });
       
       if (error) {
         console.error('Session error:', error)
@@ -79,7 +75,6 @@ export function useAuth() {
       }
 
       if (session?.user) {
-        console.log('[useAuth] session.user present, calling handleUserSession');
         await handleUserSession(session.user)
       } else {
         setAuthState({
@@ -112,10 +107,8 @@ export function useAuth() {
     }
 
     try {
-      console.time('[useAuth] getCurrentProfile')
       const profile = await userService.getCurrentProfile(user.id)
-      console.timeEnd('[useAuth] getCurrentProfile')
-
+      
       lastLoadedUserId.current = user.id
 
       setAuthState({
@@ -172,11 +165,8 @@ export function useAuth() {
     if (!authReady) return;    // ← do not fetch until token set
 
     try {
-      console.log('[useAuth] refreshProfile()');
       setAuthState(prev => ({ ...prev, loading: true }))
-      console.time('[useAuth] refreshProfile.getCurrentProfile');
       const profile = await userService.getCurrentProfile(authState.user.id)
-      console.timeEnd('[useAuth] refreshProfile.getCurrentProfile');
       
       setAuthState(prev => ({
         ...prev,
@@ -201,7 +191,7 @@ export function useAuth() {
     isAuthenticated: !!authState.user,
     isProfileComplete: !!authState.profile?.is_onboarded,
     isVerified: authState.profile?.verification_status === 'verified',
-    isPremium: authState.profile?.account_status === 'premium' || authState.profile?.account_status === 'elite',
+    isPremium: authState.profile?.account_status === 'sparsh' || authState.profile?.account_status === 'sangam' || authState.profile?.account_status === 'samarpan',
     isMobileLogin: isMobileLoginUser
   }
 } 

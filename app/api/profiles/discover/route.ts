@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user's profile and preferences with location data
-    const { data: userProfile } = await supabase
+    // Get user profile and preferences
+    const { data: userProfile, error: profileError } = await supabase
       .from("users")
       .select(`
         *,
@@ -74,9 +74,38 @@ export async function GET(request: NextRequest) {
     }
 
     // Get profiles user has already swiped on
-    const { data: swipedProfiles } = await supabase.from("swipe_actions").select("swiped_id").eq("swiper_id", userId)
+    console.log(`🔍 Fetching swipe history for user ${userId}...`)
+    const { data: swipedProfiles, error: swipedError } = await supabase
+      .from("swipe_actions")
+      .select("swiped_id")
+      .eq("swiper_id", userId)
+    
+    if (swipedError) {
+      console.log("⚠️ Error fetching swiped profiles (continuing anyway):", swipedError)
+    }
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
+    console.log(`📊 User ${userId} has swiped on ${swipedIds.length} profiles`)
+    console.log(`📋 Swiped profile IDs:`, swipedIds.slice(0, 10)) // Show first 10 for debugging
+
+    // Check user's plan to determine how many profiles to return
+    const userPlan = userProfile.account_status || 'drishti'
+    let profileLimit = 200 // Increased base fetch limit
+    let finalReturnLimit = 15 // Default return limit
+    
+    // Samarpan gets unlimited profiles, others get limited
+    if (userPlan === 'samarpan') {
+      profileLimit = 1000 // Fetch many more for unlimited users
+      finalReturnLimit = -1 // Return all (unlimited)
+    } else if (userPlan === 'sangam') {
+      profileLimit = 300 // More for premium users
+      finalReturnLimit = 50 // Premium users get more
+    } else if (userPlan === 'sparsh') {
+      profileLimit = 250 // More for mid-tier users
+      finalReturnLimit = 25 // Mid-tier users get some more
+    } // drishti gets 200 fetch, 15 return
+
+    console.log(`User plan: ${userPlan}, will fetch ${profileLimit} and return ${finalReturnLimit === -1 ? 'unlimited' : finalReturnLimit}`)
 
     // Build query for discovering profiles with location data
     let query = supabase
@@ -91,52 +120,126 @@ export async function GET(request: NextRequest) {
       .eq("is_onboarded", true)
       .neq("id", userId)
 
-    // Exclude already swiped profiles
+    console.log(`🔍 Base query: onboarded users excluding self (${userId})`)
+
+    // ALWAYS exclude ALL swiped profiles - fundamental rule of dating apps
+    console.log(`🚫 Excluding ALL ${swipedIds.length} already swiped profiles`)
+
     if (swipedIds.length > 0) {
+      console.log(`🔍 Adding NOT IN clause to exclude: ${swipedIds.slice(0, 5).join(", ")}${swipedIds.length > 5 ? ` (and ${swipedIds.length - 5} more)` : ""}`)
       query = query.not("id", "in", `(${swipedIds.join(",")})`)
+    } else {
+      console.log("✅ No profiles to exclude - user hasn't swiped on anyone yet")
     }
 
-    // Apply smart filters based on user preferences and compatibility
-    if (userProfile.preferred_age_min && userProfile.preferred_age_max) {
-      // Expand age range slightly for better matches (±2 years flexibility)
-      const minDate = new Date()
-      minDate.setFullYear(minDate.getFullYear() - (userProfile.preferred_age_max + 2))
-      const maxDate = new Date()
-      maxDate.setFullYear(maxDate.getFullYear() - Math.max(userProfile.preferred_age_min - 2, 18))
+    // DEBUG: Log query details
+    console.log(`🔍 Query filters applied:`)
+    console.log(`   - Onboarded: true`)
+    console.log(`   - Not self: ${userId}`)
+    console.log(`   - Excluded swiped IDs: ${swipedIds.length} profiles`)
+    console.log(`   - Gender filter: ${userProfile.gender === "Male" ? "Female, Other" : userProfile.gender === "Female" ? "Male, Other" : "All"}`)
+    console.log(`   - Age filter: Applied based on gender`)
+    console.log(`   - Limit: ${profileLimit}`)
 
+    // Calculate user's current age
+    const userBirthDate = new Date(userProfile.birthdate)
+    const today = new Date()
+    const userAge = today.getFullYear() - userBirthDate.getFullYear() - 
+      (today.getMonth() < userBirthDate.getMonth() || 
+       (today.getMonth() === userBirthDate.getMonth() && today.getDate() < userBirthDate.getDate()) ? 1 : 0)
+
+    console.log(`👤 User age: ${userAge} years, gender: ${userProfile.gender}`)
+
+    // Smart age preference system based on gender
+    if (userProfile.gender === "Male") {
+      // Men see women who are younger (up to 8 years younger) or same age
+      const minAge = Math.max(18, userAge - 8) // At least 18 years old
+      const maxAge = userAge // Same age or younger
+      
+      const minDate = new Date()
+      minDate.setFullYear(minDate.getFullYear() - maxAge - 1) // -1 for inclusive range
+      const maxDate = new Date()
+      maxDate.setFullYear(maxDate.getFullYear() - minAge)
+
+      console.log(`👨 Male user: Looking for women aged ${minAge}-${maxAge} years`)
+      console.log(`📅 Date range: ${minDate.toISOString().split("T")[0]} to ${maxDate.toISOString().split("T")[0]}`)
+      
+      query = query
+        .in("gender", ["Female", "Other"])
+        .gte("birthdate", minDate.toISOString().split("T")[0])
+        .lte("birthdate", maxDate.toISOString().split("T")[0])
+        
+    } else if (userProfile.gender === "Female") {
+      // Women see men who are older (up to 8 years older) or same age
+      const minAge = userAge // Same age or older
+      const maxAge = userAge + 8 // Up to 8 years older
+      
+      const minDate = new Date()
+      minDate.setFullYear(minDate.getFullYear() - maxAge - 1) // -1 for inclusive range
+      const maxDate = new Date()
+      maxDate.setFullYear(maxDate.getFullYear() - minAge)
+
+      console.log(`👩 Female user: Looking for men aged ${minAge}-${maxAge} years`)
+      console.log(`📅 Date range: ${minDate.toISOString().split("T")[0]} to ${maxDate.toISOString().split("T")[0]}`)
+      
+      query = query
+        .in("gender", ["Male", "Other"])
+        .gte("birthdate", minDate.toISOString().split("T")[0])
+        .lte("birthdate", maxDate.toISOString().split("T")[0])
+        
+    } else {
+      // For "Other" gender, show all genders with reasonable age range
+      const minAge = Math.max(18, userAge - 5)
+      const maxAge = userAge + 5
+      
+      const minDate = new Date()
+      minDate.setFullYear(minDate.getFullYear() - maxAge - 1)
+      const maxDate = new Date()
+      maxDate.setFullYear(maxDate.getFullYear() - minAge)
+
+      console.log(`🌈 Other gender user: Looking for all genders aged ${minAge}-${maxAge} years`)
+      
       query = query
         .gte("birthdate", minDate.toISOString().split("T")[0])
         .lte("birthdate", maxDate.toISOString().split("T")[0])
     }
 
-    // Gender preference with flexibility for 'Other'
-    if (userProfile.gender === "Male") {
-      query = query.in("gender", ["Female", "Other"])
-    } else if (userProfile.gender === "Female") {
-      query = query.in("gender", ["Male", "Other"])
-    }
-
     // Smart location filtering - prioritize same state but allow others
     // We'll handle location scoring in the matching engine instead
 
-    // Fetch more profiles for better AI matching (increased from 50 to 100)
+    // Fetch profiles based on user's plan
+    console.log(`🔍 Executing main query with limit ${profileLimit}...`)
     const { data: profiles, error } = await query
       .order("created_at", { ascending: false })
-      .limit(100)
+      .limit(profileLimit)
 
     if (error) {
-      console.error("Error fetching profiles:", error)
+      console.error("❌ Error fetching profiles:", error)
       return NextResponse.json({ error: "Failed to fetch profiles" }, { status: 500 })
     }
 
-    // 🎯 FALLBACK STRATEGY: Ensure users always see profiles
+    console.log(`📋 Main query returned ${profiles?.length || 0} profiles`)
+    
+    // DEBUG: Check if any returned profiles are in swiped list
+    if (profiles && profiles.length > 0) {
+      const returnedIds = profiles.map(p => p.id)
+      const duplicates = returnedIds.filter(id => swipedIds.includes(id))
+      if (duplicates.length > 0) {
+        console.error(`🚨 CRITICAL BUG: Returned ${duplicates.length} already-swiped profiles:`, duplicates)
+      } else {
+        console.log(`✅ Good: No swiped profiles in results`)
+      }
+      console.log(`📋 Returned profile IDs:`, returnedIds.slice(0, 5)) // Show first 5
+    }
+
+    // �� FALLBACK STRATEGY: Only relax age, NEVER gender preferences
     let finalProfiles = profiles
     let fallbackUsed = false
 
-    if (!profiles || profiles.length === 0) {
-      console.log("🔄 No profiles found with strict filters, trying fallback strategy...")
+    if (!profiles || profiles.length < 10) { // Start fallback if we have fewer than 10 profiles
+      console.log(`🔄 Only found ${profiles?.length || 0} profiles with strict filters, trying age relaxation...`)
       
-      // Fallback 1: Remove age restrictions
+      // Fallback: Remove age restrictions but keep gender preferences
       let fallbackQuery = supabase
         .from("users")
         .select(`
@@ -149,60 +252,41 @@ export async function GET(request: NextRequest) {
         .eq("is_onboarded", true)
         .neq("id", userId)
 
+      // ALWAYS exclude ALL swiped profiles - even in fallback
       if (swipedIds.length > 0) {
         fallbackQuery = fallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
+        console.log(`🔄 Fallback: Still excluding ALL ${swipedIds.length} swiped profiles`)
       }
 
       // Keep gender preference but remove age restrictions
       if (userProfile.gender === "Male") {
         fallbackQuery = fallbackQuery.in("gender", ["Female", "Other"])
+        console.log(`👨 Fallback: Male user looking for women/other (no age restrictions)`)
       } else if (userProfile.gender === "Female") {
         fallbackQuery = fallbackQuery.in("gender", ["Male", "Other"])
+        console.log(`👩 Fallback: Female user looking for men/other (no age restrictions)`)
+      } else {
+        // For "Other" gender, keep showing all genders but remove age restrictions
+        console.log(`🌈 Fallback: Other gender user looking for all genders (no age restrictions)`)
       }
 
       const { data: fallbackProfiles } = await fallbackQuery
         .order("created_at", { ascending: false })
-        .limit(50)
+        .limit(profileLimit) // Use same generous limit
 
       if (fallbackProfiles && fallbackProfiles.length > 0) {
-        finalProfiles = fallbackProfiles
-        fallbackUsed = true
-        console.log(`✅ Fallback successful: Found ${fallbackProfiles.length} profiles without age restrictions`)
-      } else {
-        // Fallback 2: Remove all preference filters except basic verification
-        console.log("🔄 Trying ultimate fallback - any verified profiles...")
+        // DEBUG: Check fallback results too
+        const fallbackIds = fallbackProfiles.map(p => p.id)
+        const fallbackDuplicates = fallbackIds.filter(id => swipedIds.includes(id))
+        if (fallbackDuplicates.length > 0) {
+          console.error(`🚨 CRITICAL BUG: Fallback returned ${fallbackDuplicates.length} already-swiped profiles:`, fallbackDuplicates)
+        }
         
-        const ultimateFallbackQuery = supabase
-          .from("users")
-          .select(`
-            *,
-            city:cities(name),
-            state:states(name),
-            country:countries(name)
-          `)
-          // .eq("verification_status", "verified") // Temporarily disabled for testing
-          .eq("is_onboarded", true)
-          .neq("id", userId)
-
-        if (swipedIds.length > 0) {
-          ultimateFallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
-        }
-
-        const { data: ultimateFallbackProfiles } = await ultimateFallbackQuery
-          .order("created_at", { ascending: false })
-          .limit(30)
-
-        if (ultimateFallbackProfiles && ultimateFallbackProfiles.length > 0) {
-          finalProfiles = ultimateFallbackProfiles
-          fallbackUsed = true
-          console.log(`✅ Ultimate fallback successful: Found ${ultimateFallbackProfiles.length} profiles`)
-        } else {
-          return NextResponse.json({ 
-            profiles: [],
-            message: "No more profiles available right now. Check back later for new spiritual partners!",
-            fallback_used: true
-          })
-        }
+        finalProfiles = (profiles || []).concat(fallbackProfiles) // Combine with main results
+        fallbackUsed = true
+        console.log(`✅ Fallback successful: Added ${fallbackProfiles.length} profiles (total: ${finalProfiles.length})`)
+      } else {
+        console.log(`❌ Fallback found no additional profiles`)
       }
     }
 
@@ -275,26 +359,32 @@ export async function GET(request: NextRequest) {
       };
     }));
 
-    // Filter out profiles without any photos
+    // Filter out profiles without any photos - THIS IS THE ONLY CLIENT-SIDE FILTERING WE DO
     const profilesWithPhotos = profilesWithSignedUrls.filter(profile => 
-      profile.user_photos && profile.user_photos.length > 0
+      profile.user_photos && 
+      Array.isArray(profile.user_photos) && 
+      profile.user_photos.length > 0
     );
 
-    // 🚀 ADVANCED AI MATCHING ENGINE ACTIVATION
+    console.log(`📷 After photo filtering: ${profilesWithPhotos.length} profiles with photos`)
+
+    // 🚀 ADVANCED AI MATCHING ENGINE ACTIVATION - Process ALL profiles with photos
     console.log(`🧠 AI Matching Engine: Processing ${profilesWithPhotos.length} profiles for user ${userId}${fallbackUsed ? ' (with fallback)' : ''}`)
     
-    // Use our sophisticated matching engine to calculate compatibility
+    // Use our sophisticated matching engine to calculate compatibility for ALL profiles
     const profilesWithCompatibility = await matchingEngine.sortProfilesByCompatibility(userProfile, profilesWithPhotos)
 
-    // Apply account status boosting and final ranking
+    // Apply account status boosting and final ranking - but keep ALL profiles
     const rankedProfiles = profilesWithCompatibility.map((profile, index) => {
       // Boost premium/elite profiles slightly but don't override compatibility
+      const profileBoost = Math.min(profile.profile_score || 0, 10) // Cap score contributions
+      
       let finalScore = profile.compatibility.total
       
-      if (profile.account_status === 'elite') {
-        finalScore = Math.min(finalScore + 2, 99)
-      } else if (profile.account_status === 'premium') {
-        finalScore = Math.min(finalScore + 1, 99)
+      if (profile.account_status === 'samarpan') {
+        finalScore += profileBoost * 0.05 // 5% boost for samarpan users
+      } else if (profile.account_status === 'sangam' || profile.account_status === 'sparsh') {
+        finalScore += profileBoost * 0.03 // 3% boost for premium users
       }
 
       return {
@@ -308,20 +398,24 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Return top matches (limit to 15 for better performance)
-    const topMatches = rankedProfiles.slice(0, 15)
+    // Apply plan-based limits AFTER sorting by compatibility
+    const finalMatches = finalReturnLimit === -1 ? rankedProfiles : rankedProfiles.slice(0, finalReturnLimit)
 
-    console.log(`🎯 AI Matching Complete: Returning ${topMatches.length} top matches with scores ranging from ${topMatches[0]?.compatibility.total || 0} to ${topMatches[topMatches.length - 1]?.compatibility.total || 0}`)
+    console.log(`🎯 AI Matching Complete: Returning ${finalMatches.length} matches (from ${profilesWithPhotos.length} analyzed) with scores ranging from ${finalMatches[0]?.compatibility.total || 0} to ${finalMatches[finalMatches.length - 1]?.compatibility.total || 0}`)
 
     return NextResponse.json({ 
-      profiles: topMatches,
+      profiles: finalMatches,
       total_analyzed: profilesWithPhotos.length,
+      total_returned: finalMatches.length,
+      user_plan: userPlan,
+      is_unlimited: finalReturnLimit === -1,
       fallback_used: fallbackUsed,
       matching_insights: {
-        avg_compatibility: Math.round(topMatches.reduce((sum, p) => sum + p.compatibility.total, 0) / topMatches.length),
-        top_score: topMatches[0]?.compatibility.total || 0,
-        spiritual_matches: topMatches.filter(p => p.compatibility.breakdown.spiritual >= 70).length,
-        perfect_matches: topMatches.filter(p => p.compatibility.total >= 90).length,
+        avg_compatibility: Math.round(finalMatches.reduce((sum, p) => sum + p.compatibility.total, 0) / finalMatches.length),
+        top_score: finalMatches[0]?.compatibility.total || 0,
+        lowest_score: finalMatches[finalMatches.length - 1]?.compatibility.total || 0,
+        spiritual_matches: finalMatches.filter(p => p.compatibility.breakdown.spiritual >= 70).length,
+        perfect_matches: finalMatches.filter(p => p.compatibility.total >= 90).length,
         fallback_info: fallbackUsed ? "Expanded search to show more profiles" : null
       }
     })

@@ -42,7 +42,7 @@ export interface UserProfile {
   // Status and verification
   is_onboarded: boolean
   verification_status?: 'pending' | 'verified' | 'rejected'
-  account_status?: 'free' | 'premium' | 'elite'
+  account_status?: 'drishti' | 'sparsh' | 'sangam' | 'samarpan'
   premium_expires_at?: string
   // Counters
   super_likes_count: number
@@ -125,7 +125,6 @@ const handleSupabaseError = (error: any, operation: string): never => {
 export const userService = {
   // Get current user profile
   async getCurrentProfile(userId?: string): Promise<UserProfile | null> {
-    console.log('[DataService] getCurrentProfile called', { userId });
     
     // If userId is provided (mobile login), use it directly
     // Otherwise, get from auth session
@@ -154,7 +153,6 @@ export const userService = {
       }
       throw error;
     }
-    console.log('[DataService] getCurrentProfile success', data);
     return data;
   },
 
@@ -257,19 +255,16 @@ export const fileService = {
     
     // Handle blob URLs - these are temporary and invalid
     if (photoPath.startsWith('blob:')) {
-      console.log('Found blob URL in profile photo, skipping:', photoPath)
       return null
     }
     
     // Handle base64 data - these are embedded images, skip for now
     if (photoPath.startsWith('data:')) {
-      console.log('Found base64 data in profile photo, skipping')
       return null
     }
 
     // If the URL is an external link (not Supabase storage), return it as-is
     if (photoPath.startsWith('http') && !photoPath.includes('supabase.co/storage')) {
-      console.log('External photo URL detected, returning as-is:', photoPath)
       return photoPath
     }
     
@@ -281,12 +276,10 @@ export const fileService = {
     // For storage paths (like "user-id/filename.jpg"), return public URL
     try {
       const cleanPath = photoPath.replace(/^\/+/, '')
-      console.log('Generating public URL for photo path:', cleanPath)
       
       // Return the public bucket URL
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`
       
-      console.log('Generated public URL:', publicUrl)
       return publicUrl
     } catch (error) {
       console.error('Error generating public URL for photo:', error)
@@ -619,7 +612,7 @@ export const premiumService = {
       const profile = await userService.getCurrentProfile(user.id)
       if (!profile) return false
 
-      if (profile.account_status === 'premium' || profile.account_status === 'elite') {
+      if (profile.account_status === 'sparsh' || profile.account_status === 'sangam' || profile.account_status === 'samarpan') {
         if (profile.premium_expires_at) {
           return new Date(profile.premium_expires_at) > new Date()
         }
@@ -675,7 +668,6 @@ export const analyticsService = {
 
       // You can implement your analytics tracking here
       // For now, we'll just log it
-      console.log('Analytics:', { action, properties, userId: user.id })
     } catch (error) {
       console.error('Analytics tracking error:', error)
     }

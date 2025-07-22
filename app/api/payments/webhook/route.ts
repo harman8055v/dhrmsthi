@@ -77,7 +77,7 @@ async function handleSubscriptionActivated(payload: any) {
     await supabase
       .from("users")
       .update({
-        account_status: "premium",
+        account_status: subscription.notes?.plan_name || "sparsh", // Use plan name from subscription notes
         premium_expires_at: expiryDate.toISOString(),
         razorpay_subscription_id: subscription.id,
       })
@@ -152,7 +152,7 @@ async function handleSubscriptionCancelled(payload: any) {
     await supabase
       .from("users")
       .update({
-        account_status: "free",
+        account_status: "drishti",
         premium_expires_at: null,
         razorpay_subscription_id: null,
       })
@@ -169,7 +169,7 @@ async function handleSubscriptionCompleted(payload: any) {
     await supabase
       .from("users")
       .update({
-        account_status: "free",
+        account_status: "drishti",
         premium_expires_at: null,
         razorpay_subscription_id: null,
       })

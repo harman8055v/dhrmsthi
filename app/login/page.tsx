@@ -2,20 +2,31 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import AuthDialog from "@/components/auth-dialog"
 import { Button } from "@/components/ui/button"
-import { Lock } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Lock, CheckCircle } from "lucide-react"
 
-export default function LoginPage() {
+function LoginContent() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [showResetSuccess, setShowResetSuccess] = useState(false)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     // Trigger animations after mount
     setIsLoaded(true)
-  }, [])
+    
+    // Check for password reset success
+    if (searchParams.get('reset') === 'success') {
+      setShowResetSuccess(true)
+      // Auto dismiss success message after 5 seconds
+      setTimeout(() => setShowResetSuccess(false), 5000)
+    }
+  }, [searchParams])
 
   return (
     <main className="min-h-screen flex flex-col bg-gradient-to-b from-brand-50/80 via-orange-50 to-amber-50">
@@ -24,6 +35,27 @@ export default function LoginPage() {
 
       {/* Hero / Login Section */}
       <section className="flex-1 flex items-center justify-center relative overflow-hidden py-20 px-4">
+        {/* Success Message for Password Reset */}
+        {showResetSuccess && (
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-slide-down">
+            <Card className="bg-green-50 border-green-200 shadow-lg">
+              <CardContent className="flex items-center gap-3 p-4">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <div>
+                  <p className="text-green-800 font-medium">Password Reset Successful!</p>
+                  <p className="text-green-600 text-sm">You can now log in with your new password.</p>
+                </div>
+                <button 
+                  onClick={() => setShowResetSuccess(false)}
+                  className="text-green-600 hover:text-green-800 ml-2"
+                >
+                  ✕
+                </button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Decorative Background Elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div
@@ -71,14 +103,20 @@ export default function LoginPage() {
       {/* Footer */}
       <Footer />
 
-      {/* Auth Dialog (wrapped in Suspense to avoid CSR bailout error) */}
-      <Suspense fallback={null}>
-        <AuthDialog
-          isOpen={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          defaultMode="login"
-        />
-      </Suspense>
+      {/* Auth Dialog */}
+      <AuthDialog
+        isOpen={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        defaultMode="login"
+      />
     </main>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   )
 } 

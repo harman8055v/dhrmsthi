@@ -5,6 +5,8 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("Admin dashboard API called at:", new Date().toISOString());
+    console.log("Request URL:", request.url);
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
@@ -20,6 +22,13 @@ export async function GET(request: NextRequest) {
     const ageRangeFilter = searchParams.get("age_range_filter") || "all"
 
     const offset = (page - 1) * limit
+    
+    // Apply client-side filtering for photo and profile completion filters
+    const hasClientSideFilters = photoFilter !== "all" || profileCompletionFilter !== "all"
+    
+    // We'll determine fetch strategy after getting the count
+    let fetchLimit = limit
+    let fetchOffset = offset
 
     // Build the base query with actual schema columns from your database
     let baseQuery = supabase.from("users").select(`
@@ -28,9 +37,7 @@ export async function GET(request: NextRequest) {
       spiritual_org, daily_practices, diet, temple_visit_freq, artha_vs_moksha,
       vanaprastha_interest, favorite_spiritual_quote, education, profession, annual_income,
       marital_status, super_likes_count, swipe_count, message_highlights_count,
-      is_onboarded, is_verified, account_status, preferred_gender, preferred_age_min,
-      preferred_age_max, preferred_height_min, preferred_height_max, preferred_location,
-      preferred_diet, preferred_profession, created_at, updated_at, daily_swipe_count,
+      is_onboarded, is_verified, account_status, created_at, updated_at, daily_swipe_count,
       daily_superlike_count, last_swipe_date, is_banned, is_kyc_verified, flagged_reason,
       role, mother_tongue, about_me, ideal_partner_notes, verification_status,
       height_ft, height_in, is_active
@@ -78,14 +85,7 @@ export async function GET(request: NextRequest) {
         query = query.eq("gender", genderFilter)
       }
 
-      // Apply photo filter
-      if (photoFilter !== "all") {
-        if (photoFilter === "has_photos") {
-          query = query.not("user_photos", "is", null).neq("user_photos", "{}")
-        } else if (photoFilter === "no_photos") {
-          query = query.or("user_photos.is.null,user_photos.eq.{}")
-        }
-      }
+      // Photo filtering will be handled client-side for better reliability
 
       // Apply age range filter
       if (ageRangeFilter !== "all") {
@@ -146,10 +146,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to count users" }, { status: 500 })
     }
 
-    // Apply sorting and pagination to the main query
-    const { data: users, error } = await baseQuery
-      .order(sortBy, { ascending: sortOrder === "asc" })
-      .range(offset, offset + limit - 1)
+    // Apply sorting and pagination to the main query with error handling
+    let users = null;
+    let queryError = null;
+    
+    if (hasClientSideFilters) {
+      // Batch processing to fetch ALL users when client-side filtering is needed
+      console.log(`Client-side filtering detected. Fetching all ${count} users in batches...`);
+      
+      const batchSize = 1000;
+      const totalBatches = Math.ceil((count || 0) / batchSize);
+      let allUsers: any[] = [];
+      
+      for (let batch = 0; batch < totalBatches; batch++) {
+        const batchOffset = batch * batchSize;
+        const batchLimit = Math.min(batchSize, (count || 0) - batchOffset);
+        
+        console.log(`Fetching batch ${batch + 1}/${totalBatches}: offset ${batchOffset}, limit ${batchLimit}`);
+        
+        try {
+          const { data: batchData, error: batchError } = await baseQuery
+            .order(sortBy, { ascending: sortOrder === "asc" })
+            .range(batchOffset, batchOffset + batchLimit - 1);
+          
+          if (batchError) {
+            console.error(`Batch ${batch + 1} error:`, batchError);
+            queryError = batchError;
+            break;
+          }
+          
+          if (batchData) {
+            allUsers = allUsers.concat(batchData);
+          }
+        } catch (err) {
+          console.error(`Batch ${batch + 1} failed:`, err);
+          queryError = err;
+          break;
+        }
+      }
+      
+      users = allUsers;
+      console.log(`Batch processing complete. Fetched ${users?.length || 0} total users.`);
+    } else {
+      // Standard single query for non-filtered requests
+      try {
+        const { data: usersData, error: dbError } = await baseQuery
+          .order(sortBy, { ascending: sortOrder === "asc" })
+          .range(fetchOffset, fetchOffset + fetchLimit - 1)
+        
+        users = usersData;
+        queryError = dbError;
+      } catch (err) {
+        console.error("Database query failed:", err);
+        queryError = err;
+      }
+    }
 
     // Helper function to process photo URLs
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
@@ -224,33 +275,43 @@ export async function GET(request: NextRequest) {
     const cityIds = Array.from(new Set((transformedUsers || []).map((u: any) => u.city_id).filter(Boolean)));
     const stateIds = Array.from(new Set((transformedUsers || []).map((u: any) => u.state_id).filter(Boolean)));
 
-    // Fetch cities in bulk
+    // Fetch cities in bulk with error handling
     let cityMap: Record<number, string> = {};
     if (cityIds.length > 0) {
-      const { data: citiesData, error: citiesError } = await supabase
-        .from("cities")
-        .select("id, name")
-        .in("id", cityIds);
+      try {
+        const { data: citiesData, error: citiesError } = await supabase
+          .from("cities")
+          .select("id, name")
+          .in("id", cityIds);
 
-      if (citiesError) {
-        console.error("Failed to fetch cities:", citiesError);
-      } else {
-        cityMap = Object.fromEntries((citiesData || []).map((c: any) => [c.id, c.name]));
+        if (citiesError) {
+          console.error("Failed to fetch cities:", citiesError);
+        } else {
+          cityMap = Object.fromEntries((citiesData || []).map((c: any) => [c.id, c.name]));
+        }
+      } catch (error) {
+        console.error("Cities table query failed:", error);
+        // Continue without city names - don't fail the entire request
       }
     }
 
-    // Fetch states in bulk
+    // Fetch states in bulk with error handling
     let stateMap: Record<number, string> = {};
     if (stateIds.length > 0) {
-      const { data: statesData, error: statesError } = await supabase
-        .from("states")
-        .select("id, name")
-        .in("id", stateIds);
+      try {
+        const { data: statesData, error: statesError } = await supabase
+          .from("states")
+          .select("id, name")
+          .in("id", stateIds);
 
-      if (statesError) {
-        console.error("Failed to fetch states:", statesError);
-      } else {
-        stateMap = Object.fromEntries((statesData || []).map((s: any) => [s.id, s.name]));
+        if (statesError) {
+          console.error("Failed to fetch states:", statesError);
+        } else {
+          stateMap = Object.fromEntries((statesData || []).map((s: any) => [s.id, s.name]));
+        }
+      } catch (error) {
+        console.error("States table query failed:", error);
+        // Continue without state names - don't fail the entire request
       }
     }
 
@@ -260,13 +321,29 @@ export async function GET(request: NextRequest) {
       state: u.state_id ? stateMap[u.state_id] || null : null,
     }));
 
-    if (error) {
-      console.error("Database error:", error)
-      return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    if (queryError) {
+      console.error("Database error:", queryError)
+      return NextResponse.json({ 
+        error: "Failed to fetch users", 
+        details: queryError instanceof Error ? queryError.message : "Database query failed",
+        users: [], 
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
+        stats: includeStats ? {
+          totalUsers: 0,
+          verifiedUsers: 0,
+          todaySignups: 0,
+          pendingVerifications: 0,
+          maleUsers: 0,
+          femaleUsers: 0,
+          completedProfiles: 0,
+        } : null
+      }, { status: 200 }) // Return 200 instead of 500 with empty data
     }
 
-    // Filter by profile completion if needed (client-side filtering for complex logic)
+    // Apply client-side filters for complex logic
     let filteredUsers = enrichedUsers || []
+    
+    // Filter by profile completion
     if (profileCompletionFilter !== "all") {
       filteredUsers = filteredUsers.filter((user) => {
         const completionScore = calculateProfileCompletion(user)
@@ -278,16 +355,42 @@ export async function GET(request: NextRequest) {
         return true
       })
     }
+    
+        // Apply photo filtering (client-side for reliability)
+    if (photoFilter !== "all") {
+      filteredUsers = filteredUsers.filter((user) => {
+        const hasPhotos = user.user_photos && 
+                         Array.isArray(user.user_photos) && 
+                         user.user_photos.length > 0 &&
+                         user.user_photos.some((photo: string) => photo && photo.trim() !== "")
+        
+        if (photoFilter === "has_photos") {
+          return hasPhotos
+        } else if (photoFilter === "no_photos") {
+          return !hasPhotos
+        }
+        return true
+      })
+    }
+    
+    // Apply pagination to filtered results (only needed when client-side filtering is applied)
+    let paginatedUsers = filteredUsers
+    if (hasClientSideFilters) {
+      const startIndex = (page - 1) * limit
+      const endIndex = startIndex + limit
+      paginatedUsers = filteredUsers.slice(startIndex, endIndex)
+    }
 
-    const totalCount = count || 0
-    const totalPages = Math.ceil(totalCount / limit)
+    // Use filtered count when client-side filters are applied (now only profile completion)
+    const actualTotalCount = hasClientSideFilters ? filteredUsers.length : (count || 0)
+    const totalPages = Math.ceil(actualTotalCount / limit)
     const hasNext = page < totalPages
     const hasPrev = page > 1
 
     const pagination = {
       page,
       limit,
-      total: totalCount,
+      total: actualTotalCount,
       totalPages,
       hasNext,
       hasPrev,
@@ -300,7 +403,7 @@ export async function GET(request: NextRequest) {
         const today = new Date()
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
 
-        // Execute all count queries in parallel for better performance
+        // Execute all count queries in parallel for better performance with error handling
         const [
           totalUsersResult,
           verifiedUsersResult,
@@ -309,7 +412,7 @@ export async function GET(request: NextRequest) {
           maleUsersResult,
           femaleUsersResult,
           completedProfilesResult
-        ] = await Promise.all([
+        ] = await Promise.allSettled([
           // Total users
           supabase.from("users").select("id", { count: "exact", head: true }),
           
@@ -332,33 +435,29 @@ export async function GET(request: NextRequest) {
           supabase.from("users").select("id", { count: "exact", head: true }).eq("is_onboarded", true)
         ])
 
+        // Process results with error handling
+        const getCount = (result: any) => {
+          if (result.status === 'fulfilled' && result.value?.count !== undefined) {
+            return result.value.count || 0;
+          }
+          if (result.status === 'rejected') {
+            console.error('Stats query failed:', result.reason);
+          }
+          return 0;
+        };
+
         stats = {
-          totalUsers: totalUsersResult.count || 0,
-          verifiedUsers: verifiedUsersResult.count || 0,
-          todaySignups: todaySignupsResult.count || 0,
-          pendingVerifications: pendingVerificationsResult.count || 0,
-          maleUsers: maleUsersResult.count || 0,
-          femaleUsers: femaleUsersResult.count || 0,
-          completedProfiles: completedProfilesResult.count || 0,
+          totalUsers: getCount(totalUsersResult),
+          verifiedUsers: getCount(verifiedUsersResult),
+          todaySignups: getCount(todaySignupsResult),
+          pendingVerifications: getCount(pendingVerificationsResult),
+          maleUsers: getCount(maleUsersResult),
+          femaleUsers: getCount(femaleUsersResult),
+          completedProfiles: getCount(completedProfilesResult),
         }
         
         // Log the stats for debugging
         console.log("Stats calculated with count queries:", stats)
-
-        // Check for any errors in the queries
-        const errors = [
-          totalUsersResult.error,
-          verifiedUsersResult.error,
-          todaySignupsResult.error,
-          pendingVerificationsResult.error,
-          maleUsersResult.error,
-          femaleUsersResult.error,
-          completedProfilesResult.error
-        ].filter(Boolean)
-
-        if (errors.length > 0) {
-          console.error("Some stats queries failed:", errors)
-        }
 
       } catch (error) {
         console.error("Stats calculation error:", error)
@@ -376,7 +475,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      users: filteredUsers,
+      users: paginatedUsers,
       pagination,
       stats,
       success: true,

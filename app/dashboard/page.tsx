@@ -37,15 +37,17 @@ export default function DashboardPage() {
         headers["Authorization"] = `Bearer ${session.access_token}`
       }
 
-      const res = await fetch("/api/profiles/discover?limit=5", {
+      const res = await fetch("/api/profiles/discover", {
         credentials: "include",
         headers,
       })
       if (!res.ok) throw new Error("Failed to fetch profiles")
       const data = await res.json()
-      return (data.profiles || []).slice(0, 5)
+      return data.profiles || []
     },
     enabled: isVerified,
+    staleTime: 30000, // 30 seconds - reasonable for a web app
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
   })
 
   const {
@@ -72,6 +74,8 @@ export default function DashboardPage() {
       return res.json()
     },
     enabled: isVerified,
+    staleTime: 60000, // 1 minute for stats
+    refetchOnWindowFocus: true,
   })
 
   // Redirect unauthenticated users and handle onboarding status
@@ -105,22 +109,7 @@ export default function DashboardPage() {
         return;
       }
     }
-    
-    if (error) {
-      console.error('[Dashboard] profile load error:', error);
-      // Don't redirect on error for mobile login users
-      if (!isMobileLogin) {
-        return;
-      }
-    }
-    
-    // When verified, fetch page-specific data
-    if (isVerified) {
-      refetchProfiles();
-      refetchStats();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, error, profile, user, isVerified, isMobileLogin])
+  }, [isLoading, user, profile, router, error, isMobileLogin])
 
   // If the component mounts with a user but no profile (fresh after onboarding),
   // trigger one manual refresh so the dashboard shows real data without reload.
@@ -212,8 +201,11 @@ export default function DashboardPage() {
 
   const handleSwipe = (direction: "left" | "right" | "superlike", profileId: string) => {
     debugLog(`Swiped ${direction} on profile ${profileId}`)
-    // Refresh stats after swipe
-    refetchStats()
+    // Delayed refetch to prevent state conflicts during swipe processing
+    setTimeout(() => {
+      refetchProfiles()
+      refetchStats()
+    }, 1000) // Longer delay to ensure swipe is fully processed
   }
 
   if (isLoading) {

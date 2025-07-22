@@ -1,9 +1,10 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useRef } from "react"
-import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion"
+import { motion, useMotionValue, useTransform, type PanInfo, AnimatePresence } from "framer-motion"
+import { animate } from "framer-motion"
 import {
   Heart,
   X,
@@ -33,6 +34,9 @@ import {
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/use-auth"
+import CardImage from "./card-image"
+import CardOverlay from "./card-overlay"
+import { useReducedMotion } from "@/hooks/use-reduced-motion"
 
 interface SwipeCardProps {
   profile: any & {
@@ -58,9 +62,11 @@ interface SwipeCardProps {
   showUndo?: boolean
   isTop: boolean
   index: number
+  swipeDirection?: "left" | "right" | "superlike" | null
+  disabled?: boolean
 }
 
-export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, isTop, index }: SwipeCardProps) {
+const SwipeCard = React.memo<SwipeCardProps>(({ profile, onSwipe, onUndo, showUndo = false, isTop, index, swipeDirection, disabled = false }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [currentDetailImageIndex, setCurrentDetailImageIndex] = useState(0)
@@ -70,27 +76,18 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
   const cardRef = useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
   const y = useMotionValue(0)
+  const expandedY = useMotionValue(0)
 
-  const rotateRaw = useTransform(x, [-300, 300], [-30, 30])
-  const opacity = useTransform(x, [-300, -150, 0, 150, 300], [0, 1, 1, 1, 0])
+  const rotateRaw = useTransform(x, [-300, 0, 300], [-30, 0, 30])
+  const opacityRaw = useTransform(x, [-300, -150, 0, 150, 300], [0, 1, 1, 1, 0])
 
   const rotate = rotateRaw
 
   // Get user's subscription plan
   const getUserPlan = () => {
     const accountStatus = userProfile?.account_status
-    if (!accountStatus || accountStatus === 'free') return 'drishti'
-    
-    // For now, we'll need to determine the specific plan from other indicators
-    // This could be improved by adding a separate 'current_plan' field
-    if (accountStatus === 'elite') return 'samarpan' // Elite users get full access
-    if (accountStatus === 'premium') {
-      // Check if it's a specific premium plan based on additional indicators
-      // For now, default premium users to sangam (basic AI access)
-      return 'sangam'
-    }
-    
-    return 'drishti'
+    // account_status now directly contains the plan name
+    return accountStatus || 'drishti'
   }
 
   // Check what AI features user has access to
@@ -122,11 +119,14 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
   }
 
   const handleDragEnd = (event: any, info: PanInfo) => {
+    if (disabled) return // Don't process drag if disabled
+    
     const threshold = 150
     const velocity = info.velocity.x
 
     if (Math.abs(info.offset.x) > threshold || Math.abs(velocity) > 500) {
       const direction = info.offset.x > 0 ? "right" : "left"
+      console.log(`🎯 Drag swipe detected: ${direction} on ${profile.id}`)
       onSwipe(direction, profile.id)
     }
   }
@@ -135,31 +135,7 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
 
   const triggerSwipeAnimation = (direction: "left" | "right" | "up") => {
     setSwipeAnimation(direction)
-    setTimeout(() => setSwipeAnimation(null), 800)
-  }
-
-  const handleLike = () => {
-    if (animatingButton) return
-    setAnimatingButton("like")
-    triggerSwipeAnimation("right")
-    onSwipe("right", profile.id)
-    setTimeout(() => setAnimatingButton(null), 500)
-  }
-
-  const handleDislike = () => {
-    if (animatingButton) return
-    setAnimatingButton("dislike")
-    triggerSwipeAnimation("left")
-    onSwipe("left", profile.id)
-    setTimeout(() => setAnimatingButton(null), 500)
-  }
-
-  const handleSuperlike = () => {
-    if (animatingButton) return
-    setAnimatingButton("superlike")
-    triggerSwipeAnimation("up")
-    onSwipe("superlike", profile.id)
-    setTimeout(() => setAnimatingButton(null), 500)
+    setTimeout(() => setSwipeAnimation(null), 1200) // Longer animation duration
   }
 
   const handleUndoClick = () => {
@@ -169,17 +145,17 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
     setTimeout(() => setAnimatingButton(null), 300)
   }
 
-  const nextImage = () => {
+  const nextImage = React.useCallback(() => {
     if (profile.user_photos && profile.user_photos.length > 1) {
       setCurrentImageIndex((prev) => (prev + 1) % profile.user_photos.length)
     }
-  }
+  }, [profile.user_photos])
 
-  const prevImage = () => {
+  const prevImage = React.useCallback(() => {
     if (profile.user_photos && profile.user_photos.length > 1) {
       setCurrentImageIndex((prev) => (prev - 1 + profile.user_photos.length) % profile.user_photos.length)
     }
-  }
+  }, [profile.user_photos])
 
   const nextDetailImage = () => {
     if (profile.user_photos && profile.user_photos.length > 1) {
@@ -224,18 +200,35 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
     return null
   }
 
-  // Helper function to get proper image URL
-  const getImageUrl = (imagePath: string | null): string => {
+  const getImageUrl = React.useCallback((imagePath: string | null): string => {
     if (!imagePath) return "/placeholder.svg";
     return imagePath.startsWith('http') 
       ? imagePath 
       : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${imagePath}`;
-  };
+  }, [])
 
   const nopeOpacity = useTransform(x, [-150, -50], [1, 0])
   const nopeRotate = useTransform(x, [-150, -50], [-30, 0])
   const likeOpacity = useTransform(x, [50, 150], [0, 1])
   const likeRotate = useTransform(x, [50, 150], [0, 30])
+
+  const prefersReducedMotion = useReducedMotion()
+
+  // Animate card off screen when swipe direction changes
+  React.useEffect(() => {
+    if (swipeDirection && isTop) {
+      if (swipeDirection === "left") {
+        animate(x, -1000, { type: "spring", stiffness: 150, damping: 25, duration: 0.4 })
+        triggerSwipeAnimation("left")
+      } else if (swipeDirection === "right") {
+        animate(x, 1000, { type: "spring", stiffness: 150, damping: 25, duration: 0.4 })
+        triggerSwipeAnimation("right")
+      } else if (swipeDirection === "superlike") {
+        animate(y, -1000, { type: "spring", stiffness: 150, damping: 25, duration: 0.4 })
+        triggerSwipeAnimation("up")
+      }
+    }
+  }, [swipeDirection, isTop, x, y])
 
   if (!isTop && !isExpanded) {
     return (
@@ -272,161 +265,34 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
         className="absolute inset-0 bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden cursor-pointer"
         style={{
           x,
-          y: isExpanded ? y : 0,
+          y: isExpanded ? expandedY : y,
           rotate,
-          opacity,
+          opacity: opacityRaw,
           zIndex: isTop ? 20 : 10 - index,
         }}
-        drag={false}
-        whileTap={{ scale: isExpanded ? 1 : 0.95 }}
+        drag={isTop && !prefersReducedMotion && !disabled}
+        onDragEnd={handleDragEnd}
+        dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+        dragElastic={0.2}
+        whileTap={prefersReducedMotion ? {} : { scale: isExpanded ? 1 : 0.95 }}
         layout
         onClick={() => setIsExpanded(true)}
       >
         {/* Main Card Content */}
         <div className="relative w-full h-full">
-          {/* Image Section */}
-          <div className="relative h-full">
-            {getCurrentImage() && (
-              <Image
-                src={getImageUrl(getCurrentImage())}
-                alt={`${profile.first_name} ${profile.last_name}`}
-                fill
-                className="object-cover"
-                style={{ objectPosition: '50% 20%' }}
-                priority
-              />
-            )}
+          <CardImage
+            profile={profile}
+            currentImageIndex={currentImageIndex}
+            onImageNext={nextImage}
+            onImagePrev={prevImage}
+            onInfoClick={() => setIsExpanded(true)}
+            getImageUrl={getImageUrl}
+          />
 
-            {/* Compatibility Badge - Top Left */}
-            {profile.compatibility && (
-              <div className="absolute top-4 left-4 z-20 space-y-2">
-                <div className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm border ${
-                  profile.compatibility.total >= 90 ? 'bg-green-100/90 text-green-800 border-green-200' :
-                  profile.compatibility.total >= 75 ? 'bg-blue-100/90 text-blue-800 border-blue-200' :
-                  profile.compatibility.total >= 60 ? 'bg-yellow-100/90 text-yellow-800 border-yellow-200' :
-                  'bg-gray-100/90 text-gray-800 border-gray-200'
-                }`}>
-                  {profile.compatibility.total}% Match
-                </div>
-                
-                {/* Fallback indicator */}
-                {profile.is_fallback_match && (
-                  <div className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100/90 text-purple-700 border border-purple-200 backdrop-blur-sm">
-                    ✨ Expanded
-                  </div>
-                )}
-                
-                {/* Profile Quality Score */}
-                {profile.profile_score && profile.profile_score !== 5 && (
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm border ${
-                    profile.profile_score >= 8 ? 'bg-emerald-100/90 text-emerald-800 border-emerald-200' :
-                    profile.profile_score >= 6 ? 'bg-blue-100/90 text-blue-800 border-blue-200' :
-                    'bg-amber-100/90 text-amber-800 border-amber-200'
-                  }`}>
-                    {profile.profile_score >= 8 ? '⭐' : profile.profile_score >= 6 ? '🔹' : '📝'} {profile.profile_score}/10
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Info Button - Top Right */}
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsExpanded(true)
-              }}
-              className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:bg-white transition-colors z-20"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-            >
-              <Info className="w-5 h-5" />
-            </motion.button>
-
-            {/* Image Navigation */}
-            {profile.user_photos && profile.user_photos.length > 1 && (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    prevImage()
-                  }}
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10"
-                >
-                  ←
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    nextImage()
-                  }}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10"
-                >
-                  →
-                </button>
-
-                {/* Image Indicators */}
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
-                  {profile.user_photos.map((_: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className={`w-2 h-2 rounded-full transition-colors ${
-                        idx === currentImageIndex ? "bg-white" : "bg-white/50"
-                      }`}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-
-            {/* Profile Info Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-              <div className="flex items-end justify-between">
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold mb-2">
-                    {profile.first_name} {profile.last_name}
-                  </h2>
-
-                  <div className="space-y-1 mb-3">
-                    <div className="flex items-center gap-2 text-white/90 text-sm">
-                      <Calendar className="w-4 h-4" />
-                      <span>{calculateAge(profile.birthdate)} years old</span>
-                    </div>
-
-                    {profile.city?.name && profile.state?.name && (
-                      <div className="flex items-center gap-1 text-white/90 text-sm">
-                        <MapPin className="w-3 h-3" />
-                        {profile.city.name}, {profile.state.name}
-                      </div>
-                    )}
-
-                    {profile.profession && (
-                      <div className="flex items-center gap-2 text-white/90 text-sm">
-                        <Briefcase className="w-4 h-4" />
-                        <span>{profile.profession}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Quick Info Tags */}
-                  <div className="flex flex-wrap gap-2">
-                    {profile.spiritual_org &&
-                      Array.isArray(profile.spiritual_org) &&
-                      profile.spiritual_org.length > 0 &&
-                      profile.spiritual_org.slice(0, 2).map((org: string, index: number) => (
-                        <span key={index} className="px-2 py-1 bg-white/20 rounded-full text-xs backdrop-blur-sm">
-                          {org}
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-
-          </div>
+          <CardOverlay
+            profile={profile}
+            calculateAge={calculateAge}
+          />
 
           {/* Enhanced Swipe Indicators */}
           <motion.div
@@ -448,86 +314,134 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
           >
             LIKE
           </motion.div>
-
-          {/* Swipe Animation Overlays */}
-          {swipeAnimation && (
-            <motion.div
-              className="absolute inset-0 pointer-events-none z-40"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              {swipeAnimation === "right" && (
-                <motion.div
-                  className="absolute inset-0 bg-green-500/20"
-                  initial={{ x: "-100%" }}
-                  animate={{ x: "100%" }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                >
-                  <motion.div
-                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    initial={{ scale: 0, rotate: -45 }}
-                    animate={{ scale: 1.5, rotate: 0 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <Heart className="w-16 h-16 text-green-500" fill="currentColor" />
-                  </motion.div>
-                </motion.div>
-              )}
-
-              {swipeAnimation === "left" && (
-                <motion.div
-                  className="absolute inset-0 bg-red-500/20"
-                  initial={{ x: "100%" }}
-                  animate={{ x: "-100%" }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                >
-                  <motion.div
-                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    initial={{ scale: 0, rotate: 45 }}
-                    animate={{ scale: 1.5, rotate: 0 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <X className="w-16 h-16 text-red-500" />
-                  </motion.div>
-                </motion.div>
-              )}
-
-              {swipeAnimation === "up" && (
-                <motion.div
-                  className="absolute inset-0 bg-blue-500/20"
-                  initial={{ y: "100%" }}
-                  animate={{ y: "-100%" }}
-                  transition={{ duration: 0.8, ease: "easeOut" }}
-                >
-                  <motion.div
-                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    initial={{ scale: 0, y: 50 }}
-                    animate={{ scale: 2, y: -100 }}
-                    transition={{ duration: 0.6 }}
-                  >
-                    <Star className="w-12 h-12 text-blue-500" fill="currentColor" />
-                  </motion.div>
-
-                  {/* Superlike trail effect */}
-                  {[...Array(5)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute left-1/2 transform -translate-x-1/2"
-                      style={{ top: `${60 + i * 15}%` }}
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: i * 0.1, duration: 0.3 }}
-                    >
-                      <Star className="w-6 h-6 text-blue-400" fill="currentColor" />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </motion.div>
-          )}
         </div>
       </motion.div>
+
+      {/* Swipe Animation Overlays - Outside main card to avoid clipping */}
+      <AnimatePresence>
+        {swipeAnimation && !prefersReducedMotion && (
+          <motion.div
+            className="absolute inset-0 pointer-events-none rounded-3xl overflow-hidden"
+            style={{
+              zIndex: isTop ? 50 : 0, // Higher z-index than card
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {swipeAnimation === "right" && (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-green-400/30 via-emerald-500/40 to-teal-400/30"
+                initial={{ x: "-100%" }}
+                animate={{ x: "100%" }}
+                transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                <motion.div
+                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  initial={{ scale: 0, rotate: -45, opacity: 0 }}
+                  animate={{ scale: 1.8, rotate: 0, opacity: 1 }}
+                  transition={{ duration: 0.3, ease: "backOut" }}
+                >
+                  <div className="relative">
+                    <Heart className="w-20 h-20 text-green-500 drop-shadow-lg" fill="currentColor" />
+                    <motion.div
+                      className="absolute inset-0"
+                      animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ duration: 1.0, repeat: Infinity }}
+                    >
+                      <Heart className="w-20 h-20 text-green-300" fill="currentColor" />
+                    </motion.div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+
+            {swipeAnimation === "left" && (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-l from-red-400/30 via-red-500/40 to-pink-500/30"
+                initial={{ x: "100%" }}
+                animate={{ x: "-100%" }}
+                transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                <motion.div
+                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  initial={{ scale: 0, rotate: 45, opacity: 0 }}
+                  animate={{ scale: 1.8, rotate: 0, opacity: 1 }}
+                  transition={{ duration: 0.3, ease: "backOut" }}
+                >
+                  <div className="relative">
+                    <X className="w-20 h-20 text-red-500 drop-shadow-lg" strokeWidth={3} />
+                    <motion.div
+                      className="absolute inset-0"
+                      animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ duration: 1.0, repeat: Infinity }}
+                    >
+                      <X className="w-20 h-20 text-red-300" strokeWidth={2} />
+                    </motion.div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+
+            {swipeAnimation === "up" && (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-t from-yellow-300/30 via-orange-400/40 to-pink-400/30"
+                initial={{ y: "100%" }}
+                animate={{ y: "-100%" }}
+                transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                <motion.div
+                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  initial={{ scale: 0, y: 50, opacity: 0 }}
+                  animate={{ scale: 2.2, y: -120, opacity: 1 }}
+                  transition={{ duration: 0.4, ease: "backOut" }}
+                >
+                  <div className="relative">
+                    <Star className="w-16 h-16 text-yellow-500 drop-shadow-lg" fill="currentColor" />
+                    <motion.div
+                      className="absolute inset-0"
+                      animate={{ 
+                        scale: [1, 1.3, 1], 
+                        opacity: [0.7, 0, 0.7],
+                        rotate: [0, 180, 360]
+                      }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                    >
+                      <Star className="w-16 h-16 text-orange-400" fill="currentColor" />
+                    </motion.div>
+                  </div>
+                </motion.div>
+
+                {/* Superlike trail effect */}
+                {[...Array(5)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute"
+                    style={{
+                      left: `${30 + i * 10}%`,
+                      top: `${60 + i * 5}%`,
+                    }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ 
+                      scale: [0, 1, 0], 
+                      opacity: [0, 1, 0],
+                      y: [0, -100]
+                    }}
+                    transition={{ 
+                      duration: 1.0, 
+                      delay: i * 0.1,
+                      ease: [0.25, 0.1, 0.25, 1]
+                    }}
+                  >
+                    <Star className="w-8 h-8 text-yellow-400 drop-shadow-md" fill="currentColor" />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Expanded Detail View */}
       {isExpanded && (
@@ -601,38 +515,32 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
                   {/* Better Photo Navigation Arrows */}
                   {profile.user_photos.length > 1 && (
                     <>
-                      <motion.button
+                      <button
                         onClick={prevDetailImage}
                         disabled={currentDetailImageIndex === 0}
-                        className="absolute left-4 top-1/2 transform -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-gray-700 hover:bg-white shadow-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed z-20"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                        className="absolute left-4 top-1/2 transform -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-gray-700 hover:bg-white hover:scale-110 active:scale-95 shadow-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed z-20"
                       >
                         <ChevronLeft className="w-7 h-7" />
-                      </motion.button>
-                      <motion.button
+                      </button>
+                      <button
                         onClick={nextDetailImage}
                         disabled={currentDetailImageIndex === profile.user_photos.length - 1}
-                        className="absolute right-4 top-1/2 transform -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-gray-700 hover:bg-white shadow-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed z-20"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-gray-700 hover:bg-white hover:scale-110 active:scale-95 shadow-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed z-20"
                       >
                         <ChevronRight className="w-7 h-7" />
-                      </motion.button>
+                      </button>
                     </>
                   )}
 
                   {/* Photo Navigation Dots */}
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3 z-20">
                     {profile.user_photos.map((_: any, idx: number) => (
-                      <motion.button
+                      <button
                         key={idx}
                         onClick={() => setCurrentDetailImageIndex(idx)}
-                        className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                        className={`w-3 h-3 rounded-full transition-all duration-300 hover:scale-125 active:scale-90 ${
                           idx === currentDetailImageIndex ? "bg-white scale-125" : "bg-white/60"
                         }`}
-                        whileHover={{ scale: 1.2 }}
-                        whileTap={{ scale: 0.9 }}
                       />
                     ))}
                   </div>
@@ -1114,4 +1022,8 @@ export default function SwipeCard({ profile, onSwipe, onUndo, showUndo = false, 
       )}
     </>
   )
-}
+})
+
+SwipeCard.displayName = "SwipeCard"
+
+export default SwipeCard
