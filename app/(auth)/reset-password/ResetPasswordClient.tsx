@@ -10,7 +10,7 @@ import { Loader2, CheckCircle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const [isReady, setIsReady] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [updating, setUpdating] = useState(false)
@@ -18,34 +18,20 @@ export default function ResetPasswordClient() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    // Listen for the PASSWORD_RECOVERY event
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event, 'Session:', session)
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        // User has clicked the reset link and is ready to reset password
-        setIsReady(true)
+    // Simple PASSWORD_RECOVERY listener as per Supabase docs
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setShowForm(true)
       }
     })
 
-    // Check if there's already a session (user might have already clicked the link)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Current session:', session)
-      if (session) {
-        setIsReady(true)
-      }
-    })
-
-    return () => {
-      authListener.subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate passwords
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -59,16 +45,15 @@ export default function ResetPasswordClient() {
     setUpdating(true)
 
     try {
-      // Update the user's password
-      const { data, error } = await supabase.auth.updateUser({ 
-        password: password 
+      // Simple updateUser call as per Supabase docs
+      const { data, error } = await supabase.auth.updateUser({
+        password: password
       })
 
       if (error) {
         setError(error.message)
       } else {
         setSuccess(true)
-        // Sign out and redirect to login after 2 seconds
         setTimeout(async () => {
           await supabase.auth.signOut()
           router.push('/login?reset=success')
@@ -81,21 +66,6 @@ export default function ResetPasswordClient() {
     }
   }
 
-  // Show loading while checking auth state
-  if (!isReady && !success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center gap-4 py-10">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading...</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Show success message
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
@@ -110,7 +80,19 @@ export default function ResetPasswordClient() {
     )
   }
 
-  // Show password reset form
+  if (!showForm) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center gap-4 py-10">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted p-4">
       <Card className="w-full max-w-md">
