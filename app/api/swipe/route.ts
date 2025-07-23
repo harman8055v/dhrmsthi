@@ -4,7 +4,8 @@ import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { swiped_user_id, action } = await request.json()
 
     // Get current user
@@ -31,17 +32,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Daily swipe limit reached", limit_reached: true }, { status: 429 })
     }
 
-    // Check if user has already swiped on this profile
-    const { data: existingSwipe } = await supabase
-      .from("swipes")
-      .select("*")
-      .eq("swiper_id", user.id)
-      .eq("swiped_id", swiped_user_id)
-      .single()
-
-    if (existingSwipe) {
-      return NextResponse.json({ error: "Already swiped on this profile" }, { status: 400 })
-    }
+    // Don't check for existing swipe - let the database handle it with unique constraint
+    // This avoids race conditions with optimistic updates
 
     // For superlikes, check if user has superlikes available
     if (action === "superlike") {
@@ -76,11 +68,16 @@ export async function POST(request: NextRequest) {
         const user1_id = user.id < swiped_user_id ? user.id : swiped_user_id
         const user2_id = user.id < swiped_user_id ? swiped_user_id : user.id
 
-        await supabase.from("matches").insert({
+        const { error: matchError } = await supabase.from("matches").insert({
           user1_id,
           user2_id,
           created_at: new Date().toISOString()
         })
+        
+        // Ignore duplicate match errors
+        if (matchError && matchError.code !== '23505') {
+          console.error("Error creating match:", matchError)
+        }
       }
     }
 
@@ -94,7 +91,21 @@ export async function POST(request: NextRequest) {
 
     if (swipeError) {
       console.error("Error recording swipe:", swipeError)
-      return NextResponse.json({ error: "Failed to record swipe" }, { status: 500 })
+      
+      // Check if it's a duplicate key error
+      if (swipeError.code === '23505') {
+        console.log("Duplicate swipe detected, treating as success")
+        return NextResponse.json({
+          success: true,
+          is_match: isMatch,
+          action,
+        })
+      }
+      
+      return NextResponse.json({ 
+        error: "Failed to record swipe",
+        details: swipeError.message 
+      }, { status: 500 })
     }
 
     // Update daily stats
@@ -136,5 +147,60 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Swipe API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { swiped_user_id } = await request.json()
+
+    // Get current user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // First check if the swipe exists
+    const { data: existingSwipe, error: checkError } = await supabase
+      .from("swipes")
+      .select("*")
+      .eq("swiper_id", user.id)
+      .eq("swiped_id", swiped_user_id)
+      .single()
+    
+    console.log("Existing swipe check:", { existingSwipe, checkError })
+    
+    if (!existingSwipe) {
+      return NextResponse.json({ error: "No swipe to undo" }, { status: 404 })
+    }
+
+    // Use the database function to delete the swipe (bypasses RLS)
+    const { data: deleteResult, error: deleteError } = await supabase
+      .rpc('undo_swipe', {
+        p_swiper_id: user.id,
+        p_swiped_id: swiped_user_id
+      })
+
+    console.log("Delete function result:", { deleteResult, deleteError })
+
+    if (deleteError) {
+      console.error("Error calling undo_swipe function:", deleteError)
+      return NextResponse.json({ error: deleteError.message, details: deleteError }, { status: 500 })
+    }
+
+    if (!deleteResult) {
+      return NextResponse.json({ error: "No swipe was deleted" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error("Undo swipe API error:", error)
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })
   }
 }

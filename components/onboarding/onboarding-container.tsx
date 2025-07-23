@@ -192,6 +192,39 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       }
     }
 
+    // Get referral code from localStorage
+    let referralCode: string | null = null;
+    try {
+      if (typeof window !== 'undefined') {
+        // Check signupData first
+        const signupDataRaw = localStorage.getItem('signupData')
+        if (signupDataRaw) {
+          const signupData = JSON.parse(signupDataRaw)
+          referralCode = signupData.referral_code || null
+          if (referralCode) {
+            console.log('[Onboard] Found referral code in signupData:', referralCode)
+          }
+        }
+        
+        // If not found, check backup
+        if (!referralCode) {
+          const backupCode = localStorage.getItem('pendingReferralCode')
+          if (backupCode) {
+            referralCode = backupCode
+            console.log('[Onboard] Found referral code in backup:', referralCode)
+          }
+        }
+        
+        if (!referralCode) {
+          console.log('[Onboard] No referral code found in localStorage')
+          console.log('[Onboard] signupData:', signupDataRaw)
+          console.log('[Onboard] pendingReferralCode:', localStorage.getItem('pendingReferralCode'))
+        }
+      }
+    } catch (e) {
+      console.error('[Onboard] Error getting referral code:', e)
+    }
+
     const payload = {
       id: freshUser.id,
       phone: source.phone || freshUser.phone,
@@ -223,7 +256,8 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       favorite_spiritual_quote: source.favorite_spiritual_quote,
       about_me: source.about_me,
       is_onboarded: true,
-      verification_status: "pending" as const
+      verification_status: "pending" as const,
+      referred_by: referralCode // Store the referral code directly
     };
 
     console.log('[Onboard] UPSERT payload:', payload);

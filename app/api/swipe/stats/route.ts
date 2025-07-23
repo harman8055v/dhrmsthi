@@ -1,31 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { createClient } from "@supabase/supabase-js"
+import { cookies } from "next/headers"
 
 export async function GET(request: NextRequest) {
   try {
-    // Create Supabase client with service role key for server-side operations
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    // Use cookie-based authentication like other working routes
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.replace("Bearer ", "")
-
-    // Verify the JWT token
+    // Get current user from cookies
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token)
+    } = await supabase.auth.getUser()
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Create service role client for operations that need elevated permissions
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+
     // Get user's plan and limits
-    const { data: userProfile } = await supabase
+    const { data: userProfile } = await supabaseAdmin
       .from("users")
       .select("account_status, super_likes_count, message_highlights_count")
       .eq("id", user.id)
@@ -36,12 +34,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get daily limit
-    const { data: dailyLimit } = await supabase.rpc("get_user_swipe_limit", {
+    const { data: dailyLimit } = await supabaseAdmin.rpc("get_user_swipe_limit", {
       p_user_id: user.id,
     })
 
     // Get today's stats
-    const { data: dailyStats } = await supabase
+    const { data: dailyStats } = await supabaseAdmin
       .from("user_daily_stats")
       .select("*")
       .eq("user_id", user.id)

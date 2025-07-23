@@ -187,10 +187,8 @@ export default function DashboardPage() {
     <>
       {isVerified ? (
         // VERIFIED USER - Full Swipe Interface
-        <main className="pt-20 pb-32 min-h-screen">
-          <div className="px-4 max-w-4xl mx-auto">
-            <SwipeStack profiles={profiles} onSwipe={handleSwipe} userProfile={profile} headerless={false} />
-          </div>
+        <main className="fixed inset-0 pb-20">
+          <SwipeStack profiles={profiles} onSwipe={handleSwipe} userProfile={profile} headerless={false} />
         </main>
       ) : (
         // UNVERIFIED USER - Verification Dashboard

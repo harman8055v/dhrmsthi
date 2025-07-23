@@ -52,10 +52,21 @@ export default function SignupSection() {
 
   // Capture referral code from URL parameters
   useEffect(() => {
+    // Try multiple ways to get the referral code
     const refParam = searchParams.get('ref')
-    if (refParam) {
-      setReferralCode(refParam)
-      console.log("Referral code captured:", refParam)
+    const referralParam = searchParams.get('referral')
+    const codeParam = searchParams.get('code')
+    
+    const capturedCode = refParam || referralParam || codeParam
+    
+    if (capturedCode) {
+      setReferralCode(capturedCode)
+      console.log("Referral code captured from URL:", capturedCode)
+      
+      // Also store it immediately in localStorage as backup
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pendingReferralCode', capturedCode)
+      }
     }
   }, [searchParams])
 
@@ -174,6 +185,7 @@ export default function SignupSection() {
               full_name: `${formData.firstName} ${formData.lastName}`,
               phone: formData.mobileNumber,
               is_onboarded: false,
+              referred_by: referralCode || null, // Add the referral code here
             },
             { onConflict: 'id', ignoreDuplicates: true }
           )

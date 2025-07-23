@@ -1,11 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { createClient } from "@supabase/supabase-js"
+import { cookies } from "next/headers"
 import { matchingEngine } from "@/lib/matching-engine"
 
 export async function GET(request: NextRequest) {
   try {
-    // Create Supabase client with service role key for server-side operations
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    // Use cookie-based authentication like other working routes
+    const supabase = createRouteHandlerClient({ cookies })
+    
+    // Create service role client for operations that need elevated permissions
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
     let userId: string | null = null;
 
@@ -15,7 +20,7 @@ export async function GET(request: NextRequest) {
     
     if (mobileUserId) {
       // Mobile login user - verify they exist
-      const { data: mobileUser } = await supabase
+      const { data: mobileUser } = await supabaseAdmin
         .from("users")
         .select("id")
         .eq("id", mobileUserId)
@@ -25,19 +30,11 @@ export async function GET(request: NextRequest) {
         userId = mobileUserId;
       }
     } else {
-      // Regular auth flow
-      const authHeader = request.headers.get("authorization")
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      }
-
-      const token = authHeader.replace("Bearer ", "")
-
-      // Verify the JWT token
+      // Regular auth flow - get user from cookies
       const {
         data: { user },
         error: authError,
-      } = await supabase.auth.getUser(token)
+      } = await supabase.auth.getUser()
 
       if (authError || !user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -51,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's profile and preferences with location data
-    const { data: userProfile } = await supabase
+    const { data: userProfile } = await supabaseAdmin
       .from("users")
       .select(`
         *,
@@ -67,12 +64,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get profiles user has already swiped on
-    const { data: swipedProfiles } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", userId)
+    const { data: swipedProfiles } = await supabaseAdmin.from("swipes").select("swiped_id").eq("swiper_id", userId)
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
 
     // Build query for discovering profiles with location data
-    let query = supabase
+    let query = supabaseAdmin
       .from("users")
       .select(`
         *,
@@ -80,7 +77,7 @@ export async function GET(request: NextRequest) {
         state:states(name),
         country:countries(name)
       `)
-      .eq("verification_status", "verified")
+      // .eq("verification_status", "verified") // TEMPORARILY DISABLED
       .eq("is_onboarded", true)
       .neq("id", userId)
 
@@ -130,7 +127,7 @@ export async function GET(request: NextRequest) {
       console.log("🔄 No profiles found with strict filters, trying fallback strategy...")
       
       // Fallback 1: Remove age restrictions
-      let fallbackQuery = supabase
+      let fallbackQuery = supabaseAdmin
         .from("users")
         .select(`
           *,
@@ -138,7 +135,7 @@ export async function GET(request: NextRequest) {
           state:states(name),
           country:countries(name)
         `)
-        .eq("verification_status", "verified")
+        // .eq("verification_status", "verified") // TEMPORARILY DISABLED
         .eq("is_onboarded", true)
         .neq("id", userId)
 
@@ -173,7 +170,7 @@ export async function GET(request: NextRequest) {
             state:states(name),
             country:countries(name)
           `)
-          .eq("verification_status", "verified")
+          // .eq("verification_status", "verified") // TEMPORARILY DISABLED
           .eq("is_onboarded", true)
           .neq("id", userId)
 
