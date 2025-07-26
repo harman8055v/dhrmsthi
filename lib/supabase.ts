@@ -1,22 +1,48 @@
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { logger } from "./logger"
 
 // Validate environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
+  logger.warn(
     "[supabase] Missing NEXT_PUBLIC_SUPABASE_URL / KEY – running in limited mode."
   )
 }
 
-// Create Supabase client with explicit configuration
+// Create Supabase client with explicit configuration for real-time
 export const supabase = createClientComponentClient({
   supabaseUrl,
   supabaseKey: supabaseAnonKey,
+  options: {
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    },
+    db: {
+      schema: 'public'
+    }
+  }
 })
+
+// Test real-time connection on client initialization
+if (process.env.NODE_ENV === 'development') {
+  // Test real-time status
+  setTimeout(() => {
+    const testChannel = supabase.channel('test-connection')
+    testChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        testChannel.unsubscribe()
+      } else if (status === 'CHANNEL_ERROR') {
+        testChannel.unsubscribe()
+      }
+    })
+  }, 1000)
+}
 
 // Log successful initialization (only in development)
 if (process.env.NODE_ENV === 'development') {
-  console.log('Supabase client initialized successfully')
+  logger.log('Supabase client initialized successfully')
 }

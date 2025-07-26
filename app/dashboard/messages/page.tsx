@@ -1,15 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { MessageCircle, MapPin, Calendar, Clock, Shield, Users, Heart } from "lucide-react"
+import { MessageCircle, Crown, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-// isUserVerified no longer needed because we get isVerified from context
+import { getAvatarInitials } from "@/lib/utils"
+import { supabase } from "@/lib/supabase"
 
 interface Conversation {
   id: string
@@ -36,20 +35,51 @@ interface Conversation {
 export default function MessagesPage() {
   const { user, profile, loading, isVerified } = useAuthContext()
   const {
-    data: conversations = [],
+    data: conversationsResponse,
     isLoading: convLoading,
     refetch: refetchConversations,
+    error: conversationsError,
   } = useQuery({
     queryKey: ["conversations"],
     queryFn: async () => {
       const res = await fetch("/api/messages/conversations?limit=10", { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch conversations")
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.message || `Failed to fetch conversations: ${res.status}`)
+      }
       const data = await res.json()
-      return (data.conversations || []).slice(0, 10)
+      return data
     },
     enabled: isVerified,
+    retry: 2,
+    retryDelay: 1000,
   })
+
+  // Safely extract conversations array with robust error handling
+  const conversations: Conversation[] = (() => {
+    try {
+      if (!conversationsResponse) return []
+      
+      // Handle different possible response structures
+      if (Array.isArray(conversationsResponse)) {
+        return conversationsResponse.slice(0, 10)
+      }
+      
+      if (conversationsResponse.conversations && Array.isArray(conversationsResponse.conversations)) {
+        return conversationsResponse.conversations.slice(0, 10)
+      }
+      
+      console.warn('[Messages] Unexpected conversations response structure:', conversationsResponse)
+      return []
+    } catch (error) {
+      console.error('[Messages] Error processing conversations data:', error)
+      return []
+    }
+  })()
   const router = useRouter()
+
+  // Check if user has premium access to messaging
+  const hasMessagingAccess = profile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(profile.account_status)
 
   useEffect(() => {
     if (loading) return
@@ -67,6 +97,122 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, profile, isVerified])
 
+  // Refresh conversations when user returns to this page (e.g., after reading messages)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isVerified) {
+        console.log('[Messages] Page focused - refreshing conversations')
+        refetchConversations()
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isVerified) {
+        console.log('[Messages] Page visible - refreshing conversations') 
+        refetchConversations()
+      }
+    }
+
+    // Refresh when window gets focus or becomes visible
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [isVerified, refetchConversations])
+
+  // Real-time subscription to update conversations in real-time
+  useEffect(() => {
+    if (!user || !isVerified) return
+
+    console.log('[Messages] Setting up real-time subscription for messages and matches')
+    
+    const channel = supabase
+      .channel(`conversations_updates_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `read_at=not.is.null`
+        },
+        (payload) => {
+          console.log('[Messages] 📖 Message marked as read - refreshing conversations')
+          console.log('[Messages] Payload:', payload)
+          refetchConversations()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public', 
+          table: 'messages'
+        },
+        (payload) => {
+          console.log('[Messages] 📩 New message received - refreshing conversations')
+          console.log('[Messages] New message payload:', payload.new)
+          refetchConversations()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'matches',
+          filter: `last_message_at=not.is.null`
+        },
+        (payload) => {
+          console.log('[Messages] 🔄 Match last_message_at updated - refreshing conversations')
+          console.log('[Messages] Match update payload:', payload.new)
+          refetchConversations()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      console.log('[Messages] Cleaning up real-time subscription')
+      channel.unsubscribe()
+    }
+  }, [user, isVerified, refetchConversations])
+
+  // Listen for messages being marked as read from chat pages
+  useEffect(() => {
+    const handleMessagesMarkedAsRead = (event: CustomEvent) => {
+      console.log('[Messages] 🎉 Messages marked as read event received:', event.detail)
+      if (isVerified) {
+        // Small delay to ensure database is updated
+        setTimeout(() => {
+          console.log('[Messages] 🔄 Refreshing conversations after messages marked as read...')
+          // Force refresh by invalidating cache and refetching
+          refetchConversations().then(() => {
+            console.log('[Messages] ✅ Conversations refreshed successfully')
+            // Also force a second refresh after a short delay to ensure data is fresh
+            setTimeout(() => {
+              console.log('[Messages] 🔄 Double-checking with second refresh...')
+              refetchConversations()
+            }, 500)
+          }).catch((error) => {
+            console.error('[Messages] ❌ Error refreshing conversations:', error)
+          })
+        }, 200)
+      } else {
+        console.log('[Messages] ❌ User not verified, skipping refresh')
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('messagesMarkedAsRead', handleMessagesMarkedAsRead as EventListener)
+      return () => {
+        window.removeEventListener('messagesMarkedAsRead', handleMessagesMarkedAsRead as EventListener)
+      }
+    }
+  }, [isVerified, refetchConversations])
+
   const calculateAge = (birthdate: string) => {
     if (!birthdate) return null
     const today = new Date()
@@ -79,180 +225,219 @@ export default function MessagesPage() {
     return age
   }
 
-  const formatDate = (dateString: string) => {
+  const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-    if (diffDays === 1) {
-      return "Today"
-    } else if (diffDays === 2) {
-      return "Yesterday"
-    } else if (diffDays <= 7) {
-      return `${diffDays - 1} days ago`
-    } else {
-      return date.toLocaleDateString("en-IN", {
-        month: "short",
-        day: "numeric",
-      })
-    }
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+    
+    if (diffMinutes < 1) return "Just now"
+    if (diffMinutes < 60) return `${diffMinutes}m ago`
+    
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays === 1) return "Yesterday"
+    if (diffDays < 7) return `${diffDays}d ago`
+    
+    return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" })
   }
 
   if (loading) {
-    return <>{require("./loading").default()}</>;
+    return <>{require("./loading").default()}</>
   }
 
   return (
-      <main className="pt-20 pb-32 min-h-screen">
-        <div className="px-4 max-w-4xl mx-auto mt-5">
-          {isVerified ? (
-            // VERIFIED USER - Show Messages
-            <>
-              {/* Header */}
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-gray-900 mb-1">Messages</h1>
-                <p className="text-sm text-gray-600">Connect with your spiritual matches</p>
-              </div>
+    <main className="pt-16 pb-24 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="px-3 sm:px-4 max-w-2xl mx-auto">
+        {!isVerified ? (
+          <>
+            {/* Header */}
+            <div className="mb-6 pt-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
+              <p className="text-gray-600">Connect with your spiritual matches</p>
+            </div>
 
-              {/* Conversations List */}
-              {conversations.length === 0 ? (
-                <Card className="text-center py-12">
-                  <CardContent>
-                    <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No conversations yet</h3>
-                    <p className="text-gray-600 mb-6">
-                      Start swiping and matching to begin meaningful conversations with your spiritual life partner.
-                    </p>
-                    <Button onClick={() => router.push("/dashboard")} className="bg-orange-600 hover:bg-orange-700">
-                      Start Swiping
+            {/* Verification Required Notice */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 text-center py-16 px-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageCircle className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-3">Messages Available After Verification</h3>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                Once your profile is verified, you'll be able to send and receive messages from your matches.
+                Start meaningful conversations with compatible spiritual partners.
+              </p>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => router.push("/dashboard")}
+                  className="w-full bg-[#8b0000] hover:bg-red-800 text-white py-3 rounded-xl font-semibold"
+                >
+                  Check Verification Status
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/dashboard/matches")}
+                  className="w-full border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white py-3 rounded-xl font-semibold"
+                >
+                  View Matches
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : !hasMessagingAccess ? (
+          <>
+            {/* Header */}
+            <div className="mb-6 pt-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
+              <p className="text-gray-600">Connect with your spiritual matches</p>
+            </div>
+
+            {/* Upgrade Required Notice */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 text-center py-16 px-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Crown className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-3">Unlock Messaging</h3>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                Start meaningful conversations with your spiritual matches! Upgrade to Sparsh Plan or higher to send and receive unlimited messages.
+              </p>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => router.push("/dashboard/store")}
+                  className="w-full bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Upgrade to Sparsh Plan
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/dashboard/matches")}
+                  className="w-full border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white py-3 rounded-xl font-semibold"
+                >
+                  View Matches
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="mb-6 pt-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
+              <p className="text-gray-600">Connect with your spiritual matches</p>
+            </div>
+
+            {/* Messages List */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {conversationsError ? (
+                <div className="text-center py-12 px-6">
+                  <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <MessageCircle className="w-10 h-10 text-red-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">Unable to load conversations</h3>
+                  <p className="text-gray-600 mb-6 leading-relaxed">
+                    We're having trouble loading your conversations. Please check your connection and try again.
+                  </p>
+                  <div className="space-y-3">
+                    <Button 
+                      onClick={() => refetchConversations()} 
+                      className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                      disabled={convLoading}
+                    >
+                      {convLoading ? "Retrying..." : "Try Again"}
                     </Button>
-                  </CardContent>
-                </Card>
+                    <Button 
+                      variant="outline"
+                      onClick={() => router.push("/dashboard")} 
+                      className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white px-8 py-2 rounded-full font-semibold"
+                    >
+                      Go to Dashboard
+                    </Button>
+                  </div>
+                </div>
+              ) : convLoading ? (
+                <div className="text-center py-12 px-6">
+                  <div className="w-8 h-8 animate-spin rounded-full border-2 border-[#8b0000] border-t-transparent mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading conversations...</p>
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="text-center py-12 px-6">
+                  <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <MessageCircle className="w-10 h-10 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">No conversations yet</h3>
+                  <p className="text-gray-600 mb-6 leading-relaxed">
+                    Start swiping and matching to begin meaningful conversations with your spiritual life partner.
+                  </p>
+                  <Button 
+                    onClick={() => router.push("/dashboard")} 
+                    className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                  >
+                    Start Swiping
+                  </Button>
+                </div>
               ) : (
-                <div className="space-y-4">
-                  {conversations.map((conversation: Conversation) => (
-                    <Card key={conversation.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-16 w-16">
+                <div>
+                  {Array.isArray(conversations) && conversations.map((conversation: Conversation) => (
+                    <div 
+                      key={conversation.id} 
+                      className="bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors duration-150 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      onClick={() => router.push(`/dashboard/messages/${conversation.id}`)}
+                    >
+                      <div className="flex items-center gap-3 p-4">
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0">
+                          <Avatar className="h-12 w-12">
                             <AvatarImage
                               src={
                                 conversation.other_user.profile_photo_url ||
                                 conversation.other_user.user_photos?.[0] ||
                                 "/placeholder-user.jpg"
                               }
+                              className="object-cover"
                             />
-                            <AvatarFallback>
-                              {conversation.other_user.first_name?.[0] || "U"}
-                              {conversation.other_user.last_name?.[0] || "U"}
+                            <AvatarFallback className="bg-gradient-to-br from-[#8b0000] to-red-700 text-white font-semibold text-sm">
+                              {getAvatarInitials(conversation.other_user.first_name, conversation.other_user.last_name)}
                             </AvatarFallback>
                           </Avatar>
+                        </div>
 
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-gray-900">
-                                {conversation.other_user.first_name} {conversation.other_user.last_name}
-                              </h3>
-                              {conversation.other_user.verification_status === "verified" && (
-                                <Badge className="bg-green-100 text-green-800 text-xs">Verified</Badge>
-                              )}
-                              {conversation.unread_count && conversation.unread_count > 0 && (
-                                <Badge className="bg-red-100 text-red-800 text-xs">{conversation.unread_count}</Badge>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
-                              {calculateAge(conversation.other_user.birthdate || "") && (
-                                <span>{calculateAge(conversation.other_user.birthdate || "")} years</span>
-                              )}
-                              {conversation.other_user.gender && <span>{conversation.other_user.gender}</span>}
-                              {conversation.other_user.city?.name && conversation.other_user.state?.name && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {conversation.other_user.city.name}, {conversation.other_user.state.name}
-                                </span>
-                              )}
-                            </div>
-
-                            {conversation.last_message_text && (
-                              <p className="text-sm text-gray-700 mb-2 line-clamp-1">{conversation.last_message_text}</p>
-                            )}
-
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              <Calendar className="w-3 h-3" />
-                              <span>Started {formatDate(conversation.created_at)}</span>
-                              {conversation.last_message_at && (
-                                <>
-                                  <span>•</span>
-                                  <Clock className="w-3 h-3" />
-                                  <span>Last message {formatDate(conversation.last_message_at)}</span>
-                                </>
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          {/* Top Row: Name and Time */}
+                          <div className="flex items-center justify-between mb-0.5">
+                            <h3 className="font-semibold text-gray-900 text-base truncate">
+                              {conversation.other_user.first_name} {conversation.other_user.last_name}
+                            </h3>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">
+                                {formatTimeAgo(conversation.last_message_at || conversation.created_at)}
+                              </span>
+                              {(conversation.unread_count || 0) > 0 && (
+                                <div className="bg-[#8b0000] text-white text-xs font-medium px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center">
+                                  {conversation.unread_count! > 99 ? '99+' : conversation.unread_count}
+                                </div>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => router.push(`/dashboard/messages/${conversation.id}`)}
-                              className="bg-orange-600 hover:bg-orange-700"
-                            >
-                              <MessageCircle className="w-4 h-4 mr-2" />
-                              Chat
-                            </Button>
+                          {/* Bottom Row: Message Preview */}
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-gray-600 truncate flex-1">
+                              {conversation.last_message_text || "You matched! Say hello 👋"}
+                            </p>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
-            </>
-          ) : (
-            // UNVERIFIED USER - Show Verification Required Notice
-            <>
-              {/* Header */}
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-gray-900 mb-1">Messages</h1>
-                <p className="text-sm text-gray-600">Connect with your spiritual matches</p>
-              </div>
-
-              {/* Verification Required Notice */}
-              <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                      <MessageCircle className="w-6 h-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Messages Available After Verification</h3>
-                    <p className="text-gray-700 mb-4 leading-relaxed">
-                      Once your profile is verified, you'll be able to send and receive messages from your matches.
-                      Start meaningful conversations with compatible spiritual partners.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Button
-                        onClick={() => router.push("/dashboard")}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        Check Verification Status
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push("/dashboard/matches")}
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                      >
-                        View Matches
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </main>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
   )
 }

@@ -106,7 +106,6 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       }
       return filePath
     } catch (error) {
-      console.error("Error uploading image:", error)
       toast.error("Failed to upload image. Please try again.")
       return null
     } finally {
@@ -137,7 +136,6 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       setPhotoUrls(newImages)
       toast.success("Image removed successfully!")
     } catch (error) {
-      console.error("Error removing image:", error)
       toast.error("Failed to remove image. Please try again.")
     }
   }
@@ -221,7 +219,6 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       setCropUploadProgress(100)
     } catch (error) {
       toast.error("Failed to upload cropped image. Please try again.")
-      console.error("Error uploading cropped image:", error)
       setCropUploadProgress(0)
     } finally {
       setTimeout(() => {
@@ -271,7 +268,6 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       setSubmissionSuccess(true)
       toast.success("Profile created!")
     } catch (error) {
-      console.error("Error submitting form:", error)
       // You might want to set a local error state here if photo upload fails
     }
   }

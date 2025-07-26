@@ -4,8 +4,7 @@ import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createRouteHandlerClient({ cookies })
     const { swiped_user_id, action } = await request.json()
 
     // Get current user
@@ -18,18 +17,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user can swipe (daily limit)
-    const { data: canSwipeData, error: canSwipeError } = await supabase.rpc("can_user_swipe", {
-      p_user_id: user.id,
-    })
-
-    if (canSwipeError) {
-      console.error("Error checking swipe limit:", canSwipeError)
-      return NextResponse.json({ error: "Failed to check swipe limit" }, { status: 500 })
-    }
-
-    if (!canSwipeData) {
-      return NextResponse.json({ error: "Daily swipe limit reached", limit_reached: true }, { status: 429 })
+    // SIMPLE INLINE SWIPE LIMIT CHECK - NO RPC FUNCTIONS
+    console.log("[Swipe API] Checking swipe limit for user:", user.id)
+    
+    try {
+      // Get user's plan directly
+      const { data: userProfile, error: profileError } = await supabase
+        .from("users")
+        .select("account_status")
+        .eq("id", user.id)
+        .single()
+      
+      if (profileError || !userProfile) {
+        console.error("[Swipe API] Failed to get user profile:", profileError)
+        return NextResponse.json({ error: "User not found" }, { status: 404 })
+      }
+      
+      console.log("[Swipe API] User plan:", userProfile.account_status)
+      
+      // Set limits based on plan
+      let dailyLimit = 5 // Default for drishti
+      if (userProfile.account_status === 'sparsh') dailyLimit = 20
+      if (userProfile.account_status === 'sangam') dailyLimit = 50
+      if (userProfile.account_status === 'samarpan') dailyLimit = -1 // Unlimited
+      
+      console.log("[Swipe API] Daily limit for user:", dailyLimit)
+      
+      // If unlimited, skip limit check
+      if (dailyLimit === -1) {
+        console.log("[Swipe API] Unlimited plan - allowing swipe")
+      } else {
+        // Check today's usage
+        const { data: dailyStats } = await supabase
+          .from("user_daily_stats")
+          .select("swipes_used")
+          .eq("user_id", user.id)
+          .eq("date", new Date().toISOString().split("T")[0])
+          .single()
+        
+        const swipesUsed = dailyStats?.swipes_used || 0
+        console.log("[Swipe API] Swipes used today:", swipesUsed, "/ limit:", dailyLimit)
+        
+        if (swipesUsed >= dailyLimit) {
+          console.log("[Swipe API] Daily limit reached")
+          return NextResponse.json({ 
+            error: "Daily swipe limit reached", 
+            limit_reached: true,
+            swipes_used: swipesUsed,
+            daily_limit: dailyLimit,
+            upgrade_message: "Upgrade your plan for more daily swipes!",
+            current_plan: userProfile.account_status,
+            store_link: "/dashboard/store"
+          }, { status: 429 })
+        }
+      }
+      
+    } catch (error) {
+      console.error("[Swipe API] Error in swipe limit check:", error)
+      // Continue with swipe even if limit check fails
     }
 
     // Don't check for existing swipe - let the database handle it with unique constraint
@@ -108,35 +153,54 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Update daily stats
-    const { error: statsError } = await supabase.rpc("get_or_create_daily_stats", {
-      p_user_id: user.id,
-    })
-
-    if (!statsError) {
-      // Get current stats and increment
-      const { data: currentStats } = await supabase
+    // Update daily stats directly - NO RPC FUNCTIONS
+    try {
+      const today = new Date().toISOString().split("T")[0]
+      
+      // Create or update today's stats
+      const { data: existingStats } = await supabase
         .from("user_daily_stats")
         .select("swipes_used, superlikes_used")
         .eq("user_id", user.id)
-        .eq("date", new Date().toISOString().split("T")[0])
+        .eq("date", today)
         .single()
-
-      if (currentStats) {
+      
+      if (existingStats) {
+        // Update existing record
         const updates: any = {
-          swipes_used: (currentStats.swipes_used || 0) + 1,
+          swipes_used: existingStats.swipes_used + 1,
+          updated_at: new Date().toISOString()
         }
-
+        
         if (action === "superlike") {
-          updates.superlikes_used = (currentStats.superlikes_used || 0) + 1
+          updates.superlikes_used = existingStats.superlikes_used + 1
         }
-
+        
         await supabase
           .from("user_daily_stats")
           .update(updates)
           .eq("user_id", user.id)
-          .eq("date", new Date().toISOString().split("T")[0])
+          .eq("date", today)
+        
+        console.log("[Swipe API] Updated daily stats for user", user.id)
+      } else {
+        // Create new record
+        await supabase
+          .from("user_daily_stats")
+          .insert({
+            user_id: user.id,
+            date: today,
+            swipes_used: 1,
+            superlikes_used: action === "superlike" ? 1 : 0,
+            message_highlights_used: 0
+          })
+        
+        console.log("[Swipe API] Created new daily stats for user", user.id)
       }
+      
+    } catch (error) {
+      console.error("[Swipe API] Error updating daily stats:", error)
+      // Don't fail the swipe if stats update fails
     }
 
     return NextResponse.json({
@@ -152,8 +216,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createRouteHandlerClient({ cookies })
     const { swiped_user_id } = await request.json()
 
     // Get current user

@@ -11,11 +11,36 @@ export function isUserVerified(profile: any): boolean {
   
   // User is verified if:
   // 1. verification_status is "verified"
-  // 2. account_status is premium/elite (premium users are auto-verified)
+  // 2. account_status is sangam/samarpan (premium users are auto-verified)
   return (
     profile.verification_status === "verified" ||
-    ["premium", "elite"].includes(profile?.account_status ?? "")
+    ["sangam", "samarpan"].includes(profile?.account_status ?? "")
   )
+}
+
+// Utility function to generate avatar initials from names
+export function getAvatarInitials(firstName?: string | null, lastName?: string | null): string {
+  // Ensure we have valid, non-empty string names after trimming
+  const cleanFirstName = firstName && typeof firstName === 'string' && firstName.trim() 
+    ? firstName.trim() 
+    : null
+  
+  const cleanLastName = lastName && typeof lastName === 'string' && lastName.trim() 
+    ? lastName.trim() 
+    : null
+
+  // Get first letter of each name, ensuring they are alphabetic characters
+  const firstInitial = cleanFirstName && /^[a-zA-Z]/.test(cleanFirstName) 
+    ? cleanFirstName[0].toUpperCase() 
+    : ''
+  
+  const lastInitial = cleanLastName && /^[a-zA-Z]/.test(cleanLastName) 
+    ? cleanLastName[0].toUpperCase() 
+    : ''
+
+  // Return initials or fallback to 'U' if no valid initials found
+  const initials = firstInitial + lastInitial
+  return initials || 'U'
 }
 
 // Utility function to check if user can access verified features

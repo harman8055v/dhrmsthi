@@ -1,3 +1,5 @@
+import { logger } from './logger'
+
 // Analytics utility for tracking user engagement
 interface AnalyticsEvent {
   event: string
@@ -38,7 +40,7 @@ class Analytics {
 
     // Debug logging
     if (this.config.debug) {
-      console.log("📊 Analytics Event:", analyticsEvent)
+      logger.log("📊 Analytics Event:", analyticsEvent)
     }
 
     // Send to analytics service (if configured)
@@ -102,7 +104,7 @@ class Analytics {
       })
     } catch (error) {
       if (this.config.debug) {
-        console.error("Failed to send analytics event:", error)
+        logger.error("Failed to send analytics event:", error)
       }
     }
   }
@@ -120,7 +122,7 @@ class Analytics {
       localStorage.setItem("dharma_analytics_events", JSON.stringify(recentEvents))
     } catch (error) {
       if (this.config.debug) {
-        console.error("Failed to store analytics event locally:", error)
+        logger.error("Failed to store analytics event locally:", error)
       }
     }
   }

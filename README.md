@@ -103,7 +103,7 @@ DharmaSaathi is India’s first spiritual matrimony and conscious dating platfor
   - Free users see blurred previews; premium users get full access
 
 - **Premium Membership & Payments**  
-  - Unlock unlimited swipes, more superlikes, profile boosts, incognito mode, and more
+  - Unlock unlimited swipes, more superlikes, incognito mode, and more
   - Razorpay-powered checkout, instant upgrade/downgrade
 
 - **Admin & Moderation**  

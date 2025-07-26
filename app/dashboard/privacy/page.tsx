@@ -52,7 +52,6 @@ export default function PrivacyPage() {
 
       toast.success("Privacy settings updated successfully!")
     } catch (error) {
-      console.error("Error updating privacy settings:", error)
       toast.error("Failed to update privacy settings. Please try again.")
     } finally {
       setSaving(false)

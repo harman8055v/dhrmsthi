@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { User } from '@supabase/supabase-js'
+import { logger } from './logger'
 
 // Types for better type safety - Updated to match new schema
 export interface UserProfile {
@@ -42,7 +43,7 @@ export interface UserProfile {
   // Status and verification
   is_onboarded: boolean
   verification_status?: 'pending' | 'verified' | 'rejected'
-  account_status?: 'free' | 'premium' | 'elite'
+  account_status?: 'drishti' | 'sparsh' | 'sangam' | 'samarpan' | 'suspended' | 'deleted'
   premium_expires_at?: string
   // Counters
   super_likes_count: number
@@ -100,7 +101,7 @@ export class DataServiceError extends Error {
 
 // Generic error handler
 const handleSupabaseError = (error: any, operation: string): never => {
-  console.error(`Supabase error in ${operation}:`, error)
+  logger.error(`Supabase error in ${operation}:`, error)
   
   if (error.code === 'PGRST116') {
     throw new DataServiceError('Authentication required', 'AUTH_REQUIRED')
@@ -125,7 +126,7 @@ const handleSupabaseError = (error: any, operation: string): never => {
 export const userService = {
   // Get current user profile
   async getCurrentProfile(userId?: string): Promise<UserProfile | null> {
-    console.log('[DataService] getCurrentProfile called', { userId });
+    logger.log('[DataService] getCurrentProfile called', { userId });
     
     // If userId is provided (mobile login), use it directly
     // Otherwise, get from auth session
@@ -134,7 +135,7 @@ export const userService = {
     if (!targetUserId) {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
-        console.error('[DataService] No authenticated user found');
+        logger.error('[DataService] No authenticated user found');
         return null;
       }
       targetUserId = user.id;
@@ -147,14 +148,14 @@ export const userService = {
       .single();
 
     if (error) {
-      console.error('[DataService] getCurrentProfile error:', error);
+      logger.error('[DataService] getCurrentProfile error:', error);
       // Don't throw for mobile login users, just return null
       if (userId) {
         return null;
       }
       throw error;
     }
-    console.log('[DataService] getCurrentProfile success', data);
+    logger.log('[DataService] getCurrentProfile success', data);
     return data;
   },
 
@@ -257,19 +258,19 @@ export const fileService = {
     
     // Handle blob URLs - these are temporary and invalid
     if (photoPath.startsWith('blob:')) {
-      console.log('Found blob URL in profile photo, skipping:', photoPath)
+      logger.log('Found blob URL in profile photo, skipping:', photoPath)
       return null
     }
     
     // Handle base64 data - these are embedded images, skip for now
     if (photoPath.startsWith('data:')) {
-      console.log('Found base64 data in profile photo, skipping')
+      logger.log('Found base64 data in profile photo, skipping')
       return null
     }
 
     // If the URL is an external link (not Supabase storage), return it as-is
     if (photoPath.startsWith('http') && !photoPath.includes('supabase.co/storage')) {
-      console.log('External photo URL detected, returning as-is:', photoPath)
+      logger.log('External photo URL detected, returning as-is:', photoPath)
       return photoPath
     }
     
@@ -281,15 +282,15 @@ export const fileService = {
     // For storage paths (like "user-id/filename.jpg"), return public URL
     try {
       const cleanPath = photoPath.replace(/^\/+/, '')
-      console.log('Generating public URL for photo path:', cleanPath)
+      logger.log('Generating public URL for photo path:', cleanPath)
       
       // Return the public bucket URL
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`
       
-      console.log('Generated public URL:', publicUrl)
+      logger.log('Generated public URL:', publicUrl)
       return publicUrl
     } catch (error) {
-      console.error('Error generating public URL for photo:', error)
+      logger.error('Error generating public URL for photo:', error)
       return null
     }
   },
@@ -514,7 +515,7 @@ export const matchService = {
 
 // Message Operations
 export const messageService = {
-  // Send a message
+  // Send a message - Direct Supabase (much faster!)
   async sendMessage(matchId: string, content: string): Promise<Message> {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -532,32 +533,46 @@ export const messageService = {
         throw new DataServiceError('Match not found or access denied', 'ACCESS_DENIED')
       }
 
+      // Insert message directly
+      const messageData = {
+        match_id: matchId,
+        sender_id: user.id,
+        content: content.trim(),
+        created_at: new Date().toISOString()
+      }
+      
       const { data, error } = await supabase
         .from('messages')
-        .insert({
-          match_id: matchId,
-          sender_id: user.id,
-          content,
-          created_at: new Date().toISOString()
-        })
+        .insert(messageData)
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        throw new DataServiceError(error.message || 'Failed to send message', 'DB_ERROR')
+      }
 
       // Update match's last_message_at
-      await supabase
+      const { error: updateError } = await supabase
         .from('matches')
         .update({ last_message_at: new Date().toISOString() })
-        .eq('id', matchId)
+        .eq('id', matchId);
+      
+      if (updateError) {
+        console.error('[messageService] Error updating last_message_at:', updateError);
+        // Don't throw error - message was sent successfully, just timestamp update failed
+      }
 
       return data
-    } catch (error) {
-      return handleSupabaseError(error, 'send message')
+    } catch (error: any) {
+      console.error('[messageService] ❌ Send message error:', error)
+      if (error instanceof DataServiceError) {
+        throw error
+      }
+      throw new DataServiceError(error.message || 'Failed to send message', 'DB_ERROR')
     }
   },
 
-  // Get messages for a match
+  // Get messages for a match - Direct Supabase (much faster!)
   async getMessages(matchId: string): Promise<Message[]> {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -583,27 +598,82 @@ export const messageService = {
 
       if (error) throw error
       return data || []
-    } catch (error) {
-      return handleSupabaseError(error, 'get messages')
+    } catch (error: any) {
+      console.error('Get messages error:', error)
+      if (error instanceof DataServiceError) {
+        throw error
+      }
+      throw new DataServiceError(error.message || 'Failed to get messages', 'DB_ERROR')
     }
   },
 
-  // Mark messages as read
+  // Mark messages as read - Direct Supabase (much faster!)
   async markMessagesAsRead(matchId: string): Promise<void> {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
 
-      const { error } = await supabase
+      // Get all unread messages from the other user first
+      const { data: unreadMessages, error: fetchError } = await supabase
         .from('messages')
-        .update({ read_at: new Date().toISOString() })
+        .select('id, sender_id, read_at, created_at')
         .eq('match_id', matchId)
         .neq('sender_id', user.id)
         .is('read_at', null)
+        .order('created_at', { ascending: false })
 
-      if (error) throw error
-    } catch (error) {
-      return handleSupabaseError(error, 'mark messages as read')
+      if (fetchError) {
+        console.error(`[markMessagesAsRead] Error fetching unread messages:`, fetchError)
+        throw fetchError
+      }
+
+      const unreadCount = unreadMessages?.length || 0
+
+      if (unreadCount === 0) {
+        return
+      }
+
+              // Mark messages as read with current timestamp
+        const readTimestamp = new Date().toISOString()
+        const messageIds = unreadMessages.map(m => m.id)
+
+        // Update messages one by one to avoid RLS issues with .in() queries
+        let successCount = 0
+        for (const messageId of messageIds) {
+
+          const { error: updateError, count } = await supabase
+            .from('messages')
+            .update({ read_at: readTimestamp }, { count: 'exact' })
+            .eq('id', messageId)
+            .eq('match_id', matchId)  // Explicit match for RLS
+            .neq('sender_id', user.id)  // Only messages from other user
+            .is('read_at', null)  // Only unread messages
+
+          if (updateError) {
+            console.error(`[markMessagesAsRead] Error updating message ${messageId}:`, updateError)
+          } else {
+            successCount += (count || 0)
+          }
+        }
+        
+        // Double-check by querying unread count again
+        const { data: remainingUnread, error: remainingError } = await supabase
+          .from('messages')
+          .select('id')
+          .eq('match_id', matchId)
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+        
+        if (remainingError) {
+          console.error(`[markMessagesAsRead] Error checking remaining unread:`, remainingError)
+        }
+
+    } catch (error: any) {
+      console.error('Mark messages as read error:', error)
+      if (error instanceof DataServiceError) {
+        throw error
+      }
+      throw new DataServiceError(error.message || 'Failed to mark messages as read', 'DB_ERROR')
     }
   }
 }
@@ -619,7 +689,8 @@ export const premiumService = {
       const profile = await userService.getCurrentProfile(user.id)
       if (!profile) return false
 
-      if (profile.account_status === 'premium' || profile.account_status === 'elite') {
+      // sangam and samarpan are premium plans
+      if (profile.account_status === 'sangam' || profile.account_status === 'samarpan') {
         if (profile.premium_expires_at) {
           return new Date(profile.premium_expires_at) > new Date()
         }
@@ -628,7 +699,7 @@ export const premiumService = {
 
       return false
     } catch (error) {
-      console.error('Error checking premium access:', error)
+      logger.error('Error checking premium access:', error)
       return false
     }
   },
@@ -675,9 +746,9 @@ export const analyticsService = {
 
       // You can implement your analytics tracking here
       // For now, we'll just log it
-      console.log('Analytics:', { action, properties, userId: user.id })
+      logger.log('Analytics:', { action, properties, userId: user.id })
     } catch (error) {
-      console.error('Analytics tracking error:', error)
+      logger.error('Analytics tracking error:', error)
     }
   }
-} 
+}

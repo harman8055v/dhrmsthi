@@ -175,7 +175,6 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
         })
       } catch (e) {
         // Log but do not interrupt onboarding flow
-        console.error("Failed to enqueue WhatsApp message:", e)
       }
 
       onChange(verificationData)

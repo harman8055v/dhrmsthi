@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Verify that the other user actually liked this user
     const { data: existingLike, error: likeError } = await supabase
-      .from("swipe_actions")
+      .from("swipes")
       .select("*")
       .eq("swiper_id", user_id)
       .eq("swiped_id", user.id)
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Check if current user has already swiped on this person
     const { data: currentUserSwipe } = await supabase
-      .from("swipe_actions")
+      .from("swipes")
       .select("*")
       .eq("swiper_id", user.id)
       .eq("swiped_id", user_id)
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Record the reciprocal like
     const { error: swipeError } = await supabase
-      .from("swipe_actions")
+      .from("swipes")
       .insert({
         swiper_id: user.id,
         swiped_id: user_id,

@@ -1,13 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 
 export async function GET(request: NextRequest) {
   try {
     // Use cookie-based authentication like other working routes
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createRouteHandlerClient({ cookies })
 
     // Get current user from cookies
     const {
@@ -19,11 +17,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Create service role client for operations that need elevated permissions
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
-    // Get user's plan and limits
-    const { data: userProfile } = await supabaseAdmin
+    // Get user's plan and limits directly (no RPC functions)
+    const { data: userProfile } = await supabase
       .from("users")
       .select("account_status, super_likes_count, message_highlights_count")
       .eq("id", user.id)
@@ -33,13 +28,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 })
     }
 
-    // Get daily limit
-    const { data: dailyLimit } = await supabaseAdmin.rpc("get_user_swipe_limit", {
-      p_user_id: user.id,
-    })
+    // Set daily limit based on plan (same logic as swipe API)
+    let dailyLimit = 5 // Default for drishti
+    if (userProfile.account_status === 'sparsh') dailyLimit = 20
+    if (userProfile.account_status === 'sangam') dailyLimit = 50
+    if (userProfile.account_status === 'samarpan') dailyLimit = -1 // Unlimited
 
     // Get today's stats
-    const { data: dailyStats } = await supabaseAdmin
+    const { data: dailyStats } = await supabase
       .from("user_daily_stats")
       .select("*")
       .eq("user_id", user.id)

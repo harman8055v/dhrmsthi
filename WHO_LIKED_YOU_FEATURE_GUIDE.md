@@ -24,7 +24,7 @@ The "Who Liked You" feature is a premium monetization tool that shows users who 
 
 ### 1. Database Schema
 Uses existing tables from the swipe system:
-- `swipe_actions` table: Stores all like/dislike actions  
+- `swipes` table: Stores all like/dislike actions  
 - `matches` table: Stores mutual matches
 - `users` table: Contains account_status for plan verification
 
@@ -201,7 +201,7 @@ analytics.track('instant_match_created', {
 ### Phase 2 Features
 1. **Push Notifications**: "Someone new liked you!"
 2. **Advanced Filters**: Filter likes by preferences
-3. **Boost Feature**: Promote profile to get more likes
+3. **Premium Features**: Enhanced profile visibility
 4. **Analytics Dashboard**: Personal stats for premium users
 
 ### Phase 3 Features
@@ -237,7 +237,7 @@ analytics.track('instant_match_created', {
 SELECT account_status FROM users WHERE id = 'user_id';
 
 # Check user's likes
-SELECT COUNT(*) FROM swipe_actions 
+SELECT COUNT(*) FROM swipes 
 WHERE swiped_id = 'user_id' 
 AND action IN ('like', 'superlike');
 
@@ -258,4 +258,4 @@ OR (user1_id = 'user2' AND user2_id = 'user1');
 - Mobile-responsive design completed
 - Analytics tracking prepared
 
-This feature is production-ready and expected to significantly boost premium subscriptions and user engagement! 
+This feature is production-ready and expected to significantly increase premium subscriptions and user engagement! 

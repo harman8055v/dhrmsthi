@@ -54,7 +54,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
 
       const fileExt = file.name.split('.').pop() ?? 'jpg'
       const filePath = `${user.id}/${Date.now()}.${fileExt}`
-      console.log("[Upload] Path prepared:", filePath)
 
       // Attempt upload (no upsert first)
       let { data, error } = await supabase.storage
@@ -67,7 +66,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
 
       // If conflict (duplicate), retry with upsert
       if ((error as any)?.status === 409) {
-        console.warn("[Upload] Duplicate path, retrying with upsert:true")
         ;({ data, error } = await supabase.storage
           .from("user-photos")
           .upload(filePath, file, {
@@ -76,8 +74,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
             upsert: true,
           }))
       }
-
-      console.log("[Upload response]", { data, error })
 
       if (error) {
         toast.error(error.message || "Failed to upload image.")
@@ -90,7 +86,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
       onImagesUpdate(newImages)
       toast.success("Image uploaded successfully!")
     } catch (error) {
-      console.error("Error uploading image:", error)
       toast.error("Failed to upload image. Please try again.")
     } finally {
       setUploading(false)
@@ -108,8 +103,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
         return
       }
 
-      console.log("[Delete] Path:", storagePath)
-
       if (!storagePath.startsWith(user.id)) {
         toast.warning("Cannot delete a file not owned by the current user.")
         return
@@ -118,8 +111,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
       const { data: delData, error: storageError } = await supabase.storage
         .from("user-photos")
         .remove([storagePath])
-
-      console.log("[Delete response]", { delData, storageError })
 
       if (storageError) {
         toast.error(storageError.message || "Failed to delete image from storage.")
@@ -131,7 +122,6 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
       onImagesUpdate(newImages)
       toast.success("Image removed successfully!")
     } catch (error) {
-      console.error("Error removing image:", error)
       toast.error("Failed to remove image. Please try again.")
     }
   }

@@ -35,7 +35,6 @@ export default function PreferencesPage() {
       await updateProfile({ ideal_partner_notes: idealPartnerNotes })
       toast.success("Partner preferences updated successfully!")
     } catch (error) {
-      console.error("Error updating preferences:", error)
       toast.error("Failed to update preferences. Please try again.")
     } finally {
       setIsLoading(false)

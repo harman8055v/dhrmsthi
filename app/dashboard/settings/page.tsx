@@ -212,7 +212,6 @@ export default function SettingsPage() {
       setTimeout(() => setShowSuccessAlert(false), 4000)
       router.push("/dashboard/profile")
     } catch (error) {
-      console.error("Error updating profile:", error)
       toast({
         title: "❌ Error",
         description: `Failed to save changes. Please try again.`,

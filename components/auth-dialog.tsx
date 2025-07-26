@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import PhoneInput from "@/components/ui/phone-input";
 import { User, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
 import React from "react";
+import { logger } from "@/lib/logger";
 
 interface AuthDialogProps {
   isOpen: boolean;
@@ -142,7 +143,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
             .single()
 
           if (profileError) {
-            console.error('Profile creation error:', profileError)
+            logger.error('Profile creation error:', profileError)
           }
           onClose();
           router.push(`/auth-loading?userId=${data.user.id}&isNew=true`);

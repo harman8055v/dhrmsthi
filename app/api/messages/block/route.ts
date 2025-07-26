@@ -20,11 +20,15 @@ export async function POST(request: NextRequest) {
     // Block user
     const { error: blockError } = await supabase.from("blocked_users").insert({
       blocker_id: user.id,
-      blocked_user_id,
+      blocked_id: blocked_user_id,
     })
 
     if (blockError) {
-      return NextResponse.json({ error: "Failed to block user" }, { status: 500 })
+      console.error('[Block API] Database error:', blockError)
+      return NextResponse.json({ 
+        error: "Failed to block user", 
+        details: blockError.message 
+      }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })

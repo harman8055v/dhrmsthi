@@ -3,6 +3,7 @@ import Razorpay from "razorpay"
 import crypto from "crypto"
 import { cookies } from "next/headers"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { logger } from "@/lib/logger"
 
 // Validate environment variables
 const validateEnvVars = () => {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       
       const { amount, currency = "INR", receipt, notes } = await request.json()
       
-      console.log("Payment order request:", {
+      logger.log("Payment order request:", {
         amount,
         currency,
         receipt,
@@ -60,10 +61,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         notes 
       })
       
-      console.log("Order created successfully:", order.id)
+      logger.log("Order created successfully:", order.id)
       return NextResponse.json(order)
     } catch (error) {
-      console.error("Order creation error:", error)
+      logger.error("Order creation error:", error)
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
     }
   }
@@ -111,17 +112,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
         
         if (!processResponse.ok) {
-          console.error("Payment processing failed")
+          logger.error("Payment processing failed")
           return NextResponse.json({ error: "Payment processing failed" }, { status: 500 })
         }
         
         return NextResponse.json({ verified: true, message: "Payment verified and processed successfully" })
       } else {
-        console.error("Invalid payment signature")
+        logger.error("Invalid payment signature")
         return NextResponse.json({ verified: false, error: "Invalid payment signature" }, { status: 400 })
       }
     } catch (error) {
-      console.error("Payment verification error:", error)
+      logger.error("Payment verification error:", error)
       return NextResponse.json({ verified: false, error: "Payment verification failed" }, { status: 500 })
     }
   }

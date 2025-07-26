@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, MapPin, Calendar, Clock, Shield, Users, User } from "lucide-react"
+import { Heart, MessageCircle, MapPin, Calendar, Clock, Users, User } from "lucide-react"
 import dynamic from "next/dynamic"
+import { getAvatarInitials } from "@/lib/utils"
+import ProfileModal from "@/components/profile-modal"
 
 const WhoLikedYou = dynamic(() => import("@/components/dashboard/who-liked-you"), { ssr: false })
 import { useQuery } from "@tanstack/react-query"
@@ -36,6 +38,8 @@ interface Match {
 export default function MatchesPage() {
   const { user, profile, loading, isVerified } = useAuthContext()
   const router = useRouter()
+  const [selectedProfile, setSelectedProfile] = useState<any>(null)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   const {
     data: matches = [],
@@ -100,173 +104,177 @@ export default function MatchesPage() {
     }
   }
 
+  const handleViewProfile = (profile: any) => {
+    setSelectedProfile(profile)
+    setProfileModalOpen(true)
+  }
+
   if (loading) {
     return <>{require("./loading").default()}</>;
   }
 
   return (
-      <main className="pt-20 pb-32 min-h-screen">
-        <div className="px-4 max-w-4xl mx-auto mt-5">
-          {isVerified ? (
-            // VERIFIED USER - Show Matches
-            <>
-              {/* Header */}
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-gray-900 mb-1">Your Matches</h1>
-                <p className="text-sm text-gray-600">Discover compatible souls on the same spiritual journey</p>
-              </div>
+    <main className="pt-16 pb-24 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="px-3 sm:px-4 max-w-2xl mx-auto">
+        {isVerified ? (
+          // VERIFIED USER - Show Matches
+          <>
+            {/* Header */}
+            <div className="mb-6 pt-8">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Matches</h1>
+              <p className="text-gray-600">These people have also liked you back, start a conversation</p>
+            </div>
 
-              {/* Who Liked You Section */}
-              <div className="mb-8">
-                <WhoLikedYou userProfile={profile} />
-              </div>
+            {matches.length === 0 ? (
+              <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-gray-50">
+                <CardContent className="text-center py-12 px-6">
+                  <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Heart className="w-10 h-10 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">No matches yet</h3>
+                  <p className="text-gray-600 mb-6 leading-relaxed">
+                    Start swiping to find your spiritual life partner. 
+                    When you both like each other, you'll match and can start chatting.
+                  </p>
+                  <Button 
+                    onClick={() => router.push("/dashboard")} 
+                    className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                  >
+                    Start Swiping
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {matches.map((match: Match) => (
+                  <Card key={match.id} className="border-0 shadow-md hover:shadow-lg transition-all duration-200 bg-white rounded-2xl overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="p-4">
+                        {/* Top Section - Avatar and Basic Info */}
+                        <div className="flex items-start gap-3 mb-3">
+                          <div 
+                            className="relative cursor-pointer" 
+                            onClick={() => handleViewProfile(match.other_user)}
+                          >
+                            <Avatar className="h-14 w-14 ring-2 ring-[#8b0000]/20">
+                              <AvatarImage
+                                src={
+                                  match.other_user.profile_photo_url ||
+                                  match.other_user.user_photos?.[0] ||
+                                  "/placeholder-user.jpg"
+                                }
+                                className="object-cover"
+                                style={{ objectPosition: '50% 20%' }}
+                              />
+                              <AvatarFallback className="bg-gradient-to-br from-[#8b0000] to-red-700 text-white font-semibold">
+                                {getAvatarInitials(match.other_user.first_name, match.other_user.last_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
 
-              {/* Mutual Matches Section */}
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 mb-1">Mutual Matches</h2>
-                <p className="text-sm text-gray-600">People you've both liked each other</p>
-              </div>
-              
-              {matches.length === 0 ? (
-                <Card className="text-center py-12">
-                  <CardContent>
-                    <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No mutual matches yet</h3>
-                    <p className="text-gray-600 mb-6">
-                      Check who's already liked you above, or start swiping to find your spiritual life partner. 
-                      Your mutual matches will appear here.
-                    </p>
-                    <Button onClick={() => router.push("/dashboard")} className="bg-orange-600 hover:bg-orange-700">
-                      Start Swiping
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {matches.map((match: Match) => (
-                    <Card key={match.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-16 w-16">
-                            <AvatarImage
-                              src={
-                                match.other_user.profile_photo_url ||
-                                match.other_user.user_photos?.[0] ||
-                                "/placeholder-user.jpg"
-                              }
-                              style={{ objectPosition: '50% 20%' }}
-                            />
-                            <AvatarFallback>
-                              {match.other_user.first_name?.[0] || "U"}
-                              {match.other_user.last_name?.[0] || "U"}
-                            </AvatarFallback>
-                          </Avatar>
-
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-gray-900">
+                              <h3 
+                                className="font-bold text-gray-900 text-lg leading-tight truncate cursor-pointer hover:text-[#8b0000]"
+                                onClick={() => handleViewProfile(match.other_user)}
+                              >
                                 {match.other_user.first_name} {match.other_user.last_name}
                               </h3>
-                              {match.other_user.verification_status === "verified" && (
-                                <Badge className="bg-green-100 text-green-800 text-xs">Verified</Badge>
-                              )}
                             </div>
 
-                            <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
+                            <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
                               {calculateAge(match.other_user.birthdate || "") && (
-                                <span>{calculateAge(match.other_user.birthdate || "")} years</span>
+                                <span className="font-medium">{calculateAge(match.other_user.birthdate || "")} years</span>
                               )}
-                              {match.other_user.gender && <span>{match.other_user.gender}</span>}
-                              {match.other_user.city?.name && match.other_user.state?.name && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {match.other_user.city.name}, {match.other_user.state.name}
-                                </span>
+                              {match.other_user.gender && (
+                                <span className="capitalize">{match.other_user.gender}</span>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              <Calendar className="w-3 h-3" />
-                              <span>Matched {formatDate(match.created_at)}</span>
-                              {match.last_message_at && (
-                                <>
-                                  <span>•</span>
-                                  <Clock className="w-3 h-3" />
-                                  <span>Last message {formatDate(match.last_message_at)}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => router.push(`/dashboard/messages?match=${match.id}`)}
-                              className="bg-orange-600 hover:bg-orange-700"
-                            >
-                              <MessageCircle className="w-4 h-4 mr-2" />
-                              Message
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => router.push(`/dashboard/profile/${match.other_user.id}`)}
-                            >
-                              <User className="w-4 h-4 mr-2" />
-                              View Profile
-                            </Button>
+                            {match.other_user.city?.name && match.other_user.state?.name && (
+                              <div className="flex items-center gap-1 text-sm text-gray-500">
+                                <MapPin className="w-3 h-3 text-[#8b0000]" />
+                                <span className="truncate">{match.other_user.city.name}, {match.other_user.state.name}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            // UNVERIFIED USER - Show Verification Required Notice
-            <>
-              {/* Header */}
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-gray-900 mb-1">Your Matches</h1>
-                <p className="text-sm text-gray-600">Discover compatible souls on the same spiritual journey</p>
-              </div>
 
-              {/* Verification Required Notice */}
-              <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                      <Heart className="w-6 h-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Matches Available After Verification</h3>
-                    <p className="text-gray-700 mb-4 leading-relaxed">
-                      Your profile is currently under review. Once verified, you'll be able to see and connect with
-                      compatible spiritual partners in our community.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Button
-                        onClick={() => router.push("/dashboard")}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        Check Verification Status
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push("/dashboard/settings")}
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                      >
-                        Complete Profile
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                        {/* Match Info */}
+                        <div className="mb-3 px-1">
+                          <div className="text-sm text-gray-500">
+                            You matched on {formatDate(match.created_at)}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => router.push(`/dashboard/messages/${match.id}`)}
+                            className="flex-1 bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white font-semibold rounded-xl py-2.5 shadow-sm"
+                          >
+                            <MessageCircle className="w-4 h-4 mr-2" />
+                            Message
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleViewProfile(match.other_user)}
+                            className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white rounded-xl py-2.5 px-4"
+                          >
+                            Profile
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-            </>
-          )}
-        </div>
-      </main>
+            )}
+
+            {/* Who Liked You Section */}
+            <div className="mt-8 mb-6">
+              <WhoLikedYou userProfile={profile} />
+            </div>
+          </>
+        ) : (
+          // UNVERIFIED USER - Show verification required
+          <>
+            {/* Header */}
+            <div className="mb-6 pt-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Matches</h1>
+              <p className="text-gray-600">Find your spiritual life partner</p>
+            </div>
+
+            {/* Verification Required Notice */}
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-gray-50">
+              <CardContent className="text-center py-12 px-6">
+                <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Heart className="w-10 h-10 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Verification Required</h3>
+                <p className="text-gray-600 mb-6 leading-relaxed">
+                  Your profile is being reviewed. Once verified, you'll be able to view matches and start meaningful conversations.
+                </p>
+                <Button 
+                  onClick={() => router.push("/dashboard")} 
+                  className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                >
+                  Check Verification Status
+                </Button>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      {/* Profile Modal */}
+      {selectedProfile && (
+        <ProfileModal
+          profile={selectedProfile}
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+        />
+      )}
+    </main>
   )
 }

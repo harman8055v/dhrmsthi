@@ -109,7 +109,6 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
       }
       return filePath
     } catch (error) {
-      console.error("Error uploading image:", error)
       alert("Failed to upload image. Please try again.")
       return null
     } finally {
@@ -148,7 +147,6 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
       setCropUploadProgress(100)
     } catch (error) {
       alert("Failed to upload cropped image. Please try again.")
-      console.error("Error uploading cropped image:", error)
       setCropUploadProgress(0)
     } finally {
       setTimeout(() => {

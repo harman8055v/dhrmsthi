@@ -756,10 +756,12 @@ export class AdvancedMatchingEngine {
       
       // Account status boost (smaller impact now that quality scoring is primary)
       const accountStatus = (profile as any).account_status
-      if (accountStatus === 'elite') {
+      if (accountStatus === 'samarpan') {
         finalScore = Math.min(finalScore + 1, 99)
-      } else if (accountStatus === 'premium') {
+      } else if (accountStatus === 'sangam') {
         finalScore = Math.min(finalScore + 0.5, 99)
+      } else if (accountStatus === 'sparsh') {
+        finalScore = Math.min(finalScore + 0.25, 99)
       }
 
       return {

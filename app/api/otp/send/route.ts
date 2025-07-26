@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,8 +18,8 @@ export async function POST(req: NextRequest) {
   try {
     const { phone, purpose, userId } = await req.json();
     
-    console.log('OTP Send Request:', { phone, purpose, userId });
-    console.log('Environment check:', {
+    logger.log('OTP Send Request:', { phone, purpose, userId });
+    logger.log('Environment check:', {
       hasToken: !!WATI_ACCESS_TOKEN,
       hasEndpoint: !!WATI_API_ENDPOINT,
       endpoint: WATI_API_ENDPOINT
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     
     // Check environment variables
     if (!WATI_ACCESS_TOKEN || !WATI_API_ENDPOINT) {
-      console.error('Missing Wati credentials');
+      logger.error('Missing Wati credentials');
       return NextResponse.json({ 
         error: 'Wati configuration missing. Please check environment variables.' 
       }, { status: 500 });
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     const otp = generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min expiry
 
-    console.log('Generated OTP:', otp);
+    logger.log('Generated OTP: [REDACTED]');
 
     // Store OTP in DB with user_id if provided
     const { error: dbError } = await supabase.from('otp_verifications').insert({
@@ -51,11 +52,11 @@ export async function POST(req: NextRequest) {
     });
     
     if (dbError) {
-      console.error('Database error:', dbError);
+      logger.error('Database error:', dbError);
       return NextResponse.json({ error: dbError.message }, { status: 500 });
     }
 
-    console.log('OTP stored in database successfully');
+    logger.log('OTP stored in database successfully');
 
     // Clean phone number for Wati - remove + and any non-numeric characters
     // Wati expects phone numbers in format like "919876543210" (country code + number, no +)
@@ -69,16 +70,16 @@ export async function POST(req: NextRequest) {
     // Also try without country code
     const phoneWithoutCountryCode = cleanPhone.replace(/^91/, '');
     
-    console.log('Phone number formats:', {
-      original: phone,
-      cleaned: cleanPhone,
-      withoutCountryCode: phoneWithoutCountryCode
+    logger.log('Phone number formats:', {
+      original: '[PHONE]',
+      cleaned: '[PHONE]',
+      withoutCountryCode: '[PHONE]'
     });
     
-    console.log('Cleaned phone number for Wati:', cleanPhone);
+    logger.log('Cleaned phone number for Wati: [PHONE]');
     
     // Send OTP via Wati
-    console.log('Cleaned phone number for Wati:', cleanPhone);
+    logger.log('Cleaned phone number for Wati: [PHONE]');
     
     const watiPayload = {
       template_name: 'otp',
@@ -91,14 +92,17 @@ export async function POST(req: NextRequest) {
       ]
     };
 
-    console.log('Wati API Request - Full Details:', {
-      url: `${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${cleanPhone}`,
+    logger.log('Wati API Request - Full Details:', {
+      url: `${WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/${cleanPhone}`,
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${WATI_ACCESS_TOKEN.substring(0, 15)}...`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer [REDACTED]'
       },
-      body: JSON.stringify(watiPayload, null, 2)
+      body: {
+        ...watiPayload,
+        parameters: [{ name: 'otp', value: '[REDACTED]' }]
+      }
     });
 
     const watiResponse = await fetch(`${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
@@ -116,21 +120,20 @@ export async function POST(req: NextRequest) {
     try {
       watiData = JSON.parse(responseText);
     } catch (e) {
-      console.error('Failed to parse Wati response:', responseText);
+      logger.error('Failed to parse Wati response:', responseText);
       watiData = { rawResponse: responseText };
     }
     
-    console.log('Wati API Response:', {
+    logger.log('Wati API Response:', {
       status: watiResponse.status,
-      statusText: watiResponse.statusText,
-      data: watiData,
-      headers: Object.fromEntries(watiResponse.headers.entries())
+      result: watiData.result,
+      messageId: watiData.messageId
     });
     
     // Check various success indicators
     if (watiResponse.status === 200 || watiResponse.status === 201 || 
         (watiData && (watiData.result === true || watiData.success === true))) {
-      console.log('OTP sent successfully!');
+      logger.log('OTP sent successfully!');
       return NextResponse.json({ 
         success: true, 
         message: 'OTP sent successfully via WhatsApp',
@@ -141,7 +144,7 @@ export async function POST(req: NextRequest) {
     
     // If the response indicates invalid phone number, provide helpful error
     if (watiData && watiData.validWhatsAppNumber === false) {
-      console.error('Invalid WhatsApp number:', cleanPhone);
+      logger.error('Invalid WhatsApp number:', '[PHONE]');
       return NextResponse.json({ 
         error: 'Invalid WhatsApp number. Please ensure the number is registered on WhatsApp.',
         details: watiData,
@@ -151,7 +154,7 @@ export async function POST(req: NextRequest) {
     
     // Try alternative format if first one fails
     if (!watiResponse.ok || (watiData && watiData.result === false)) {
-      console.log('Trying alternative Wati format...');
+      logger.log('Trying alternative Wati format...');
       
       // Format 2: Alternative format with receivers array
       const altPayload = {
@@ -186,7 +189,7 @@ export async function POST(req: NextRequest) {
       });
       
       const altData = await altRes.json();
-      console.log('Alternative format response:', altData);
+      logger.log('Alternative format response:', altData);
       
       if (altRes.ok && altData.result === true) {
         return NextResponse.json({ 
@@ -197,7 +200,7 @@ export async function POST(req: NextRequest) {
         });
       }
       
-      console.error('Both Wati formats failed:', { watiData, altData });
+      logger.error('Both Wati formats failed:', { watiData, altData });
       return NextResponse.json({ 
         error: 'Failed to send OTP via WhatsApp', 
         details: { 
@@ -214,7 +217,7 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
     
   } catch (err: any) {
-    console.error('Send OTP error:', err);
+    logger.error('Send OTP error:', err);
     return NextResponse.json({ 
       error: err.message || 'Internal error',
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined

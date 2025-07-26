@@ -42,7 +42,6 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
       if (userError) {
         // If columns don't exist, we'll handle it gracefully
         if (userError.message?.includes("column") && userError.message?.includes("does not exist")) {
-          console.warn("Referral columns not yet created. Please run the referral system setup script.")
           setError("Referral system is being set up. Please refresh the page in a moment.")
           setLoading(false)
           return
@@ -62,7 +61,6 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
           .eq("id", userId)
 
         if (updateError) {
-          console.error("Error updating referral code:", updateError)
         } else {
           await refreshProfile()
         }
@@ -146,7 +144,6 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
 
       setLoading(false)
     } catch (error: any) {
-      console.error("Error fetching referral data:", error)
       setError("Unable to load referral data. Please try refreshing the page.")
       setLoading(false)
     }
@@ -171,7 +168,6 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error("Failed to copy:", error)
       // Fallback for older browsers
       const textArea = document.createElement("textarea")
       textArea.value = link
@@ -196,7 +192,6 @@ export function ReferralProgram({ userId, userProfile }: ReferralProgramProps) {
           url: link,
         })
       } catch (error) {
-        console.error("Error sharing:", error)
         copyReferralLink()
       }
     } else {

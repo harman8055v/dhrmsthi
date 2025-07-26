@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
+import { logger } from "@/lib/logger"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const event = JSON.parse(body)
-    console.log("Razorpay webhook event:", event.event)
+    logger.log("Razorpay webhook event:", event.event)
 
     // Handle different webhook events
     switch (event.event) {
@@ -49,12 +50,12 @@ export async function POST(request: NextRequest) {
         break
       
       default:
-        console.log("Unhandled webhook event:", event.event)
+        logger.log("Unhandled webhook event:", event.event)
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("Webhook processing error:", error)
+    logger.error("Webhook processing error:", error)
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
   }
 }
@@ -77,7 +78,7 @@ async function handleSubscriptionActivated(payload: any) {
     await supabase
       .from("users")
       .update({
-        account_status: "premium",
+        account_status: "sangam", // Default premium plan
         premium_expires_at: expiryDate.toISOString(),
         razorpay_subscription_id: subscription.id,
       })
@@ -139,7 +140,7 @@ async function handleSubscriptionHalted(payload: any) {
 
   if (user_id) {
     // Optionally notify user about payment failure
-    console.log(`Subscription halted for user ${user_id}`)
+    logger.log(`Subscription halted for user ${user_id}`)
   }
 }
 
@@ -148,11 +149,11 @@ async function handleSubscriptionCancelled(payload: any) {
   const user_id = subscription.notes?.user_id
 
   if (user_id) {
-    // Downgrade user to free plan
+    // Downgrade user to drishti plan (free)
     await supabase
       .from("users")
       .update({
-        account_status: "free",
+        account_status: "drishti",
         premium_expires_at: null,
         razorpay_subscription_id: null,
       })
@@ -165,11 +166,11 @@ async function handleSubscriptionCompleted(payload: any) {
   const user_id = subscription.notes?.user_id
 
   if (user_id) {
-    // Downgrade user to free plan when subscription completes
+    // Downgrade user to drishti plan (free) when subscription completes
     await supabase
       .from("users")
       .update({
-        account_status: "free",
+        account_status: "drishti",
         premium_expires_at: null,
         razorpay_subscription_id: null,
       })

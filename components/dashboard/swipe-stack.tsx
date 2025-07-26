@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { isUserVerified } from "@/lib/utils"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
+import ProfileModal from "@/components/profile-modal"
 
 interface SwipeStackProps {
   profiles: any[]
@@ -27,6 +28,8 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   // REMOVED: triggerSwipe state - we'll handle swipes directly
   const [exitingCard, setExitingCard] = useState<{ id: string, direction: "left" | "right" | "superlike" } | null>(null)
+  const [selectedProfile, setSelectedProfile] = useState<any>(null)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   // Check if user is verified
   const isVerified = userProfile ? isUserVerified(userProfile) : false
@@ -48,14 +51,24 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     fetchData()
   }, [])
 
-  const fetchData = async () => {
+  const fetchData = async (retryCount = 0) => {
     setLoading(true)
     setError(null)
     try {
       await Promise.all([fetchSwipeStats(), fetchProfiles()])
     } catch (err) {
-      console.error("Failed to load data:", err)
-      setError("Failed to load profiles. Please try again.")
+      console.error(`SwipeStack: Error in fetchData (attempt ${retryCount + 1}):`, err)
+      
+      // Retry once for network-related errors
+      if (retryCount === 0 && err instanceof Error && 
+          (err.message.includes('Network error') || err.message.includes('timed out'))) {
+        console.log("SwipeStack: Retrying after network error...")
+        setTimeout(() => fetchData(1), 2000) // Retry after 2 seconds
+        return
+      }
+      
+      const errorMessage = err instanceof Error ? err.message : "Failed to load profiles. Please try again."
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -63,39 +76,77 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   const fetchSwipeStats = async () => {
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
       const response = await fetch("/api/swipe/stats", {
         credentials: "include",
+        signal: controller.signal,
       })
-      if (!response.ok) throw new Error(`Failed to fetch swipe stats: ${response.status}`)
+      
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || `Failed to fetch swipe stats: HTTP ${response.status}`
+        throw new Error(errorMessage)
+      }
+      
       const stats = await response.json()
       setSwipeStats(stats)
+      console.log("SwipeStack: Fetched swipe stats successfully")
     } catch (error) {
-      console.error("Error fetching swipe stats:", error)
+      console.error("SwipeStack: Error in fetchSwipeStats:", error)
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error("Swipe stats request timed out. Please try again.")
+        }
+        if (error.message.includes('Failed to fetch')) {
+          throw new Error("Network error loading swipe stats. Please check your internet connection.")
+        }
+      }
+      
       throw error
     }
   }
 
   const fetchProfiles = async () => {
     try {
-      console.log("Fetching profiles...")
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+      
       const response = await fetch("/api/profiles/discover", {
         credentials: "include",
+        signal: controller.signal,
       })
-      console.log("Profiles response:", response.status)
-      if (!response.ok) throw new Error(`Failed to fetch profiles: ${response.status}`)
+      
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || `HTTP ${response.status}: Failed to fetch profiles`
+        throw new Error(errorMessage)
+      }
       
       const data = await response.json()
-      console.log("Profiles data:", data)
       
-      const profilesWithPhotos = (data.profiles || []).filter((profile: any) => 
+      if (!data.profiles) {
+        throw new Error("No profile data received from server")
+      }
+      
+      const profilesWithPhotos = data.profiles.filter((profile: any) => 
         profile.user_photos && Array.isArray(profile.user_photos) && profile.user_photos.length > 0
       )
+      
+      console.log(`SwipeStack: Fetched ${profilesWithPhotos.length} profiles with photos`)
       
       // NEW: Append new profiles instead of replacing to maintain continuity
       setProfiles(prev => {
         // Get IDs of existing profiles to avoid duplicates
         const existingIds = new Set(prev.map(p => p.id))
         const newProfiles = profilesWithPhotos.filter((p: any) => !existingIds.has(p.id))
+        console.log(`SwipeStack: Adding ${newProfiles.length} new profiles (${existingIds.size} existing)`)
         return [...prev, ...newProfiles]
       })
       
@@ -105,27 +156,47 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         })
       }
     } catch (error) {
-      console.error("Error fetching profiles:", error)
+      console.error("SwipeStack: Error in fetchProfiles:", error)
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error("Request timed out. Please check your connection and try again.")
+        }
+        if (error.message.includes('Failed to fetch')) {
+          throw new Error("Network error. Please check your internet connection.")
+        }
+      }
+      
       throw error
     }
+  }
+
+  const handleViewProfile = (profile: any) => {
+    setSelectedProfile(profile)
+    setProfileModalOpen(true)
   }
 
   const handleSwipe = async (direction: "left" | "right" | "superlike", profileId: string) => {
     // Prevent swipe if card is already animating
     if (exitingCard) {
-      console.log("Swipe blocked - animation in progress")
       return
     }
     
     // Prevent swipe if we're at the end
     if (currentIndex >= profiles.length) {
-      console.log("Swipe blocked - no more profiles")
       return
     }
 
     // Check limits
     if (!swipeStats?.can_swipe) {
-      toast.error("Daily swipe limit reached! Come back tomorrow or upgrade.")
+      toast.error("Daily swipe limit reached!", {
+        description: `You've used ${swipeStats?.swipes_used || 0}/${swipeStats?.daily_limit || 5} daily swipes on your ${swipeStats?.plan || 'current'} plan.`,
+        action: {
+          label: "Upgrade Plan",
+          onClick: () => router.push("/dashboard/store"),
+        },
+        duration: 8000,
+      })
       return
     }
 
@@ -193,10 +264,22 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
         // Load more profiles if running low
         if (currentIndex + 1 >= profiles.length - 3) {
-          console.log("Loading more profiles - running low")
           fetchProfiles()
         }
       } else {
+        // Handle swipe limit reached (429 status)
+        if (response.status === 429 && result.limit_reached) {
+          toast.error(result.upgrade_message || "Daily swipe limit reached!", {
+            description: `You've used ${result.swipes_used}/${result.daily_limit} daily swipes on your ${result.current_plan} plan.`,
+            action: {
+              label: "Upgrade Plan",
+              onClick: () => router.push(result.store_link || "/dashboard/store"),
+            },
+            duration: 8000,
+          })
+          return // Don't rollback for limit errors - they're intentional
+        }
+        
         // Only rollback if it's not a duplicate error and animation has completed
         if (!result.error?.includes("Already swiped")) {
           // Wait for animation to complete before rollback
@@ -238,7 +321,6 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         }
       }, animationDuration)
       
-      console.error("Swipe error:", error)
       toast.error("Something went wrong. Please try again.")
     }
   }
@@ -272,7 +354,6 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
       toast.success("Last action undone!")
     } catch (error) {
-      console.error("Undo error:", error)
       toast.error("Failed to undo swipe")
     }
   }
@@ -329,20 +410,7 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   const currentProfile = profiles[currentIndex] || null
   
-  // Debug: Log first profile to see data structure
-  if (currentProfile && currentIndex === 0 && !(window as any)._profileLogged) {
-    console.log("Profile data:", {
-      spiritual_org: currentProfile.spiritual_org,
-      about_me: currentProfile.about_me,
-      daily_practices: currentProfile.daily_practices,
-      city: currentProfile.city,
-      state: currentProfile.state,
-      birthdate: currentProfile.birthdate,
-      date_of_birth: currentProfile.date_of_birth,
-      age: currentProfile.age
-    });
-    (window as any)._profileLogged = true
-  }
+
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -370,6 +438,7 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
                 index={2 - index}
                 isTop={index === 2}
                 onSwipe={handleSwipe}
+                onViewProfile={handleViewProfile}
                 currentImageIndex={index === 2 ? currentImageIndex : 0}
                 setCurrentImageIndex={index === 2 ? setCurrentImageIndex : undefined}
                 exitDirection={exitingCard && exitingCard.id === profile.id ? exitingCard.direction : null}
@@ -445,6 +514,15 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
           </button>
         </div>
       </div>
+      
+      {/* Profile Modal */}
+      {selectedProfile && (
+        <ProfileModal
+          profile={selectedProfile}
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -454,7 +532,8 @@ function SwipeCard({
   profile, 
   index, 
   isTop, 
-  onSwipe, 
+  onSwipe,
+  onViewProfile,
   currentImageIndex = 0, 
   setCurrentImageIndex,
   exitDirection
@@ -463,6 +542,7 @@ function SwipeCard({
   index: number
   isTop: boolean
   onSwipe: (direction: "left" | "right" | "superlike", profileId: string) => void
+  onViewProfile?: (profile: any) => void
   currentImageIndex?: number
   setCurrentImageIndex?: (index: number) => void
   exitDirection?: "left" | "right" | "superlike" | null
@@ -641,6 +721,8 @@ function SwipeCard({
           {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
+
+
           {/* Image Navigation - Only for top card */}
           {isTop && profile.user_photos && profile.user_photos.length > 1 && (
             <>
@@ -733,6 +815,20 @@ function SwipeCard({
                 </div>
               )}
             </div>
+
+            {/* View Profile Button - Bottom */}
+            {isTop && onViewProfile && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onViewProfile(profile)
+                }}
+                className="mt-3 w-full py-2 px-4 bg-gradient-to-r from-[#8b0000] to-[#6b0000] rounded-lg flex items-center justify-center text-white font-medium text-sm shadow-md backdrop-blur-sm border border-white/20 hover:from-[#6b0000] hover:to-[#5a0000] hover:scale-[1.02] transition-all duration-200 active:scale-95"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                View Full Profile
+              </button>
+            )}
           </div>
 
 

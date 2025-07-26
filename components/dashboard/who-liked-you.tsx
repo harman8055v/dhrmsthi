@@ -82,7 +82,6 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
       const result = await response.json()
       setData(result)
     } catch (error: any) {
-      console.error("Error fetching who liked me:", error)
       setError(error.message || "Unable to load likes. Please try again.")
     } finally {
       setLoading(false)
@@ -129,7 +128,6 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
         }
       }
     } catch (error: any) {
-      console.error("Error creating instant match:", error)
       toast.error("Failed to create instant match")
     } finally {
       setProcessing(null)
@@ -311,12 +309,12 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
                         className={!data.can_see_details ? "blur-md" : ""}
                         style={{ objectPosition: '50% 20%' }}
                       />
-                      <AvatarFallback>
-                        {data.can_see_details 
-                          ? `${like.profile.first_name?.[0] || ''}${like.profile.last_name?.[0] || ''}`
-                          : '?'
-                        }
-                      </AvatarFallback>
+                                              <AvatarFallback>
+                          {data.can_see_details 
+                            ? getAvatarInitials(like.profile.first_name, like.profile.last_name)
+                            : '?'
+                          }
+                        </AvatarFallback>
                     </Avatar>
                     
                     {/* Action Badge */}

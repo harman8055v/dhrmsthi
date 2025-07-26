@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
             query = query.eq("verification_status", "rejected")
             break
           case "premium":
-            query = query.not("premium_expires_at", "is", null)
+            query = query.in("account_status", ["sparsh", "sangam", "samarpan"])
             break
           case "incomplete":
             query = query.eq("is_onboarded", false)

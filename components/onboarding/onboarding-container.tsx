@@ -141,7 +141,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     } = await supabase.auth.getUser()
 
     if (authErr || !freshUser) {
-      console.error('[Onboard] failed to read current auth user', authErr)
       setDidSubmit(false)
       setError('Missing auth user – please refresh and try again')
       return
@@ -172,7 +171,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           }
         }
       } catch (e) {
-        console.error('Error reading signup data from localStorage:', e)
       }
     }
 
@@ -183,12 +181,9 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           phone: source.phone
         })
         if (updateError) {
-          console.error('[Onboard] Failed to update phone in auth:', updateError)
         } else {
-          console.log('[Onboard] Updated phone number in Supabase auth')
         }
       } catch (e) {
-        console.error('[Onboard] Error updating phone in auth:', e)
       }
     }
 
@@ -201,9 +196,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         if (signupDataRaw) {
           const signupData = JSON.parse(signupDataRaw)
           referralCode = signupData.referral_code || null
-          if (referralCode) {
-            console.log('[Onboard] Found referral code in signupData:', referralCode)
-          }
         }
         
         // If not found, check backup
@@ -211,18 +203,13 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           const backupCode = localStorage.getItem('pendingReferralCode')
           if (backupCode) {
             referralCode = backupCode
-            console.log('[Onboard] Found referral code in backup:', referralCode)
           }
         }
         
         if (!referralCode) {
-          console.log('[Onboard] No referral code found in localStorage')
-          console.log('[Onboard] signupData:', signupDataRaw)
-          console.log('[Onboard] pendingReferralCode:', localStorage.getItem('pendingReferralCode'))
         }
       }
     } catch (e) {
-      console.error('[Onboard] Error getting referral code:', e)
     }
 
     const payload = {
@@ -260,7 +247,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       referred_by: referralCode // Store the referral code directly
     };
 
-    console.log('[Onboard] UPSERT payload:', payload);
     let { error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'id', ignoreDuplicates: false })
@@ -268,7 +254,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
 
     // Duplicate phone constraint? retry without phone key so we still create/update the row
     if (error && error.code === '23505' && error.message?.includes('phone')) {
-      console.warn('[Onboard] duplicate phone – retrying upsert without phone');
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { phone: _p, ...withoutPhone } = payload as any;
       ({ error } = await supabase
@@ -278,7 +263,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     }
 
     if (error) {
-      console.error('[Onboard] UPSERT failed:', error);
       setDidSubmit(false);
       setError(error.message);
       return;
@@ -304,9 +288,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         }
       }
     } catch (referralError) {
-      console.error('Failed to process referral code:', referralError)
     }
-    console.log('[Onboard] UPSERT OK → redirecting to /onboarding/welcome');
     router.replace('/onboarding/welcome');
   };
 
@@ -317,24 +299,14 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     }
 
     try {
-      console.log("Fetching profile for user ID:", user.id)
-
       const { data, error } = await supabase.from("users").select("*").eq("id", user.id).maybeSingle()
 
       if (error) {
-        console.error("Error fetching user profile:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        })
         throw new Error(`Failed to fetch profile: ${error.message}`)
       }
 
-      console.log("Profile fetched successfully:", data)
       return data
     } catch (error) {
-      console.error("Error in fetchUserProfile:", error)
       throw error
     }
   }
@@ -365,7 +337,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         await handleSubmit(mergedFormData)
       }
     } catch (err) {
-      console.error("Error in stage navigation:", err)
       setError((err as Error).message)
     } finally {
       setIsLoading(false)
@@ -474,7 +445,6 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         await handleSubmit(formData)
       }
     } catch (error: any) {
-      console.error("Error skipping stage:", error)
       setError(error.message || "An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)

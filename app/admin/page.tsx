@@ -1847,8 +1847,14 @@ export default function AdminDashboard() {
                           <Badge className={getStatusColor(selectedUser.verification_status)}>
                             {selectedUser.verification_status || "pending"}
                           </Badge>
-                          {selectedUser.account_status === 'premium' && (
-                            <Badge className="bg-purple-100 text-purple-800">Premium</Badge>
+                          {selectedUser.account_status === 'sparsh' && (
+                            <Badge className="bg-blue-100 text-blue-800">Sparsh</Badge>
+                          )}
+                          {selectedUser.account_status === 'sangam' && (
+                            <Badge className="bg-yellow-100 text-yellow-800">Sangam</Badge>
+                          )}
+                          {selectedUser.account_status === 'samarpan' && (
+                            <Badge className="bg-purple-100 text-purple-800">Samarpan</Badge>
                           )}
                         </div>
                       </div>
@@ -2177,7 +2183,7 @@ export default function AdminDashboard() {
                           </Button>
                         </>
                       )}
-                      {selectedUser.account_status === 'premium' ? (
+                      {['sangam', 'samarpan'].includes(selectedUser.account_status || '') ? (
                         <Button
                           variant="outline"
                           size="sm"

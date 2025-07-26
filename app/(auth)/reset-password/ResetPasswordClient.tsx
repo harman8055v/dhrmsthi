@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card'
 import { Loader2, CheckCircle } from 'lucide-react'
+import { logger } from '@/lib/logger'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
@@ -19,7 +20,7 @@ export default function ResetPasswordClient() {
   const [debugLog, setDebugLog] = useState<string[]>([])
 
   const addDebug = (message: string) => {
-    console.log('[Reset Password]', message)
+    logger.log('[Reset Password]', message)
     setDebugLog(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${message}`])
   }
 

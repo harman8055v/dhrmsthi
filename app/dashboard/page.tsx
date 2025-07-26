@@ -51,19 +51,19 @@ export default function DashboardPage() {
 
   // Redirect unauthenticated users and handle onboarding status
   useEffect(() => {
-    console.log('[Dashboard]', { isLoading, error, profile, user, isMobileLogin });
+    debugLog('[Dashboard]', { isLoading, error, profile, user, isMobileLogin });
     if (isLoading) return;
     
     // For mobile login users, only check profile
     if (isMobileLogin) {
       if (!profile) {
-        console.log('[Dashboard] Mobile login but no profile, redirecting to home');
+        debugLog('[Dashboard] Mobile login but no profile, redirecting to home');
         router.replace("/");
         return;
       }
       
       if (!(profile as any)?.is_onboarded) {
-        console.log('[Dashboard] Mobile login not onboarded → redirecting');
+        debugLog('[Dashboard] Mobile login not onboarded → redirecting');
         router.replace('/onboarding');
         return;
       }
@@ -75,14 +75,14 @@ export default function DashboardPage() {
       }
       
       if (!(profile as any)?.is_onboarded) {
-        console.log('[Dashboard] not onboarded → redirecting');
+        debugLog('[Dashboard] not onboarded → redirecting');
         router.replace('/onboarding');
         return;
       }
     }
     
     if (error) {
-      console.error('[Dashboard] profile load error:', error);
+      debugLog('[Dashboard] profile load error:', error);
       // Don't redirect on error for mobile login users
       if (!isMobileLogin) {
         return;
@@ -101,7 +101,7 @@ export default function DashboardPage() {
   // trigger one manual refresh so the dashboard shows real data without reload.
   useEffect(() => {
     if (!isLoading && user && !profile) {
-      console.log('[Dashboard] profile missing → calling refreshProfile()')
+      debugLog('[Dashboard] profile missing → calling refreshProfile()')
       refreshProfile()
     }
   }, [isLoading, user, profile, refreshProfile])
@@ -181,7 +181,7 @@ export default function DashboardPage() {
     return <>{require("./loading").default()}</>;
   }
 
-  console.log("Dashboard - Is verified:", isVerified)
+  debugLog("Dashboard - Is verified:", isVerified)
 
   return (
     <>

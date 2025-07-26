@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { messageService, Message } from '@/lib/data-service'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from './use-auth'
+import { useAuthContext } from '@/components/auth-provider'
 
 interface MessageState {
   messages: Message[]
@@ -11,28 +11,38 @@ interface MessageState {
 }
 
 export function useMessages(matchId: string) {
-  const { user } = useAuth()
+  const { user } = useAuthContext()
   const [messageState, setMessageState] = useState<MessageState>({
     messages: [],
     loading: false,
     error: null,
     sending: false
   })
+  
+  // Remove all polling - real-time only!
 
   // Load messages on mount and when matchId changes
   useEffect(() => {
     if (user && matchId) {
-      loadMessages()
-      markMessagesAsRead()
+      loadMessages().then(() => {
+        // Mark messages as read after they're loaded
+        setTimeout(() => {
+          markMessagesAsRead()
+        }, 500) // Small delay to ensure messages are processed
+      }).catch((error) => {
+        console.error('[useMessages] Error loading messages:', error)
+      })
     }
   }, [user, matchId])
 
-  // Set up real-time subscription for new messages
+  // Simplified real-time subscription (more reliable)
   useEffect(() => {
-    if (!user || !matchId) return
+    if (!user || !matchId) {
+      return
+    }
 
     const subscription = supabase
-      .channel(`messages:${matchId}`)
+      .channel(`messages_${matchId}`)
       .on(
         'postgres_changes',
         {
@@ -43,15 +53,43 @@ export function useMessages(matchId: string) {
         },
         (payload) => {
           const newMessage = payload.new as Message
-          setMessageState(prev => ({
-            ...prev,
-            messages: [...prev.messages, newMessage]
-          }))
           
-          // Mark as read if it's from the other user
+          setMessageState(prev => {
+            // Check for duplicates
+            const exists = prev.messages.find(msg => msg.id === newMessage.id)
+            if (exists) {
+              return prev
+            }
+            
+            return {
+              ...prev,
+              messages: [...prev.messages, newMessage]
+            }
+          })
+          
+          // Mark as read if from other user
           if (newMessage.sender_id !== user.id) {
             markMessagesAsRead()
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `match_id=eq.${matchId}`
+        },
+        (payload) => {
+          const updatedMessage = payload.new as Message
+          
+          setMessageState(prev => ({
+            ...prev,
+            messages: prev.messages.map(msg => 
+              msg.id === updatedMessage.id ? updatedMessage : msg
+            )
+          }))
         }
       )
       .subscribe()
@@ -69,11 +107,11 @@ export function useMessages(matchId: string) {
       
       const messages = await messageService.getMessages(matchId)
       
-      setMessageState(prev => ({
-        ...prev,
-        messages,
-        loading: false
-      }))
+              setMessageState(prev => ({
+          ...prev,
+          messages,
+          loading: false
+        }))
     } catch (error: any) {
       console.error('Load messages error:', error)
       setMessageState(prev => ({
@@ -85,20 +123,18 @@ export function useMessages(matchId: string) {
   }
 
   const sendMessage = async (content: string): Promise<boolean> => {
-    if (!user || !matchId || !content.trim()) return false
+    if (!user || !matchId || !content.trim()) {
+      return false
+    }
 
     try {
       setMessageState(prev => ({ ...prev, sending: true, error: null }))
       
-      const newMessage = await messageService.sendMessage(matchId, content)
+      const serverMessage = await messageService.sendMessage(matchId, content)
       
-      // Add message to local state (real-time subscription will also add it)
-      setMessageState(prev => ({
-        ...prev,
-        messages: [...prev.messages, newMessage],
-        sending: false
-      }))
-
+      // Don't add to state here - let real-time handle it
+      setMessageState(prev => ({ ...prev, sending: false }))
+      
       return true
     } catch (error: any) {
       console.error('Send message error:', error)
@@ -126,6 +162,13 @@ export function useMessages(matchId: string) {
             : msg
         )
       }))
+
+      // Trigger a global event to refresh conversations list
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('messagesMarkedAsRead', { 
+          detail: { matchId } 
+        }))
+      }
     } catch (error) {
       console.error('Mark messages as read error:', error)
     }

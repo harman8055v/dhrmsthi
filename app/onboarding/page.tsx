@@ -32,11 +32,8 @@ export default function OnboardingPage() {
 
         // If we reach here and there's no session yet (OTP not verified), fall back to buffered data
         if (userError || !user) {
-          console.warn("No auth session yet – checking for mobile login or buffered signup data")
-
           // Check if this is a mobile login
           if (isMobileLogin && mobileLoginUserId) {
-            console.log("Mobile login detected, fetching user profile")
             
             // Fetch user profile using the mobile login user ID
             const { data: profileData, error: profileError } = await supabase
@@ -46,7 +43,6 @@ export default function OnboardingPage() {
               .single()
 
             if (profileError || !profileData) {
-              console.error("Error fetching mobile login user profile:", profileError)
               // Clear mobile login data
               localStorage.removeItem('isMobileLogin')
               localStorage.removeItem('mobileLoginUserId')
@@ -142,12 +138,6 @@ export default function OnboardingPage() {
           .maybeSingle()
 
         if (profileError) {
-          console.error("Error fetching user profile:", {
-            message: profileError.message,
-            details: profileError.details,
-            hint: profileError.hint,
-            code: profileError.code,
-          })
           setError("Error loading profile. Please try again.")
           setTimeout(() => router.push("/"), 3000)
           return
@@ -220,7 +210,6 @@ export default function OnboardingPage() {
 
         setLoading(false)
       } catch (error) {
-        console.error("Error in auth check:", error)
         setError("An unexpected error occurred. Please try again.")
         setTimeout(() => router.push("/"), 3000)
       }

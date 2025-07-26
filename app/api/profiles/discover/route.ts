@@ -6,6 +6,15 @@ import { matchingEngine } from "@/lib/matching-engine"
 
 export async function GET(request: NextRequest) {
   try {
+    // Check environment variables
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Missing required environment variables:", {
+        hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+      })
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+    
     // Use cookie-based authentication like other working routes
     const supabase = createRouteHandlerClient({ cookies })
     
@@ -198,75 +207,102 @@ export async function GET(request: NextRequest) {
 
     // 🖼️ PROCESS PROFILE PHOTOS - Convert storage paths to public URLs
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
-      if (!photoPath) return null;
-      
-      // Handle blob URLs - these are temporary and invalid
-      if (photoPath.startsWith('blob:')) {
-        console.log('Found blob URL in profile photo, skipping for user:', userId);
-        return null;
-      }
-      
-      // Handle base64 data - these are embedded images, skip for now
-      if (photoPath.startsWith('data:')) {
-        console.log('Found base64 data in profile photo, skipping for user:', userId);
-        return null;
-      }
-      
-      // If it's already a full URL, return as-is
-      if (photoPath.startsWith('https://') || photoPath.startsWith('http://')) {
-        return photoPath;
-      }
-      
-      // For storage paths (like "user-id/filename.jpg"), return public URL
       try {
-        const cleanPath = photoPath.replace(/^\/+/, '');
-        console.log('Generating public URL for profile photo path:', cleanPath);
+        if (!photoPath) {
+          console.log(`Empty photo path for user ${userId}`);
+          return null;
+        }
         
+        // Handle blob URLs - these are temporary and invalid
+        if (photoPath.startsWith('blob:')) {
+          console.log('Found blob URL in profile photo, skipping for user:', userId);
+          return null;
+        }
+        
+        // Handle base64 data - these are embedded images, skip for now
+        if (photoPath.startsWith('data:')) {
+          console.log('Found base64 data in profile photo, skipping for user:', userId);
+          return null;
+        }
+        
+        // If it's already a full URL, return as-is
+        if (photoPath.startsWith('https://') || photoPath.startsWith('http://')) {
+          return photoPath;
+        }
+        
+        // For storage paths (like "user-id/filename.jpg"), return public URL
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+          console.error('NEXT_PUBLIC_SUPABASE_URL not available for photo processing');
+          return null;
+        }
+        
+        const cleanPath = photoPath.replace(/^\/+/, '');
         const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`;
         
-        console.log('Generated public URL for profile photo:', publicUrl);
         return publicUrl;
       } catch (error) {
-        console.error('Error generating public URL for profile photo:', error);
+        console.error(`Error processing photo URL for user ${userId}:`, error);
         return null;
       }
     };
 
-    // Transform profiles to use signed URLs for photos
-    const profilesWithSignedUrls = await Promise.all((finalProfiles || []).map(async (profile) => {
-      let transformedPhotos = profile.user_photos;
-      let transformedProfilePhoto = profile.profile_photo_url;
-      
-      // Process profile_photo_url first
-      if (profile.profile_photo_url) {
-        transformedProfilePhoto = await processPhotoUrl(profile.profile_photo_url, profile.id);
-      }
-      
-      if (profile.user_photos && Array.isArray(profile.user_photos)) {
-        const photoPromises = profile.user_photos.map(async (photoPath: string) => {
-          return await processPhotoUrl(photoPath, profile.id);
-        });
+    // Transform profiles to use signed URLs for photos (with error handling)
+    const profilesWithSignedUrls = await Promise.allSettled((finalProfiles || []).map(async (profile) => {
+      try {
+        let transformedPhotos = profile.user_photos;
+        let transformedProfilePhoto = profile.profile_photo_url;
         
-        const processedPhotos = await Promise.all(photoPromises);
-        transformedPhotos = processedPhotos.filter((photo: string | null) => photo !== null);
-        
-        // Only keep profiles that have at least one valid photo
-        if (transformedPhotos.length === 0) {
-          console.log('No valid photos found for profile:', profile.id);
+        // Process profile_photo_url first
+        if (profile.profile_photo_url) {
+          transformedProfilePhoto = await processPhotoUrl(profile.profile_photo_url, profile.id);
         }
-      } else {
-        transformedPhotos = [];
+        
+        if (profile.user_photos && Array.isArray(profile.user_photos)) {
+          const photoPromises = profile.user_photos.map(async (photoPath: string) => {
+            try {
+              return await processPhotoUrl(photoPath, profile.id);
+            } catch (error) {
+              console.error(`Error processing photo for profile ${profile.id}:`, error);
+              return null;
+            }
+          });
+          
+          const processedPhotos = await Promise.allSettled(photoPromises);
+          transformedPhotos = processedPhotos
+            .filter(result => result.status === 'fulfilled' && result.value !== null)
+            .map(result => (result as PromiseFulfilledResult<string>).value);
+          
+          // Only keep profiles that have at least one valid photo
+          if (transformedPhotos.length === 0) {
+            console.log('No valid photos found for profile:', profile.id);
+          }
+        } else {
+          transformedPhotos = [];
+        }
+        
+        return {
+          ...profile,
+          profile_photo_url: transformedProfilePhoto,
+          user_photos: transformedPhotos
+        };
+      } catch (error) {
+        console.error(`Error processing profile ${profile.id}:`, error);
+        // Return profile without photos rather than failing completely
+        return {
+          ...profile,
+          profile_photo_url: null,
+          user_photos: []
+        };
       }
-      
-      return {
-        ...profile,
-        profile_photo_url: transformedProfilePhoto,
-        user_photos: transformedPhotos
-      };
     }));
 
+    // Extract successful results and handle failures gracefully
+    const successfulProfiles = profilesWithSignedUrls
+      .filter(result => result.status === 'fulfilled')
+      .map(result => (result as PromiseFulfilledResult<any>).value);
+
     // Filter out profiles without any photos
-    const profilesWithPhotos = profilesWithSignedUrls.filter(profile => 
+    const profilesWithPhotos = successfulProfiles.filter(profile => 
       profile.user_photos && profile.user_photos.length > 0
     );
 
@@ -274,17 +310,37 @@ export async function GET(request: NextRequest) {
     console.log(`🧠 AI Matching Engine: Processing ${profilesWithPhotos.length} profiles for user ${userId}${fallbackUsed ? ' (with fallback)' : ''}`)
     
     // Use our sophisticated matching engine to calculate compatibility
-    const profilesWithCompatibility = await matchingEngine.sortProfilesByCompatibility(userProfile, profilesWithPhotos)
+    let profilesWithCompatibility;
+    try {
+      profilesWithCompatibility = await matchingEngine.sortProfilesByCompatibility(userProfile, profilesWithPhotos)
+    } catch (matchingError) {
+      console.error("Error in matching engine:", matchingError)
+      // Fallback: return profiles without compatibility scores
+      profilesWithCompatibility = profilesWithPhotos.map(profile => ({
+        ...profile,
+        compatibility: {
+          total: 50, // Default compatibility
+          breakdown: {
+            spiritual: 50,
+            lifestyle: 50,
+            values: 50,
+            location: 50
+          }
+        }
+      }));
+    }
 
     // Apply account status boosting and final ranking
     const rankedProfiles = profilesWithCompatibility.map((profile, index) => {
-      // Boost premium/elite profiles slightly but don't override compatibility
+      // Boost premium plan profiles slightly but don't override compatibility
       let finalScore = profile.compatibility.total
       
-      if (profile.account_status === 'elite') {
+      if (profile.account_status === 'samarpan') {
         finalScore = Math.min(finalScore + 2, 99)
-      } else if (profile.account_status === 'premium') {
+      } else if (profile.account_status === 'sangam') {
         finalScore = Math.min(finalScore + 1, 99)
+      } else if (profile.account_status === 'sparsh') {
+        finalScore = Math.min(finalScore + 0.5, 99)
       }
 
       return {

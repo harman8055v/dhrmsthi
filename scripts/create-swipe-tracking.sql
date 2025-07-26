@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS user_daily_stats (
 );
 
 -- Create table to track all swipe actions
-CREATE TABLE IF NOT EXISTS swipe_actions (
+CREATE TABLE IF NOT EXISTS swipes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   swiper_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   swiped_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 -- Enable RLS
 ALTER TABLE user_daily_stats ENABLE ROW LEVEL SECURITY;
-ALTER TABLE swipe_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE swipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
@@ -60,11 +60,11 @@ CREATE POLICY "Users can insert their own daily stats" ON user_daily_stats
 CREATE POLICY "Users can update their own daily stats" ON user_daily_stats
   FOR UPDATE USING (auth.uid() = user_id);
 
--- RLS Policies for swipe_actions
-CREATE POLICY "Users can view their swipe actions" ON swipe_actions
+-- RLS Policies for swipes
+CREATE POLICY "Users can view their swipe actions" ON swipes
   FOR SELECT USING (auth.uid() = swiper_id OR auth.uid() = swiped_id);
 
-CREATE POLICY "Users can insert their swipe actions" ON swipe_actions
+CREATE POLICY "Users can insert their swipe actions" ON swipes
   FOR INSERT WITH CHECK (auth.uid() = swiper_id);
 
 -- RLS Policies for matches
@@ -94,10 +94,20 @@ CREATE POLICY "Users can insert messages in their matches" ON messages
     )
   );
 
+-- Allow users to update messages (for marking as read)
+CREATE POLICY "Users can update messages in their matches" ON messages
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM matches 
+      WHERE matches.id = messages.match_id 
+      AND (matches.user1_id = auth.uid() OR matches.user2_id = auth.uid())
+    )
+  );
+
 -- Indexes for performance
 CREATE INDEX idx_user_daily_stats_user_date ON user_daily_stats(user_id, date);
-CREATE INDEX idx_swipe_actions_swiper ON swipe_actions(swiper_id);
-CREATE INDEX idx_swipe_actions_swiped ON swipe_actions(swiped_id);
+CREATE INDEX idx_swipes_swiper ON swipes(swiper_id);
+CREATE INDEX idx_swipes_swiped ON swipes(swiped_id);
 CREATE INDEX idx_matches_users ON matches(user1_id, user2_id);
 CREATE INDEX idx_messages_match ON messages(match_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);

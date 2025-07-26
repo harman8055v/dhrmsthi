@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     // Build query for users who liked current user - simplified approach
     let swipeQuery = supabase
-      .from("swipe_actions")
+      .from("swipes")
       .select("swiper_id, action, created_at")
       .eq("swiped_id", user.id)
       .in("action", ["like", "superlike"])

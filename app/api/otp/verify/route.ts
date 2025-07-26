@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 import crypto from 'crypto';
 
 const supabase = createClient(
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       .eq('id', otpRecord.id);
 
     if (updateError) {
-      console.error('Failed to update OTP record:', updateError);
+      logger.error('Failed to update OTP record:', updateError);
     }
 
     // Check if user exists with this phone number
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (sessionError) {
-          console.error('Failed to create session:', sessionError);
+          logger.error('Failed to create session:', sessionError);
           // fall through to generic response
         }
       }

@@ -50,7 +50,6 @@ export default function AccountSettingsPage() {
       if (error) throw error
       toast.info("Confirmation link sent to new email. Please verify to complete update.")
     } catch (error: any) {
-      console.error("Email update error", error)
       toast.error(error.message || "Failed to update email")
     } finally {
       setUpdatingEmail(false)
@@ -82,7 +81,6 @@ export default function AccountSettingsPage() {
       setPhoneOtpSent(true)
       toast.success("OTP sent to new phone number via WhatsApp")
     } catch (error: any) {
-      console.error("Phone update error", error)
       toast.error(error.message || "Failed to send OTP")
     } finally {
       setUpdatingPhone(false)
@@ -127,7 +125,6 @@ export default function AccountSettingsPage() {
       setPhoneOtpSent(false)
       await refreshProfile()
     } catch (error: any) {
-      console.error("OTP verify error", error)
       toast.error(error.message || "Failed to verify OTP")
     } finally {
       setVerifyingPhone(false)
@@ -149,7 +146,6 @@ export default function AccountSettingsPage() {
       toast.success("Password updated successfully")
       setPasswordData({ current: "", new: "", confirm: "" })
     } catch (error: any) {
-      console.error("Password change error", error)
       toast.error(error.message || "Failed to update password")
     } finally {
       setUpdatingPassword(false)
@@ -161,12 +157,11 @@ export default function AccountSettingsPage() {
     if (!user) return
     setPausing(true)
     try {
-      const { error } = await supabase.from("users").update({ account_status: "deactivated" }).eq("id", user.id)
+      const { error } = await supabase.from("users").update({ account_status: "suspended" }).eq("id", user.id)
       if (error) throw error
       toast.success("Account paused. You can reactivate by logging in again.")
       await refreshProfile()
     } catch (error: any) {
-      console.error("Pause error", error)
       toast.error(error.message || "Failed to pause account")
     } finally {
       setPausing(false)
@@ -185,7 +180,6 @@ export default function AccountSettingsPage() {
       await supabase.auth.signOut()
       router.push("/")
     } catch (error: any) {
-      console.error("Delete error", error)
       toast.error(error.message || "Failed to delete account")
     }
   }

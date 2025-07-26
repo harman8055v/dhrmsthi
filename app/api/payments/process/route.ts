@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { logger } from "@/lib/logger"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (transactionError) {
-      console.error("Transaction recording error:", transactionError)
+      logger.error("Transaction recording error:", transactionError)
       return NextResponse.json({ error: "Failed to record transaction" }, { status: 500 })
     }
 
@@ -38,9 +39,15 @@ export async function POST(request: NextRequest) {
       }
 
       // Determine account status based on plan type
-      let accountStatus = "premium"
-      if (item_name.toLowerCase().includes("elite")) {
-        accountStatus = "elite"
+      let accountStatus = "sangam" // Default to sangam for premium plans
+      if (item_name.toLowerCase().includes("samarpan")) {
+        accountStatus = "samarpan"
+      } else if (item_name.toLowerCase().includes("sangam")) {
+        accountStatus = "sangam"
+      } else if (item_name.toLowerCase().includes("sparsh")) {
+        accountStatus = "sparsh"
+      } else if (item_name.toLowerCase().includes("elite")) {
+        accountStatus = "samarpan" // Legacy: map elite to samarpan
       }
 
       const { error: userUpdateError } = await supabase
@@ -52,7 +59,7 @@ export async function POST(request: NextRequest) {
         .eq("id", user_id)
 
       if (userUpdateError) {
-        console.error("User update error:", userUpdateError)
+        logger.error("User update error:", userUpdateError)
         return NextResponse.json({ error: "Failed to activate premium" }, { status: 500 })
       }
     } else if (item_type === "super_likes") {
@@ -64,7 +71,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (fetchError) {
-        console.error("User fetch error:", fetchError)
+        logger.error("User fetch error:", fetchError)
         return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
       }
 
@@ -77,7 +84,7 @@ export async function POST(request: NextRequest) {
         .eq("id", user_id)
 
       if (userUpdateError) {
-        console.error("Super likes update error:", userUpdateError)
+        logger.error("Super likes update error:", userUpdateError)
         return NextResponse.json({ error: "Failed to add super likes" }, { status: 500 })
       }
     } else if (item_type === "highlights") {
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (fetchError) {
-        console.error("User fetch error:", fetchError)
+        logger.error("User fetch error:", fetchError)
         return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
       }
 
@@ -102,34 +109,10 @@ export async function POST(request: NextRequest) {
         .eq("id", user_id)
 
       if (userUpdateError) {
-        console.error("Message highlights update error:", userUpdateError)
+        logger.error("Message highlights update error:", userUpdateError)
         return NextResponse.json({ error: "Failed to add message highlights" }, { status: 500 })
       }
-    } else if (item_type === "profile_boosts") {
-      // Add profile boosts to user account
-      const { data: userData, error: fetchError } = await supabase
-        .from("users")
-        .select("profile_boosts_count")
-        .eq("id", user_id)
-        .single()
 
-      if (fetchError) {
-        console.error("User fetch error:", fetchError)
-        return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
-      }
-
-      const currentCount = userData.profile_boosts_count || 0
-      const { error: userUpdateError } = await supabase
-        .from("users")
-        .update({
-          profile_boosts_count: currentCount + count,
-        })
-        .eq("id", user_id)
-
-      if (userUpdateError) {
-        console.error("Profile boosts update error:", userUpdateError)
-        return NextResponse.json({ error: "Failed to add profile boosts" }, { status: 500 })
-      }
     }
 
     return NextResponse.json({ 
@@ -139,7 +122,7 @@ export async function POST(request: NextRequest) {
       item_name 
     })
   } catch (error) {
-    console.error("Payment processing error:", error)
-    return NextResponse.json({ error: "Payment processing failed" }, { status: 500 })
+    logger.error("Payment processing error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

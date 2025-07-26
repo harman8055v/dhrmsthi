@@ -20,6 +20,7 @@ import { useAuthContext } from "@/components/auth-provider"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
 import Image from "next/image"
 import { useQueryClient } from "@tanstack/react-query"
+import { useUnreadCount } from "@/hooks/use-unread-count"
 
 interface MobileNavProps {
   userProfile?: any
@@ -33,6 +34,11 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
   const { signOut } = useAuthContext()
   const router = useRouter()
   const pathname = usePathname()
+  // Check if user has messaging access
+  const hasMessagingAccess = userProfile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(userProfile.account_status)
+  
+  // Only fetch unread count for users with messaging access
+  const { totalUnreadCount } = useUnreadCount(hasMessagingAccess)
 
   // Prefetch dashboard routes for instant navigation
   useEffect(() => {
@@ -93,6 +99,10 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
 
   const isVerified = isUserVerified(userProfile)
   const showHeader = !(pathname === "/dashboard" && isVerified)
+  
+  // Hide bottom navigation on chat pages
+  const isChatPage = pathname?.startsWith("/dashboard/messages/") && pathname !== "/dashboard/messages"
+  const showBottomNav = !isChatPage
 
   const handleSignOut = async () => {
     await signOut()
@@ -107,7 +117,7 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     handleDropdownClose()
   }
 
-  const navItems = [
+  const allNavItems = [
     {
       icon: Home,
       label: "Home",
@@ -144,6 +154,15 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
       color: "text-orange-500",
     },
   ]
+
+  // Filter nav items based on access
+  const navItems = allNavItems.filter(item => {
+    // Hide Messages tab for users without messaging access
+    if (item.label === "Messages" && !hasMessagingAccess) {
+      return false
+    }
+    return true
+  })
 
   const settingsItems = [
     { icon: User, label: "Profile Settings", href: "/dashboard/settings" },
@@ -265,23 +284,35 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
         </header>
       )}
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-t border-orange-100/50">
-        <div className="flex items-center justify-around px-2 py-2">
-          {navItems.map((item) => (
-            <button
-              key={item.href}
-              onClick={() => handleNavItemClick(item.href)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-200 ${
-                tappedItem === item.href ? "scale-95" : ""
-              } ${item.active ? "text-orange-600 bg-orange-50" : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/50"}`}
-            >
-              <item.icon className="w-6 h-6" />
-              <span className="text-xs font-medium">{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
+      {/* Bottom Navigation - Hidden on chat pages */}
+      {showBottomNav && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-t border-orange-100/50">
+          <div className="flex items-center justify-around px-2 py-2">
+            {navItems.map((item) => (
+              <button
+                key={item.href}
+                onClick={() => handleNavItemClick(item.href)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-200 relative ${
+                  tappedItem === item.href ? "scale-95" : ""
+                } ${item.active ? "text-orange-600 bg-orange-50" : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/50"}`}
+              >
+                <div className="relative">
+                  <item.icon className="w-6 h-6" />
+                  {/* Unread messages badge */}
+                  {item.label === "Messages" && totalUnreadCount > 0 && (
+                    <div className="absolute -top-2 -right-2 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center">
+                      <span className="text-xs font-bold text-white px-1">
+                        {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <span className="text-xs font-medium">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </>
   )
 }

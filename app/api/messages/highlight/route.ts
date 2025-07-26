@@ -17,14 +17,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user has message highlights available
+    // Check user's plan and message highlights
     const { data: userProfile } = await supabase
       .from("users")
-      .select("message_highlights_count")
+      .select("message_highlights_count, account_status")
       .eq("id", user.id)
       .single()
 
-    if (!userProfile || userProfile.message_highlights_count <= 0) {
+    if (!userProfile) {
+      return NextResponse.json({ error: "User profile not found" }, { status: 404 })
+    }
+
+    // Check if user has messaging access
+    const hasMessagingAccess = ['sparsh', 'sangam', 'samarpan'].includes(userProfile.account_status || '')
+    if (!hasMessagingAccess) {
+      return NextResponse.json({ 
+        error: 'Upgrade required', 
+        message: 'Message highlighting is available with Sparsh Plan or higher. Upgrade to access premium messaging features.',
+        upgrade_url: '/dashboard/store'
+      }, { status: 403 })
+    }
+
+    if (userProfile.message_highlights_count <= 0) {
       return NextResponse.json({ error: "No message highlights available" }, { status: 400 })
     }
 
