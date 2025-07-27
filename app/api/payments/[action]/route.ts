@@ -33,7 +33,7 @@ const getRazorpayInstance = () => {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params
-  const supabase = createRouteHandlerClient({ cookies })
+  const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
   if (action === "order") {
     try {

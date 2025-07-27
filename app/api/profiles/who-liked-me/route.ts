@@ -9,7 +9,7 @@ export const revalidate = 0
 export async function GET(request: NextRequest) {
   try {
     console.log("=== WHO LIKED ME API CALLED ===")
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
     // Get current user
     const {

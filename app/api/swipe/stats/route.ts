@@ -5,7 +5,8 @@ import { cookies } from "next/headers"
 export async function GET(request: NextRequest) {
   try {
     // Use cookie-based authentication like other working routes
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
     // Get current user from cookies
     const {

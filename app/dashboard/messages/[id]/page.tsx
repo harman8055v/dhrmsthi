@@ -122,7 +122,7 @@ export default function ChatPage() {
       const data = await res.json()
       return data.matches?.find((m: Match) => m.id === matchId) || null
     },
-    enabled: isVerified && !!matchId,
+    enabled: !!(isVerified && matchId),
   })
 
   useEffect(() => {

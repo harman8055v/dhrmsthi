@@ -190,7 +190,15 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
           <div className="flex items-center justify-between px-4 py-4">
             {/* Logo on left */}
             <div className="flex items-center">
-              <Image src="/logo.png" alt="DharmaSaathi" width={140} height={48} className="h-12 w-auto" />
+              <Image 
+                src="/logo.png" 
+                alt="DharmaSaathi" 
+                width={140} 
+                height={48} 
+                priority
+                style={{ height: "48px", width: "auto" }}
+                className="h-12"
+              />
             </div>
 
             {/* User Profile Dropdown */}

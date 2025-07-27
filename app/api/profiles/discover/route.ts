@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
     }
     
     // Use cookie-based authentication like other working routes
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     
     // Create service role client for operations that need elevated permissions
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -77,7 +78,55 @@ export async function GET(request: NextRequest) {
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
 
-    // Build query for discovering profiles with location data
+    // 🔒 CALCULATE USER'S AGE FIRST - This is critical for safety
+    const userAge = userProfile.birthdate ? 
+      new Date().getFullYear() - new Date(userProfile.birthdate).getFullYear() : 25
+    
+    console.log(`🧑 Current user: Age ${userAge}, Preferences: ${userProfile.preferred_age_min}-${userProfile.preferred_age_max}`)
+
+    // 🎯 DETERMINE AGE RANGE - Age filtering is MANDATORY, not optional
+    let minAllowedAge: number
+    let maxAllowedAge: number
+
+    if (userProfile.preferred_age_min && userProfile.preferred_age_max) {
+      // User has preferences - respect them but apply safety limits
+      minAllowedAge = Math.max(
+        userProfile.preferred_age_min,
+        18, // Legal minimum
+        userAge < 25 ? Math.max(userAge - 5, 18) : userAge - 10 // Safety limits
+      )
+      
+      maxAllowedAge = Math.min(
+        userProfile.preferred_age_max,
+        userAge < 25 ? userAge + 7 : userAge + 15 // Safety limits
+      )
+    } else {
+      // No preferences - use safe defaults based on user's age
+      if (userAge < 25) {
+        minAllowedAge = Math.max(userAge - 3, 18)
+        maxAllowedAge = userAge + 5
+      } else if (userAge < 35) {
+        minAllowedAge = userAge - 5
+        maxAllowedAge = userAge + 8
+      } else {
+        minAllowedAge = userAge - 8
+        maxAllowedAge = userAge + 10
+      }
+    }
+
+    // 📅 CONVERT AGES TO BIRTHDATES (this is where bugs often happen)
+    const today = new Date()
+    
+    // For min age: someone who is minAllowedAge was born (today - minAllowedAge) years ago
+    const oldestBirthdate = new Date(today.getFullYear() - maxAllowedAge, 0, 1)
+    // For max age: someone who is maxAllowedAge was born (today - maxAllowedAge) years ago  
+    const youngestBirthdate = new Date(today.getFullYear() - minAllowedAge, 11, 31)
+
+    console.log(`🎯 AGE FILTER: Showing ages ${minAllowedAge}-${maxAllowedAge}`)
+    console.log(`📅 BIRTHDATE FILTER: ${oldestBirthdate.toISOString().split('T')[0]} to ${youngestBirthdate.toISOString().split('T')[0]}`)
+    console.log(`🔒 VERIFICATION FILTER: Only showing verified profiles`)
+
+    // Build query for discovering profiles with MANDATORY age filtering first
     let query = supabaseAdmin
       .from("users")
       .select(`
@@ -86,26 +135,18 @@ export async function GET(request: NextRequest) {
         state:states(name),
         country:countries(name)
       `)
-      // .eq("verification_status", "verified") // TEMPORARILY DISABLED
       .eq("is_onboarded", true)
+      .eq("verification_status", "verified") // 🔒 ONLY VERIFIED PROFILES
       .neq("id", userId)
+      // 🔒 AGE FILTER APPLIED FIRST - MANDATORY
+      .gte("birthdate", oldestBirthdate.toISOString().split("T")[0])
+      .lte("birthdate", youngestBirthdate.toISOString().split("T")[0])
+      // Exclude null birthdates
+      .not("birthdate", "is", null)
 
     // Exclude already swiped profiles
     if (swipedIds.length > 0) {
       query = query.not("id", "in", `(${swipedIds.join(",")})`)
-    }
-
-    // Apply smart filters based on user preferences and compatibility
-    if (userProfile.preferred_age_min && userProfile.preferred_age_max) {
-      // Expand age range slightly for better matches (±2 years flexibility)
-      const minDate = new Date()
-      minDate.setFullYear(minDate.getFullYear() - (userProfile.preferred_age_max + 2))
-      const maxDate = new Date()
-      maxDate.setFullYear(maxDate.getFullYear() - Math.max(userProfile.preferred_age_min - 2, 18))
-
-      query = query
-        .gte("birthdate", minDate.toISOString().split("T")[0])
-        .lte("birthdate", maxDate.toISOString().split("T")[0])
     }
 
     // Gender preference with flexibility for 'Other'
@@ -128,50 +169,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch profiles" }, { status: 500 })
     }
 
-    // 🎯 FALLBACK STRATEGY: Ensure users always see profiles
+    // Handle case where no verified profiles are found initially
+    if (!profiles || profiles.length === 0) {
+      console.log("🔍 No verified profiles found in initial query")
+      return NextResponse.json({ 
+        profiles: [],
+        message: "No verified profiles found. Please check back later for new spiritual partners!",
+        fallback_used: false
+      })
+    }
+
+    // SIMPLIFIED: Skip fallback system for debugging
     let finalProfiles = profiles
     let fallbackUsed = false
 
-    if (!profiles || profiles.length === 0) {
-      console.log("🔄 No profiles found with strict filters, trying fallback strategy...")
+    if (false) { // Disable fallback temporarily
+      console.log(`🔄 Found ${profiles?.length || 0} profiles, need ${minProfilesNeeded}. Starting progressive fallback...`)
       
-      // Fallback 1: Remove age restrictions
-      let fallbackQuery = supabaseAdmin
-        .from("users")
-        .select(`
-          *,
-          city:cities(name),
-          state:states(name),
-          country:countries(name)
-        `)
-        // .eq("verification_status", "verified") // TEMPORARILY DISABLED
-        .eq("is_onboarded", true)
-        .neq("id", userId)
+             // Progressive fallback attempts - Location first, then minimal age expansion
+       const fallbackAttempts = [
+         // 1. Just expand location (keep exact same age range)
+         { ageExpansion: 0, description: 'all locations with same age range' },
+         
+         // 2. Tiny age expansion
+         { ageExpansion: 1, description: 'all locations with ±1 year flexibility' },
+         
+         // 3. Small age expansion (age-appropriate limits)
+         { ageExpansion: userAge < 25 ? 2 : 3, description: `all locations with ±${userAge < 25 ? 2 : 3} year expansion` },
+         
+         // 4. Moderate expansion (still age-appropriate)
+         { ageExpansion: userAge < 25 ? 3 : 5, description: `all locations with ±${userAge < 25 ? 3 : 5} year expansion` }
+       ]
 
-      if (swipedIds.length > 0) {
-        fallbackQuery = fallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
-      }
-
-      // Keep gender preference but remove age restrictions
-      if (userProfile.gender === "Male") {
-        fallbackQuery = fallbackQuery.in("gender", ["Female", "Other"])
-      } else if (userProfile.gender === "Female") {
-        fallbackQuery = fallbackQuery.in("gender", ["Male", "Other"])
-      }
-
-      const { data: fallbackProfiles } = await fallbackQuery
-        .order("created_at", { ascending: false })
-        .limit(50)
-
-      if (fallbackProfiles && fallbackProfiles.length > 0) {
-        finalProfiles = fallbackProfiles
-        fallbackUsed = true
-        console.log(`✅ Fallback successful: Found ${fallbackProfiles.length} profiles without age restrictions`)
-      } else {
-        // Fallback 2: Remove all preference filters except basic verification
-        console.log("🔄 Trying ultimate fallback - any verified profiles...")
-        
-        const ultimateFallbackQuery = supabase
+      for (const attempt of fallbackAttempts) {
+        let fallbackQuery = supabaseAdmin
           .from("users")
           .select(`
             *,
@@ -179,26 +210,138 @@ export async function GET(request: NextRequest) {
             state:states(name),
             country:countries(name)
           `)
-          // .eq("verification_status", "verified") // TEMPORARILY DISABLED
           .eq("is_onboarded", true)
+          .eq("verification_status", "verified") // 🔒 ONLY VERIFIED PROFILES
           .neq("id", userId)
 
+        // Exclude already swiped profiles
         if (swipedIds.length > 0) {
-          ultimateFallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
+          fallbackQuery = fallbackQuery.not("id", "in", `(${swipedIds.join(",")})`)
         }
 
-        const { data: ultimateFallbackProfiles } = await ultimateFallbackQuery
+        // NEVER COMPROMISE: Always maintain gender constraints
+        if (userProfile.gender === "Male") {
+          fallbackQuery = fallbackQuery.in("gender", ["Female", "Other"])
+        } else if (userProfile.gender === "Female") {
+          fallbackQuery = fallbackQuery.in("gender", ["Male", "Other"])
+        }
+
+                 // Apply age constraints with expansion (using same logic as main query)
+         const ageFlexibility = attempt.ageExpansion
+         
+         // Expand the original age range by the flexibility amount, but keep safety limits
+         let fallbackMinAge = minAllowedAge - ageFlexibility
+         let fallbackMaxAge = maxAllowedAge + ageFlexibility
+         
+         // Apply safety limits
+         fallbackMinAge = Math.max(
+           fallbackMinAge,
+           18, // Legal minimum
+           userAge < 25 ? Math.max(userAge - 5, 18) : userAge - 10 // Safety limits
+         )
+         
+         fallbackMaxAge = Math.min(
+           fallbackMaxAge,
+           userAge < 25 ? userAge + 7 : userAge + 15 // Safety limits
+         )
+
+         // Convert to birthdates using same logic
+         const today = new Date()
+         const fallbackOldestBirthdate = new Date(today.getFullYear() - fallbackMaxAge, 0, 1)
+         const fallbackYoungestBirthdate = new Date(today.getFullYear() - fallbackMinAge, 11, 31)
+
+         console.log(`🔄 Fallback ${attempt.description}: Ages ${fallbackMinAge}-${fallbackMaxAge} for user age ${userAge}`)
+
+         fallbackQuery = fallbackQuery
+           .gte("birthdate", fallbackOldestBirthdate.toISOString().split("T")[0])
+           .lte("birthdate", fallbackYoungestBirthdate.toISOString().split("T")[0])
+           .not("birthdate", "is", null)
+
+        // Note: Location filtering would be applied here based on attempt.locationScope
+        // For now, we're getting all locations and will prioritize in matching engine
+
+        const { data: fallbackProfiles } = await fallbackQuery
+          .order("created_at", { ascending: false })
+          .limit(100)
+
+        // Combine and deduplicate profiles by ID to prevent duplicate keys
+        const combinedProfiles = [...(profiles || []), ...(fallbackProfiles || [])]
+        const uniqueProfiles = combinedProfiles.filter((profile, index, self) => 
+          self.findIndex(p => p.id === profile.id) === index
+        )
+
+        console.log(`🔄 Attempt with ${attempt.description}: Found ${fallbackProfiles?.length || 0} additional profiles (${uniqueProfiles.length} unique total)`)
+
+        // Check if we have enough profiles total (original + fallback)
+        if (uniqueProfiles.length >= minProfilesNeeded) {
+          finalProfiles = uniqueProfiles.slice(0, 100)
+          fallbackUsed = true
+          console.log(`✅ Fallback successful: ${uniqueProfiles.length} total profiles meets requirement of ${minProfilesNeeded}`)
+          break
+        } else {
+          console.log(`🔄 Still need more profiles (${uniqueProfiles.length}/${minProfilesNeeded}), trying next fallback...`)
+          // Update profiles for next iteration
+          profiles = uniqueProfiles
+        }
+      }
+
+      // Final safety net - if still no profiles, get any compatible gender (maintain gender constraint)
+      if (!finalProfiles || finalProfiles.length === 0) {
+        console.log("🚨 Final safety net - getting any compatible profiles with wide age range...")
+        
+        let safetyQuery = supabaseAdmin
+          .from("users")
+          .select(`
+            *,
+            city:cities(name),
+            state:states(name),
+            country:countries(name)
+          `)
+          .eq("is_onboarded", true)
+          .eq("verification_status", "verified") // 🔒 ONLY VERIFIED PROFILES
+          .neq("id", userId)
+
+        // Exclude already swiped profiles
+        if (swipedIds.length > 0) {
+          safetyQuery = safetyQuery.not("id", "in", `(${swipedIds.join(",")})`)
+        }
+
+        // NEVER COMPROMISE: Always maintain gender constraints even in final safety net
+        if (userProfile.gender === "Male") {
+          safetyQuery = safetyQuery.in("gender", ["Female", "Other"])
+        } else if (userProfile.gender === "Female") {
+          safetyQuery = safetyQuery.in("gender", ["Male", "Other"])
+        }
+
+                 // Age-appropriate safety net (use the widest safe range for user's age)
+         const safetyMaxAge = userAge < 25 ? userAge + 7 : userAge + 15
+         const safetyMinAge = Math.max(18, userAge < 25 ? Math.max(userAge - 5, 18) : userAge - 10)
+         
+         // Convert to birthdates using same logic
+         const today = new Date()
+         const safetyOldestBirthdate = new Date(today.getFullYear() - safetyMaxAge, 0, 1)
+         const safetyYoungestBirthdate = new Date(today.getFullYear() - safetyMinAge, 11, 31)
+         
+         console.log(`🚨 Safety net: User age ${userAge}, showing ages ${safetyMinAge}-${safetyMaxAge}`)
+         
+         safetyQuery = safetyQuery
+           .gte("birthdate", safetyOldestBirthdate.toISOString().split("T")[0])
+           .lte("birthdate", safetyYoungestBirthdate.toISOString().split("T")[0])
+           .not("birthdate", "is", null)
+
+        const { data: safetyProfiles } = await safetyQuery
           .order("created_at", { ascending: false })
           .limit(30)
 
-        if (ultimateFallbackProfiles && ultimateFallbackProfiles.length > 0) {
-          finalProfiles = ultimateFallbackProfiles
+        if (safetyProfiles && safetyProfiles.length > 0) {
+          finalProfiles = safetyProfiles
           fallbackUsed = true
-          console.log(`✅ Ultimate fallback successful: Found ${ultimateFallbackProfiles.length} profiles`)
+          console.log(`✅ Safety net successful: Found ${safetyProfiles.length} profiles with compatible gender`)
         } else {
+          console.log("🚫 No verified profiles found even with safety net")
           return NextResponse.json({ 
             profiles: [],
-            message: "No more profiles available right now. Check back later for new spiritual partners!",
+            message: "No verified profiles found. Please check back later for new spiritual partners!",
             fallback_used: true
           })
         }

@@ -42,11 +42,26 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ["swipe", "stats"],
     queryFn: async () => {
-      const res = await fetch("/api/swipe/stats", { credentials: "include" })
+      let res = await fetch("/api/swipe/stats", { credentials: "include" })
+      
+      // Retry once on 401 (auth token might need refresh)
+      if (res.status === 401) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        res = await fetch("/api/swipe/stats", { credentials: "include" })
+      }
+      
       if (!res.ok) throw new Error("Failed to fetch swipe stats")
       return res.json()
     },
-    enabled: isVerified,
+    enabled: !!(isVerified && user && profile), // More specific auth check
+    retry: (failureCount, error) => {
+      // Retry up to 2 times, but not for 401 errors (those need user action)
+      if (error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
+        return false
+      }
+      return failureCount < 2
+    },
+    retryDelay: 1000,
   })
 
   // Redirect unauthenticated users and handle onboarding status

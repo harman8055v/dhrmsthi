@@ -8,7 +8,7 @@ export const revalidate = 0
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { user_id } = await request.json()
 
     // Get current user

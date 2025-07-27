@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
     // Create auth client to verify user session
-    const supabaseAuth = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies(); const supabaseAuth = createRouteHandlerClient({ cookies: () => cookieStore })
 
     // Check if user is authenticated
     const {
