@@ -65,6 +65,8 @@ export default function AdminMiddleware({ children }: AdminMiddlewareProps) {
 
       if (!session?.user) {
         console.log("No session found, redirecting to admin login")
+        setIsLoading(false)
+        setIsAuthorized(false)
         router.push("/admin/login")
         return
       }
@@ -95,6 +97,8 @@ export default function AdminMiddleware({ children }: AdminMiddlewareProps) {
       if (!isAdminRole(userData.role)) {
         await supabase.auth.signOut()
         console.log("User does not have admin role, redirecting to login. Current role:", userData.role)
+        setIsLoading(false)
+        setIsAuthorized(false)
         router.push("/admin/login")
         return
       }

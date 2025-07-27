@@ -119,8 +119,6 @@ interface UserType {
   height_in: number | null
   is_active: boolean | null
   profile_score: number | null
-  profile_scored_at: string | null
-  profile_scored_by: string | null
   // Additional computed fields
   city?: string
   state?: string
@@ -206,6 +204,7 @@ export default function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null)
   const [editingUser, setEditingUser] = useState<UserType | null>(null)
+  const [previewScore, setPreviewScore] = useState<number>(5)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
@@ -270,8 +269,13 @@ export default function AdminDashboard() {
   const [contactMessagesFilter, setContactMessagesFilter] = useState("all")
   const [contactMessagesSearch, setContactMessagesSearch] = useState("")
 
+  // Fetch admin user once on mount
   useEffect(() => {
     fetchCurrentAdminUser()
+  }, [])
+
+  // Fetch data when filters or tab changes
+  useEffect(() => {
     if (activeTab === "overview") {
       fetchAdminData(1, true) // Include stats for overview
     } else if (activeTab === "contact-messages") {
@@ -305,11 +309,16 @@ export default function AdminDashboard() {
       } = await supabase.auth.getSession()
 
       if (session?.user) {
-        const { data: userData } = await supabase
+        const { data: userData, error: userError } = await supabase
           .from("users")
           .select("id, email, role, first_name, last_name")
           .eq("id", session.user.id)
           .single()
+
+        if (userError) {
+          console.error("Failed to fetch admin user data:", userError)
+          return
+        }
 
         if (userData) {
           setAdminUser(userData)
@@ -321,6 +330,7 @@ export default function AdminDashboard() {
   }
 
   const fetchAdminData = async (page = 1, includeStats = false) => {
+    console.log("fetchAdminData called with:", { page, includeStats, activeTab })
     setUsersLoading(true)
     if (includeStats) {
       setStatsLoading(true)
@@ -371,6 +381,12 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error("Dashboard data fetch error:", error)
+      console.error("Error details:", {
+        message: error instanceof Error ? error.message : String(error),
+        activeTab,
+        includeStats,
+        page
+      })
       const errorMessage = error instanceof Error ? error.message : "Failed to fetch admin data"
       setError(errorMessage)
       toast({
@@ -421,27 +437,21 @@ export default function AdminDashboard() {
           break
         case "score":
           updateData = { 
-            profile_score: value.score,
-            profile_scored_by: adminUser?.id,
-            profile_scored_at: new Date().toISOString()
+            profile_score: value.score
           }
           break
         case "verify_with_score":
           updateData = { 
             verification_status: "verified", 
             is_verified: true,
-            profile_score: value.score,
-            profile_scored_by: adminUser?.id,
-            profile_scored_at: new Date().toISOString()
+            profile_score: value.score
           }
           break
         case "reject_with_score":
           updateData = { 
             verification_status: "rejected", 
             is_verified: false,
-            profile_score: value.score,
-            profile_scored_by: adminUser?.id,
-            profile_scored_at: new Date().toISOString()
+            profile_score: value.score
           }
           break
         default:
@@ -565,6 +575,19 @@ export default function AdminDashboard() {
 
   const fetchUserDetails = async (user: UserType) => {
     setSelectedUser(user)
+    setPreviewScore(user.profile_score || 5)
+  }
+
+  const handlePreviewScoreApprove = async () => {
+    if (!selectedUser) return
+    await handleUserAction(selectedUser.id, "verify_with_score", { score: previewScore })
+    setSelectedUser(null)
+  }
+
+  const handlePreviewScoreReject = async () => {
+    if (!selectedUser) return
+    await handleUserAction(selectedUser.id, "reject_with_score", { score: previewScore })
+    setSelectedUser(null)
   }
 
   const handleEditUser = async (updatedData: Partial<UserType>) => {
@@ -1213,6 +1236,7 @@ export default function AdminDashboard() {
                       <SelectContent>
                         <SelectItem value="created_at">Join Date</SelectItem>
                         <SelectItem value="verification_status">Verification Status</SelectItem>
+                        <SelectItem value="profile_score">Profile Score</SelectItem>
                       </SelectContent>
                     </Select>
                     <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as "asc" | "desc")}>
@@ -1333,6 +1357,11 @@ export default function AdminDashboard() {
                               <Badge variant="outline" className="text-xs">
                                 {getProfileCompletionScore(user)}% complete
                               </Badge>
+                              {user.profile_score !== null && (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                  Score: {user.profile_score}/10
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1595,6 +1624,11 @@ export default function AdminDashboard() {
                               <Badge variant="outline" className="text-xs">
                                 {getProfileCompletionScore(user)}% complete
                               </Badge>
+                              {user.profile_score !== null && (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                  Score: {user.profile_score}/10
+                                </Badge>
+                              )}
                               {getValidPhotos(user.user_photos).length > 0 && (
                                 <Badge variant="outline" className="text-green-600">
                                   <ImageIcon className="w-3 h-3 mr-1" />
@@ -1897,6 +1931,24 @@ export default function AdminDashboard() {
                         ></div>
                       </div>
                     </div>
+
+                    {/* Current Profile Score Display */}
+                    {selectedUser.profile_score !== null && (
+                      <div className="pt-3 border-t border-gray-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">Current Profile Score</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-blue-600">{selectedUser.profile_score}/10</span>
+                            <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                              <div
+                                className="bg-blue-500 h-1.5 rounded-full"
+                                style={{ width: `${(selectedUser.profile_score / 10) * 100}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -2154,35 +2206,6 @@ export default function AdminDashboard() {
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Send Notification
                       </Button>
-                      {selectedUser.verification_status === "pending" && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => handleUserAction(selectedUser.id, "verify")}
-                            disabled={actionLoading === selectedUser.id + "verify"}
-                          >
-                            {actionLoading === selectedUser.id + "verify" ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                            )}
-                            Approve Verification
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleUserAction(selectedUser.id, "reject")}
-                            disabled={actionLoading === selectedUser.id + "reject"}
-                          >
-                            {actionLoading === selectedUser.id + "reject" ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                              <XCircle className="w-4 h-4 mr-2" />
-                            )}
-                            Reject Verification
-                          </Button>
-                        </>
-                      )}
                       {['sangam', 'samarpan'].includes(selectedUser.account_status || '') ? (
                         <Button
                           variant="outline"
@@ -2242,6 +2265,81 @@ export default function AdminDashboard() {
                     </div>
                   </CardContent>
                 </Card>
+              </div>
+            </div>
+          )}
+
+          {/* Profile Scoring Section - Bottom of Dialog */}
+          {selectedUser && selectedUser.verification_status === "pending" && (
+            <div className="border-t border-gray-200 bg-blue-50 p-6 -mx-6 -mb-6">
+              <div className="max-w-2xl mx-auto">
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Profile Quality Assessment</h3>
+                  <p className="text-sm text-gray-600">Rate this user's profile quality to approve or reject their verification</p>
+                </div>
+                
+                <div className="bg-white rounded-lg p-4 shadow-sm border border-blue-200">
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <Label htmlFor="preview_score" className="text-sm font-medium">Profile Quality Score</Label>
+                      <div className="mt-2">
+                        <span className="text-3xl font-bold text-gray-900">{previewScore}</span>
+                        <span className="text-xl text-gray-500">/10</span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <input
+                        type="range"
+                        id="preview_score"
+                        min="1"
+                        max="10"
+                        step="0.5"
+                        value={previewScore}
+                        onChange={(e) => setPreviewScore(parseFloat(e.target.value))}
+                        className="w-full h-3 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((previewScore - 1) / 9) * 100}%, #e5e7eb ${((previewScore - 1) / 9) * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Poor (1)</span>
+                        <span>Average (5)</span>
+                        <span>Excellent (10)</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-3 pt-2">
+                      <Button
+                        onClick={handlePreviewScoreApprove}
+                        disabled={!!actionLoading}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3"
+                        size="lg"
+                      >
+                        {actionLoading ? (
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-5 h-5 mr-2" />
+                        )}
+                        Approve with Score {previewScore}/10
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handlePreviewScoreReject}
+                        disabled={!!actionLoading}
+                        className="flex-1 py-3"
+                        size="lg"
+                      >
+                        {actionLoading ? (
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        ) : (
+                          <XCircle className="w-5 h-5 mr-2" />
+                        )}
+                        Reject with Score {previewScore}/10
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

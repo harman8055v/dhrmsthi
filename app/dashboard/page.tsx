@@ -214,22 +214,41 @@ export default function DashboardPage() {
               <NewUserWelcome profile={profile} />
             </div>
 
-
-
             {/* Settings Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <SettingsCard
-                title="Complete Profile"
-                description="Add more details to speed up verification"
-                icon={<User className="w-5 h-5" />}
-                onClick={() => router.push("/dashboard/settings")}
-              />
-              <SettingsCard
-                title="Partner Preferences"
-                description="Set your ideal partner criteria"
-                icon={<Heart className="w-5 h-5" />}
-                onClick={() => router.push("/dashboard/preferences")}
-              />
+              {calculateProfileCompleteness() === 100 ? (
+                // Profile Complete - Show congratulatory cards
+                <>
+                  <SettingsCard
+                    title="Profile Verified Soon"
+                    description="Your complete profile is in the verification queue"
+                    icon={<User className="w-5 h-5" />}
+                    onClick={() => router.push("/dashboard/account-settings")}
+                  />
+                  <SettingsCard
+                    title="Partner Preferences"
+                    description="Set your ideal partner criteria while you wait"
+                    icon={<Heart className="w-5 h-5" />}
+                    onClick={() => router.push("/dashboard/preferences")}
+                  />
+                </>
+              ) : (
+                // Profile Incomplete - Show completion cards
+                <>
+                  <SettingsCard
+                    title="Complete Profile"
+                    description="Add more details to speed up verification"
+                    icon={<User className="w-5 h-5" />}
+                    onClick={() => router.push("/dashboard/settings")}
+                  />
+                  <SettingsCard
+                    title="Partner Preferences"
+                    description="Set your ideal partner criteria"
+                    icon={<Heart className="w-5 h-5" />}
+                    onClick={() => router.push("/dashboard/preferences")}
+                  />
+                </>
+              )}
             </div>
           </div>
         </main>

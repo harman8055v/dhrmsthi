@@ -1,10 +1,50 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
+// Helper function to check if role is admin (case-insensitive)
+const isAdminRole = (role: string | null): boolean => {
+  if (!role) return false
+  const normalizedRole = role.toLowerCase()
+  return normalizedRole === "admin" || normalizedRole === "super_admin" || normalizedRole === "superadmin"
+}
+
 export async function GET(request: NextRequest) {
   try {
+    // Authentication and authorization check
+    const cookieStore = await cookies()
+    const authClient = createRouteHandlerClient({ cookies: () => cookieStore })
+    
+    const {
+      data: { session },
+      error: sessionError,
+    } = await authClient.auth.getSession()
+
+    if (sessionError || !session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user has admin role
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("role, is_active")
+      .eq("id", session.user.id)
+      .single()
+
+    if (userError || !userData) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    if (!userData.is_active) {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 })
+    }
+
+    if (!isAdminRole(userData.role)) {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    }
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
@@ -13,6 +53,10 @@ export async function GET(request: NextRequest) {
     const includeStats = searchParams.get("include_stats") === "true"
     const sortBy = searchParams.get("sort_by") || "created_at"
     const sortOrder = searchParams.get("sort_order") || "desc"
+
+    // Validate sortBy parameter for security
+    const validSortColumns = ["created_at", "verification_status", "profile_score", "first_name", "last_name", "email"]
+    const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : "created_at"
     const genderFilter = searchParams.get("gender_filter") || "all"
     const photoFilter = searchParams.get("photo_filter") || "all"
     const profileCompletionFilter = searchParams.get("profile_completion_filter") || "all"
@@ -28,12 +72,12 @@ export async function GET(request: NextRequest) {
       spiritual_org, daily_practices, diet, temple_visit_freq, artha_vs_moksha,
       vanaprastha_interest, favorite_spiritual_quote, education, profession, annual_income,
       marital_status, super_likes_count, swipe_count, message_highlights_count,
-      is_onboarded, is_verified, account_status, preferred_gender, preferred_age_min,
-      preferred_age_max, preferred_height_min, preferred_height_max, preferred_location,
-      preferred_diet, preferred_profession, created_at, updated_at, daily_swipe_count,
+      is_onboarded, is_verified, account_status, created_at, updated_at, daily_swipe_count,
       daily_superlike_count, last_swipe_date, is_banned, is_kyc_verified, flagged_reason,
       role, mother_tongue, about_me, ideal_partner_notes, verification_status,
-      height_ft, height_in, is_active
+      height_ft, height_in, is_active, referral_code, referral_count, fast_track_verification,
+      total_referrals, privacy_settings, profile_boosts_count, welcome_sent, referred_by,
+      spiritual_org_backup, daily_practices_backup, profile_score
     `)
 
     // Create a separate query for counting
@@ -78,13 +122,16 @@ export async function GET(request: NextRequest) {
         query = query.eq("gender", genderFilter)
       }
 
-      // Apply photo filter
-      if (photoFilter !== "all") {
-        if (photoFilter === "has_photos") {
-          query = query.not("user_photos", "is", null).neq("user_photos", "{}")
-        } else if (photoFilter === "no_photos") {
-          query = query.or("user_photos.is.null,user_photos.eq.{}")
-        }
+      // Apply photo filter - TESTING SIMPLIFIED VERSION
+      console.log('Admin Dashboard - Photo Filter Value:', photoFilter)
+      if (photoFilter === "has_photos") {
+        console.log('Applying has_photos filter - testing with profile_photo_url only')
+        // Temporarily test with just profile_photo_url
+        query = query.not('profile_photo_url', 'is', null)
+      } else if (photoFilter === "no_photos") {
+        console.log('Applying no_photos filter - testing with profile_photo_url only')
+        // Temporarily test with just profile_photo_url
+        query = query.is('profile_photo_url', null)
       }
 
       // Apply age range filter
@@ -148,8 +195,18 @@ export async function GET(request: NextRequest) {
 
     // Apply sorting and pagination to the main query
     const { data: users, error } = await baseQuery
-      .order(sortBy, { ascending: sortOrder === "asc" })
+      .order(safeSortBy, { ascending: sortOrder === "asc" })
       .range(offset, offset + limit - 1)
+
+    console.log('Admin Dashboard - Query Results:', {
+      photoFilter,
+      usersCount: users?.length || 0,
+      firstUserPhotos: users?.[0] ? {
+        profile_photo_url: users[0].profile_photo_url,
+        user_photos: users[0].user_photos,
+        user_photos_type: typeof users[0].user_photos
+      } : null
+    })
 
     // Helper function to process photo URLs
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
@@ -278,6 +335,8 @@ export async function GET(request: NextRequest) {
         return true
       })
     }
+
+
 
     const totalCount = count || 0
     const totalPages = Math.ceil(totalCount / limit)

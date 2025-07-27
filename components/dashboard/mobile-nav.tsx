@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuthContext } from "@/components/auth-provider"
-import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
+import { getVerificationStatusText } from "@/lib/utils"
 import Image from "next/image"
 import { useQueryClient } from "@tanstack/react-query"
 import { useUnreadCount } from "@/hooks/use-unread-count"
@@ -97,8 +97,10 @@ export default function MobileNav({ userProfile }: MobileNavProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isProfileMenuOpen]);
 
-  const isVerified = isUserVerified(userProfile)
-  const showHeader = !(pathname === "/dashboard" && isVerified)
+  // Use same verification logic as useAuth hook for consistency
+  const isVerified = userProfile?.verification_status === 'verified'
+  // Always show header for unverified users, hide only for verified users on dashboard home
+  const showHeader = pathname !== "/dashboard" || !isVerified
   
   // Hide bottom navigation on chat pages
   const isChatPage = pathname?.startsWith("/dashboard/messages/") && pathname !== "/dashboard/messages"

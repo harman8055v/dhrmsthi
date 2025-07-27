@@ -1,10 +1,50 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
+// Helper function to check if role is admin (case-insensitive)
+const isAdminRole = (role: string | null): boolean => {
+  if (!role) return false
+  const normalizedRole = role.toLowerCase()
+  return normalizedRole === "admin" || normalizedRole === "super_admin" || normalizedRole === "superadmin"
+}
+
 export async function GET(request: NextRequest) {
   try {
+    // Authentication and authorization check
+    const cookieStore = await cookies()
+    const authClient = createRouteHandlerClient({ cookies: () => cookieStore })
+    
+    const {
+      data: { session },
+      error: sessionError,
+    } = await authClient.auth.getSession()
+
+    if (sessionError || !session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user has admin role
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("role, is_active")
+      .eq("id", session.user.id)
+      .single()
+
+    if (userError || !userData) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    if (!userData.is_active) {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 })
+    }
+
+    if (!isAdminRole(userData.role)) {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    }
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
@@ -82,6 +122,38 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    // Authentication and authorization check
+    const cookieStore = await cookies()
+    const authClient = createRouteHandlerClient({ cookies: () => cookieStore })
+    
+    const {
+      data: { session },
+      error: sessionError,
+    } = await authClient.auth.getSession()
+
+    if (sessionError || !session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user has admin role
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("role, is_active")
+      .eq("id", session.user.id)
+      .single()
+
+    if (userError || !userData) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    if (!userData.is_active) {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 })
+    }
+
+    if (!isAdminRole(userData.role)) {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const messageId = searchParams.get("id")
     const body = await request.json()
