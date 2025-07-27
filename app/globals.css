@@ -340,6 +340,20 @@
   .animate-bounce-dot {
     animation: bounce 1.4s infinite ease-in-out both;
   }
+
+  /* Shimmer animation for progress bars */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
 }
 
 /* Critical CSS for above-the-fold content */
