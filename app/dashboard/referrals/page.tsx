@@ -10,7 +10,7 @@ import { ArrowLeft, Users, Gift, Copy, Share2, Star, CheckCircle, Zap, Crown } f
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
-import SectionHeader from "@/components/dashboard/section-header"
+
 import { supabase } from "@/lib/supabase"
 import { ReferralProgram } from "@/components/dashboard/referral-program"
 
@@ -27,14 +27,10 @@ export default function ReferralsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
-      <main className="pt-24 pb-40 px-4 min-h-screen">
+      <main className="pb-40 px-4 min-h-screen">
         <div className="max-w-2xl mx-auto">
-          <SectionHeader
-            title="Referral Program"
-            subtitle="Invite friends and unlock exclusive benefits"
-          />
           <ReferralProgram userId={user.id} userProfile={profile} />
         </div>
       </main>

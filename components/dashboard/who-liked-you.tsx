@@ -20,6 +20,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { getAvatarInitials } from "@/lib/utils"
+import InstantMatchDialog from "@/components/instant-match-dialog"
 
 interface LikeProfile {
   id: string
@@ -56,11 +58,16 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState<string | null>(null)
+  const [showInstantMatchDialog, setShowInstantMatchDialog] = useState(false)
+  const [matchedUser, setMatchedUser] = useState<any>(null)
   const router = useRouter()
 
   useEffect(() => {
-    fetchWhoLikedMe()
-  }, [])
+    // Only fetch if user profile is available and verified
+    if (userProfile?.verification_status === 'verified') {
+      fetchWhoLikedMe()
+    }
+  }, [userProfile])
 
   const fetchWhoLikedMe = async () => {
     try {
@@ -112,11 +119,16 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
       const result = await response.json()
 
       if (response.ok) {
-        toast.success("🎉 It's a match! You can now message each other.")
+        // Find the matched user by profile.id
+        const likedUser = data?.likes.find(like => like.profile.id === likedUserId)
+        if (likedUser) {
+          setMatchedUser(likedUser.profile)
+          setShowInstantMatchDialog(true)
+        }
         // Remove the liked user from the list
         setData(prev => prev ? {
           ...prev,
-          likes: prev.likes.filter(like => like.id !== likedUserId),
+          likes: prev.likes.filter(like => like.profile.id !== likedUserId),
           total_likes: prev.total_likes - 1
         } : null)
       } else {
@@ -369,15 +381,15 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
                   {/* Action Button */}
                   <Button
                     size="sm"
-                    onClick={() => handleInstantMatch(like.id)}
-                    disabled={processing === like.id}
+                    onClick={() => handleInstantMatch(like.profile.id)}
+                    disabled={processing === like.profile.id}
                     className={`w-full mt-3 ${
                       data.can_see_details
                         ? 'bg-red-500 hover:bg-red-600'
                         : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600'
                     }`}
                   >
-                    {processing === like.id ? (
+                    {processing === like.profile.id ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                     ) : data.can_see_details ? (
                       <>
@@ -430,6 +442,17 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
           </div>
         )}
       </CardContent>
+
+      {/* Instant Match Dialog */}
+      <InstantMatchDialog
+        isOpen={showInstantMatchDialog}
+        onClose={() => setShowInstantMatchDialog(false)}
+        onStartConversation={() => {
+          setShowInstantMatchDialog(false)
+          router.push("/dashboard/messages")
+        }}
+        matchedUser={matchedUser || {}}
+      />
     </Card>
   )
 } 

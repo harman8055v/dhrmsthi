@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, ReactNode } from "react"
+import { createContext, useContext, ReactNode, useMemo } from "react"
 import { useAuth } from "@/hooks/use-auth"
 
 /**
@@ -12,7 +12,16 @@ const AuthContext = createContext<ReturnType<typeof useAuth> | undefined>(undefi
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
-  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+  
+  // Memoize the auth value to prevent unnecessary re-renders
+  const authValue = useMemo(() => auth, [
+    auth.user?.id,
+    auth.profile?.id,
+    auth.loading,
+    auth.error
+  ])
+  
+  return <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
 }
 
 export function useAuthContext() {

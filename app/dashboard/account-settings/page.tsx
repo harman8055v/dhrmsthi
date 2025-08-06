@@ -187,11 +187,10 @@ export default function AccountSettingsPage() {
   if (loading) return <div className="flex justify-center items-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
 
-      <main className="pt-24 pb-40 px-4 min-h-screen max-w-2xl mx-auto space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Account Settings</h1>
+      <main className="pb-40 px-4 min-h-screen max-w-2xl mx-auto space-y-6">
 
         {/* Verification Status */}
         <Card>

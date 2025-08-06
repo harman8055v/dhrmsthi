@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PrivacyLoading() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100 flex items-center justify-center">
       <div className="w-full max-w-2xl px-4">
         <div className="flex items-center gap-3 mb-6">
           <Skeleton className="h-10 w-10 rounded-full" />

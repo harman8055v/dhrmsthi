@@ -9,6 +9,7 @@ import { isUserVerified } from "@/lib/utils"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import ProfileModal from "@/components/profile-modal"
+import MatchCelebration from "@/components/match-celebration"
 
 interface SwipeStackProps {
   profiles: any[]
@@ -137,6 +138,8 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   const [fetchingProfiles, setFetchingProfiles] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<any>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [showMatchCelebration, setShowMatchCelebration] = useState(false)
+  const [matchedUser, setMatchedUser] = useState<any>(null)
 
   // Check if user is verified
   const isVerified = userProfile ? isUserVerified(userProfile) : false
@@ -157,6 +160,14 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Only sync profiles from parent when component first mounts or when explicitly refreshed
+  // Don't interfere with internal swipe state management
+  useEffect(() => {
+    if (initialProfiles.length > 0) {
+      setProfiles(initialProfiles)
+    }
+  }, [initialProfiles.length]) // Only trigger when length changes (new profiles loaded)
 
   const fetchData = async (retryCount = 0) => {
     setLoading(true)
@@ -201,7 +212,7 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       
       const stats = await response.json()
       setSwipeStats(stats)
-      console.log("SwipeStack: Fetched swipe stats successfully")
+      // console.log("SwipeStack: Fetched swipe stats successfully")
     } catch (error) {
       console.error("SwipeStack: Error in fetchSwipeStats:", error)
       
@@ -253,14 +264,14 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         profile.user_photos && Array.isArray(profile.user_photos) && profile.user_photos.length > 0
       )
       
-      console.log(`SwipeStack: Fetched ${profilesWithPhotos.length} profiles with photos`)
+      // console.log(`SwipeStack: Fetched ${profilesWithPhotos.length} profiles with photos`)
       
       // NEW: Append new profiles instead of replacing to maintain continuity
       setProfiles(prev => {
         // Get IDs of existing profiles to avoid duplicates
         const existingIds = new Set(prev.map(p => p.id))
         const newProfiles = profilesWithPhotos.filter((p: any) => !existingIds.has(p.id))
-        console.log(`SwipeStack: Adding ${newProfiles.length} new profiles (${existingIds.size} existing)`)
+        // console.log(`SwipeStack: Adding ${newProfiles.length} new profiles (${existingIds.size} existing)`)
         
         // Extra safety: Deduplicate the final array by ID
         const combined = [...prev, ...newProfiles]
@@ -339,25 +350,37 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       return
     }
 
-    // Immediate visual feedback - set processing state
-    setProcessingSwipe(true)
+    // Optimistic UI update - trigger animation IMMEDIATELY
+    setExitingCard({ id: profileId, direction })
+    const animationDuration = direction === "superlike" ? 600 : 300
+    
+    // Update UI state immediately for instant feedback
+    const swipedProfile = profiles[currentIndex]
+    setTimeout(() => {
+      setUndoStack(prev => [...prev, { profile: swipedProfile, direction, index: currentIndex }])
+      setCurrentIndex(prev => prev + 1)
+      setCurrentImageIndex(0)
+      setExitingCard(null)
+    }, animationDuration)
 
-    try {
-      // Send API request FIRST before any animation (with retry for 401s)
-      let response = await fetch("/api/swipe", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          swiped_user_id: profileId,
-          action: direction === "left" ? "dislike" : direction === "right" ? "like" : "superlike",
-        }),
+    // Update stats optimistically
+    if (swipeStats) {
+      setSwipeStats({
+        ...swipeStats,
+        swipes_remaining: swipeStats.swipes_remaining - 1,
+        super_likes_available: direction === "superlike" 
+          ? swipeStats.super_likes_available - 1 
+          : swipeStats.super_likes_available,
       })
+    }
 
-      // Retry once on 401 (auth token might have refreshed)
-      if (response.status === 401) {
-        await new Promise(resolve => setTimeout(resolve, 500)) // Brief delay
-        response = await fetch("/api/swipe", {
+    // Call parent handler immediately
+    onSwipe(direction, profileId)
+
+    // Send API request in background (don't block UI)
+    const sendSwipeRequest = async () => {
+      try {
+        let response = await fetch("/api/swipe", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -366,122 +389,109 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
             action: direction === "left" ? "dislike" : direction === "right" ? "like" : "superlike",
           }),
         })
-      }
 
-      const result = await response.json()
+        // Retry once on 401 (auth token might have refreshed)
+        if (response.status === 401) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          response = await fetch("/api/swipe", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              swiped_user_id: profileId,
+              action: direction === "left" ? "dislike" : direction === "right" ? "like" : "superlike",
+            }),
+          })
+        }
 
-      if (response.ok) {
-        // API call succeeded - NOW trigger animation and UI updates
-        setProcessingSwipe(false) // Clear processing state
-        setExitingCard({ id: profileId, direction })
+        const result = await response.json()
 
-        const animationDuration = direction === "superlike" ? 700 : 400
-        
-        setTimeout(() => {
-          // Update UI state after animation
-          const swipedProfile = profiles[currentIndex]
-          setUndoStack(prev => [...prev, { profile: swipedProfile, direction, index: currentIndex }])
-          setCurrentIndex(prev => prev + 1)
-          setCurrentImageIndex(0)
-          setExitingCard(null)
+        if (response.ok) {
+          // Show match notification
+          if (result.is_match) {
+            setTimeout(() => {
+              setMatchedUser(swipedProfile)
+              setShowMatchCelebration(true)
+            }, animationDuration + 100)
+          } else if (direction === "superlike") {
+            setTimeout(() => {
+              toast.success("⭐ Super Like sent!")
+            }, animationDuration)
+          }
 
-          // Update stats optimistically
-          if (swipeStats) {
-            setSwipeStats({
-              ...swipeStats,
-              swipes_remaining: swipeStats.swipes_remaining - 1,
-              super_likes_available: direction === "superlike" 
-                ? swipeStats.super_likes_available - 1 
-                : swipeStats.super_likes_available,
+          // Load more profiles if running low
+          if (currentIndex + 1 >= profiles.length - 3) {
+            fetchProfiles().catch(error => {
+              console.warn("SwipeStack: Background profile fetch failed:", error.message)
             })
           }
-        }, animationDuration)
-
-        // Show match notification
-        if (result.is_match) {
-          toast.success("🎉 It's a match! You can now message each other.")
-        } else if (direction === "superlike") {
-          toast.success("⭐ Super Like sent!")
-        }
-
-        onSwipe(direction, profileId)
-
-        // Load more profiles if running low
-        if (currentIndex + 1 >= profiles.length - 3) {
-          fetchProfiles().catch(error => {
-            console.warn("SwipeStack: Background profile fetch failed:", error.message)
-            // Don't throw error - this is a background operation
-          })
-        }
-      } else {
-        // Handle swipe limit reached (429 status)
-        if (response.status === 429 && result.limit_reached) {
-          setProcessingSwipe(false) // Clear processing state
+        } else {
+          // Handle swipe limit reached (429 status)
+          if (response.status === 429 && result.limit_reached) {
+            // Rollback optimistic updates
+            setSwipeStats((prev: any) => prev ? {
+              ...prev,
+              can_swipe: false,
+              swipes_used: result.swipes_used || prev.swipes_used,
+              swipes_remaining: 0
+            } : prev)
+            
+            toast.error(result.upgrade_message || "Daily swipe limit reached!", {
+              description: `You've used ${result.swipes_used}/${result.daily_limit} daily swipes on your ${result.current_plan} plan.`,
+              action: {
+                label: "Upgrade Plan",
+                onClick: () => router.push(result.store_link || "/dashboard/store"),
+              },
+              duration: 8000,
+            })
+            return
+          }
           
-          // Update swipe stats to prevent further swiping
-          setSwipeStats(prev => prev ? {
-            ...prev,
-            can_swipe: false,
-            swipes_used: result.swipes_used || prev.swipes_used,
-            swipes_remaining: 0
-          } : prev)
+          // Handle super like limit reached (400 status with "No superlikes available")
+          if (response.status === 400 && result.error?.includes("superlikes available")) {
+            // Rollback super likes count
+            setSwipeStats((prev: any) => prev ? {
+              ...prev,
+              super_likes_available: 0
+            } : prev)
+            
+            toast.error("No Super Likes available!", {
+              description: "Purchase Super Likes to stand out from the crowd",
+              action: {
+                label: "Go to Store",
+                onClick: () => router.push("/dashboard/store"),
+              },
+              duration: 5000,
+            })
+            return
+          }
           
-          toast.error(result.upgrade_message || "Daily swipe limit reached!", {
-            description: `You've used ${result.swipes_used}/${result.daily_limit} daily swipes on your ${result.current_plan} plan.`,
-            action: {
-              label: "Upgrade Plan",
-              onClick: () => router.push(result.store_link || "/dashboard/store"),
-            },
-            duration: 8000,
-          })
-          return // Don't rollback for limit errors - they're intentional
-        }
-        
-        // Handle super like limit reached (400 status with "No superlikes available")
-        if (response.status === 400 && result.error?.includes("superlikes available")) {
-          setProcessingSwipe(false) // Clear processing state
+          // Handle 401 Unauthorized errors specifically
+          if (response.status === 401) {
+            toast.error("Session expired. Please refresh the page and try again.", {
+              action: {
+                label: "Refresh",
+                onClick: () => window.location.reload(),
+              },
+              duration: 8000,
+            })
+            return
+          }
           
-          // Update swipe stats to prevent further super likes
-          setSwipeStats(prev => prev ? {
-            ...prev,
-            super_likes_available: 0
-          } : prev)
-          
-          toast.error("No Super Likes available!", {
-            description: "Purchase Super Likes to stand out from the crowd",
-            action: {
-              label: "Go to Store",
-              onClick: () => router.push("/dashboard/store"),
-            },
-            duration: 5000,
-          })
-          return // Don't rollback for limit errors - they're intentional
+          // Handle other errors
+          if (!result.error?.includes("Already swiped")) {
+            toast.error(result.error || "Failed to swipe")
+          }
         }
-        
-        // Handle 401 Unauthorized errors specifically
-        if (response.status === 401) {
-          setProcessingSwipe(false) // Clear processing state
-          toast.error("Session expired. Please refresh the page and try again.", {
-            action: {
-              label: "Refresh",
-              onClick: () => window.location.reload(),
-            },
-            duration: 8000,
-          })
-          return
-        }
-        
-        // Handle other errors (no rollback needed since no optimistic updates happened)
-        setProcessingSwipe(false) // Clear processing state
-        if (!result.error?.includes("Already swiped")) {
-          toast.error(result.error || "Failed to swipe")
-        }
+      } catch (error) {
+        // Handle network errors
+        toast.error("Something went wrong. Please try again.")
       }
-    } catch (error) {
-      // Handle network errors (no rollback needed since no optimistic updates happened)
-      setProcessingSwipe(false) // Clear processing state
-      toast.error("Something went wrong. Please try again.")
     }
+
+    // Execute the API request in background
+    setProcessingSwipe(true)
+    sendSwipeRequest().finally(() => setProcessingSwipe(false))
   }
 
   const handleUndo = async () => {
@@ -534,7 +544,7 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         <div className="text-center">
           <h3 className="text-xl font-semibold mb-2">Error Loading Profiles</h3>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={fetchData} className="bg-[#8b0000] hover:bg-[#6b0000]">Try Again</Button>
+          <Button onClick={() => fetchData()} className="bg-[#8b0000] hover:bg-[#6b0000]">Try Again</Button>
         </div>
       </div>
     )
@@ -544,21 +554,38 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
 
   if (!hasMoreProfiles) {
     return (
-      <div className="flex items-center justify-center px-4 h-full">
-        <div className="text-center">
-          <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No More Profiles</h3>
-          <p className="text-gray-600 mb-4">Check back later for new matches!</p>
-          <div className="flex gap-3 justify-center">
-            <Button onClick={() => fetchProfiles().catch(error => console.error("Failed to refresh profiles:", error.message))} className="bg-[#8b0000] hover:bg-[#6b0000]">Refresh</Button>
-            {undoStack.length > 0 && (
-              <Button onClick={handleUndo} variant="outline" className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000]/10">
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Undo
-              </Button>
-            )}
+      <div className="h-full flex flex-col bg-gray-50">
+        <div className="flex items-center justify-center px-4 h-full">
+          <div className="text-center">
+            <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">No More Profiles</h3>
+            <p className="text-gray-600 mb-4">Check back later for new matches!</p>
+            <div className="flex gap-3 justify-center">
+              <Button onClick={() => fetchProfiles().catch(error => console.error("Failed to refresh profiles:", error.message))} className="bg-[#8b0000] hover:bg-[#6b0000]">Refresh</Button>
+              {undoStack.length > 0 && (
+                <Button onClick={handleUndo} variant="outline" className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000]/10">
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Undo
+                </Button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Match Celebration - Always available even when no more profiles */}
+        <MatchCelebration
+          isOpen={showMatchCelebration}
+          onClose={() => setShowMatchCelebration(false)}
+          onSendMessage={() => {
+            setShowMatchCelebration(false)
+            if (matchedUser) {
+              router.push("/dashboard/messages")
+            }
+          }}
+          onKeepSwiping={() => setShowMatchCelebration(false)}
+          matchedUser={matchedUser || {}}
+          currentUser={userProfile}
+        />
       </div>
     )
   }
@@ -574,10 +601,13 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         <div className="flex-shrink-0 h-12 px-4 bg-white flex items-center shadow-sm">
           <div className="flex justify-between items-center w-full">
             <h1 className="text-lg font-bold text-[#8b0000]">Discover</h1>
-            <div className="flex items-center gap-1 text-[#8b0000]">
-              <Star className="w-4 h-4" fill="currentColor" />
-              <span className="font-medium">{swipeStats.super_likes_available}</span>
-            </div>
+            {/* Only show Super Likes count for Sangam and Samarpan plans */}
+            {userProfile?.account_status && ['sangam', 'samarpan'].includes(userProfile.account_status) && (
+              <div className="flex items-center gap-1 text-[#8b0000]">
+                <Star className="w-4 h-4" fill="currentColor" />
+                <span className="font-medium">{swipeStats.super_likes_available}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -591,11 +621,11 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
                 key={profile.id}
                 profile={profile}
                 index={2 - index}
-                isTop={index === 2}
+                isTop={index === 0}
                 onSwipe={handleSwipe}
                 onViewProfile={handleViewProfile}
-                currentImageIndex={index === 2 ? currentImageIndex : 0}
-                setCurrentImageIndex={index === 2 ? setCurrentImageIndex : undefined}
+                currentImageIndex={index === 0 ? currentImageIndex : 0}
+                setCurrentImageIndex={index === 0 ? setCurrentImageIndex : undefined}
                 exitDirection={exitingCard && exitingCard.id === profile.id ? exitingCard.direction : null}
               />
             ))}
@@ -619,57 +649,69 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
           <button
             onClick={() => {
               const currentProfile = profiles[currentIndex]
-              if (!exitingCard && !processingSwipe && currentProfile) {
+              if (!exitingCard && currentProfile) {
                 handleSwipe("left", currentProfile.id)
               }
             }}
-            disabled={exitingCard !== null || processingSwipe || !profiles[currentIndex]}
-            className={`w-14 h-14 rounded-full bg-white shadow-md border-2 flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 ${
-              processingSwipe ? 'border-red-400 animate-pulse' : 'border-gray-200 hover:border-red-300'
-            }`}
+            disabled={exitingCard !== null || !profiles[currentIndex]}
+            className={`w-14 h-14 rounded-full bg-white shadow-md border-2 flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 border-gray-200 hover:border-red-300`}
           >
-            <X className={`w-6 h-6 ${processingSwipe ? 'text-red-400' : 'text-red-500'}`} />
+            <X className="w-6 h-6 text-red-500" />
           </button>
 
-          {/* Super Like */}
-          <button
-            onClick={() => {
-              const currentProfile = profiles[currentIndex]
-              if (!exitingCard && !processingSwipe && currentProfile) {
-                if (!swipeStats?.super_likes_available || swipeStats?.super_likes_available <= 0) {
-                  toast.error("No Super Likes available!", {
-                    description: "Purchase Super Likes to stand out from the crowd",
-                    action: {
-                      label: "Go to Store",
-                      onClick: () => router.push("/dashboard/store"),
-                    },
-                    duration: 5000,
-                  })
-                } else {
-                  handleSwipe("superlike", currentProfile.id)
+          {/* Super Like - Only show for Sangam and Samarpan plans */}
+          {userProfile?.account_status && ['sangam', 'samarpan'].includes(userProfile.account_status) ? (
+            <button
+              onClick={() => {
+                const currentProfile = profiles[currentIndex]
+                if (!exitingCard && currentProfile) {
+                  if (!swipeStats?.super_likes_available || swipeStats?.super_likes_available <= 0) {
+                    toast.error("No Super Likes available!", {
+                      description: "Your monthly Super Likes have been used. They reset monthly or you can purchase more.",
+                      action: {
+                        label: "Go to Store",
+                        onClick: () => router.push("/dashboard/store"),
+                      },
+                      duration: 5000,
+                    })
+                  } else {
+                    handleSwipe("superlike", currentProfile.id)
+                  }
                 }
-              }
-            }}
-            disabled={exitingCard !== null || processingSwipe || !profiles[currentIndex]}
-            className={`w-12 h-12 rounded-full shadow-md flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 ${
-              processingSwipe ? 'bg-[#aa4444] animate-pulse' : 'bg-[#8b0000] hover:bg-[#6b0000]'
-            }`}
-          >
-            <Star className="w-5 h-5 text-white" fill="currentColor" />
-          </button>
+              }}
+              disabled={exitingCard !== null || !profiles[currentIndex]}
+              className="w-12 h-12 rounded-full shadow-md flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 bg-[#8b0000] hover:bg-[#6b0000]"
+            >
+              <Star className="w-5 h-5 text-white" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                toast.error("Super Likes not available on your plan", {
+                  description: "Upgrade to Sangam or Samarpan plan to use Super Likes",
+                  action: {
+                    label: "Upgrade Plan",
+                    onClick: () => router.push("/dashboard/store"),
+                  },
+                  duration: 5000,
+                })
+              }}
+              className="w-12 h-12 rounded-full shadow-md bg-gray-300 flex items-center justify-center transition-none active:scale-95"
+            >
+              <Star className="w-5 h-5 text-gray-500" />
+            </button>
+          )}
 
           {/* Like */}
           <button
             onClick={() => {
               const currentProfile = profiles[currentIndex]
-              if (!exitingCard && !processingSwipe && currentProfile) {
+              if (!exitingCard && currentProfile) {
                 handleSwipe("right", currentProfile.id)
               }
             }}
-            disabled={exitingCard !== null || processingSwipe || !profiles[currentIndex]}
-            className={`w-14 h-14 rounded-full shadow-md flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 ${
-              processingSwipe ? 'bg-green-400 animate-pulse' : 'bg-green-500 hover:bg-green-600'
-            }`}
+            disabled={exitingCard !== null || !profiles[currentIndex]}
+            className="w-14 h-14 rounded-full shadow-md flex items-center justify-center transition-none active:scale-95 disabled:opacity-50 bg-green-500 hover:bg-green-600"
           >
             <Heart className="w-6 h-6 text-white" fill="currentColor" />
           </button>
@@ -684,6 +726,21 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
           onClose={() => setProfileModalOpen(false)}
         />
       )}
+
+      {/* Match Celebration */}
+      <MatchCelebration
+        isOpen={showMatchCelebration}
+        onClose={() => setShowMatchCelebration(false)}
+        onSendMessage={() => {
+          setShowMatchCelebration(false)
+          if (matchedUser) {
+            router.push("/dashboard/messages")
+          }
+        }}
+        onKeepSwiping={() => setShowMatchCelebration(false)}
+        matchedUser={matchedUser || {}}
+        currentUser={userProfile}
+      />
     </div>
   )
 }
@@ -799,11 +856,11 @@ function SwipeCard({
         x: exitDirection === "right" ? 300 : exitDirection === "left" ? -300 : 0,
         y: exitDirection === "superlike" ? -500 : 0,
         opacity: 0,
-        scale: exitDirection === "superlike" ? 1.2 : 1
+        scale: exitDirection === "superlike" ? 1.1 : 1
       }}
       transition={{ 
-        type: exitDirection === "superlike" ? "spring" : "tween", 
-        duration: exitDirection === "superlike" ? 0.7 : 0.4, 
+        type: "tween", 
+        duration: exitDirection === "superlike" ? 0.6 : 0.3, 
         ease: "easeOut" 
       }}
           >
@@ -850,19 +907,12 @@ function SwipeCard({
               className="absolute inset-0 bg-gradient-to-br from-blue-400/40 to-purple-600/40 z-20 flex items-center justify-center"
             >
               <motion.div
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1.2, rotate: 0 }}
-                transition={{ type: "spring", damping: 10 }}
-                className="relative"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1.1 }}
+                transition={{ type: "spring", damping: 15, duration: 0.4 }}
+                className="bg-gradient-to-br from-blue-400 to-purple-600 rounded-full p-8 shadow-2xl"
               >
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-600 rounded-full blur-xl"
-                />
-                <div className="relative bg-gradient-to-br from-blue-400 to-purple-600 rounded-full p-8">
-                  <Star className="w-24 h-24 text-white" fill="white" />
-                </div>
+                <Star className="w-24 h-24 text-white" fill="white" />
               </motion.div>
             </motion.div>
           )}
@@ -876,11 +926,43 @@ function SwipeCard({
               fill
               className="object-cover"
               priority={isTop}
+              sizes="(max-width: 768px) 100vw, 400px"
+            />
+          )}
+
+          {/* Preload next images for smooth transitions */}
+          {!isTop && profile.user_photos && profile.user_photos[0] && (
+            <link
+              rel="preload"
+              as="image"
+              href={getImageUrl(profile.user_photos[0])}
             />
           )}
 
           {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+
+          {/* Super Like Indicator - Top Center */}
+          {profile.has_super_liked_me && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3, type: "spring", bounce: 0.3 }}
+              className="absolute top-3 left-1/2 transform -translate-x-1/2 z-20"
+            >
+              {/* Main Badge Container */}
+              <div className="bg-gradient-to-br from-orange-500 via-yellow-500 to-orange-600 rounded-2xl px-3 py-2 shadow-xl border border-white/30">
+                {/* Content */}
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-white drop-shadow-sm" fill="currentColor" />
+                  <span className="text-white font-bold text-sm tracking-wide drop-shadow-sm">
+                    Super Liked You!
+                  </span>
+                  <Sparkles className="w-4 h-4 text-white/90 drop-shadow-sm" />
+                </div>
+              </div>
+            </motion.div>
+          )}
 
 
 
@@ -893,7 +975,7 @@ function SwipeCard({
                   e.stopPropagation()
                   prevImage()
                 }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center z-10 hover:bg-white/30 transition-colors"
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center z-30 hover:bg-white/30 transition-colors"
                 aria-label="Previous image"
               >
                 <ChevronLeft className="w-6 h-6 text-white" />
@@ -905,14 +987,14 @@ function SwipeCard({
                   e.stopPropagation()
                   nextImage()
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center z-10 hover:bg-white/30 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center z-30 hover:bg-white/30 transition-colors"
                 aria-label="Next image"
               >
                 <ChevronRight className="w-6 h-6 text-white" />
               </button>
 
               {/* Image Dots */}
-              <div className="absolute top-3 left-3 right-3 flex gap-1 z-10">
+              <div className="absolute top-3 left-3 right-3 flex gap-1 z-30">
                 {profile.user_photos.map((_: any, idx: number) => (
                   <button
                     key={idx}
@@ -948,6 +1030,16 @@ function SwipeCard({
                     <path d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
                   </svg>
                 </div>
+              )}
+              {profile.has_super_liked_me && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="bg-gradient-to-r from-orange-500 to-yellow-500 rounded-full p-1.5 shadow-lg"
+                >
+                  <Star className="w-4 h-4 text-white" fill="currentColor" />
+                </motion.div>
               )}
             </div>
 

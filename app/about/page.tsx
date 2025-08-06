@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Heart, Users, Compass, Star, ArrowRight, NotebookIcon as Lotus } from "lucide-react"
-import Header from "@/components/header"
+
 import Footer from "@/components/footer"
 import { useRouter, usePathname } from "next/navigation"
 
@@ -29,8 +29,7 @@ export default function AboutPage() {
 
   return (
     <>
-      <Header />
-      <div className="min-h-screen bg-gradient-to-b from-background to-primary/5">
+      <div className="min-h-screen bg-gradient-to-b from-background to-primary/5 pt-14">
         {/* Hero Section */}
         <section className="relative py-20 md:py-32 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-rose-500/10" />

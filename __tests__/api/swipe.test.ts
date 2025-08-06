@@ -339,7 +339,7 @@ describe('/api/swipe API Route', () => {
         } else if (callCount === 2) {
           // Second call: super_likes_count check (.select("super_likes_count"))
           return Promise.resolve({
-            data: { id: 'test-user-id', super_likes_count: 5 },
+            data: { id: 'test-user-id', super_likes_count: 5, account_status: 'sangam' }, // Sangam plan for Super Likes access
             error: null
           })
         }

@@ -115,7 +115,7 @@ export default function OnboardingPage() {
             about_me: null,
             favorite_spiritual_quote: null,
             // Counters
-            super_likes_count: 5,
+            super_likes_count: 0, // Drishti plan gets 0 Super Likes
             swipe_count: 50,
             message_highlights_count: 3,
             profile_score: 5,
@@ -174,7 +174,7 @@ export default function OnboardingPage() {
             ideal_partner_notes: null,
             favorite_spiritual_quote: null,
             // Initialize counters
-            super_likes_count: 5,
+            super_likes_count: 0, // Drishti plan gets 0 Super Likes
             swipe_count: 50,
             message_highlights_count: 3,
             

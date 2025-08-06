@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -25,12 +25,14 @@ import {
   Search,
   Brain,
   BarChart3,
-
   ShoppingBag,
   CreditCard,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import PaymentModal from "@/components/payment/payment-modal"
+import PricingPopup from "@/components/pricing-popup"
 // Toaster not used directly in this page
 
 const superLikePackages = [
@@ -51,6 +53,16 @@ export default function StorePage() {
     isOpen: false,
     item: null,
   })
+  
+  const [pricingPopup, setPricingPopup] = useState<{
+    isOpen: boolean
+    planKey: string
+  }>({
+    isOpen: false,
+    planKey: "",
+  })
+  
+  const [currentPlanIndex, setCurrentPlanIndex] = useState(1) // Start with Sangam (index 1)
   const router = useRouter()
 
   const openPaymentModal = (item: any) => {
@@ -61,10 +73,46 @@ export default function StorePage() {
     setPaymentModal({ isOpen: false, item: null })
   }
 
+  const openPricingPopup = (planKey: string) => {
+    setPricingPopup({ isOpen: true, planKey })
+  }
+
+  const closePricingPopup = () => {
+    setPricingPopup({ isOpen: false, planKey: "" })
+  }
+
   const handlePaymentSuccess = () => {
     // Refresh profile data so credits/status update instantly
     refreshProfile()
   }
+
+  const scrollToPlan = (index: number) => {
+    const container = document.querySelector('.plans-scroll-container')
+    const planCard = document.querySelector(`.plan-card-${index}`)
+    if (container && planCard) {
+      const cardRect = planCard.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      const scrollLeft = planCard.offsetLeft - containerRect.width / 2 + cardRect.width / 2
+      container.scrollTo({ left: scrollLeft, behavior: 'smooth' })
+    }
+    setCurrentPlanIndex(index)
+  }
+
+  const navigatePlan = (direction: 'prev' | 'next') => {
+    const newIndex = direction === 'prev' 
+      ? Math.max(0, currentPlanIndex - 1)
+      : Math.min(2, currentPlanIndex + 1)
+    scrollToPlan(newIndex)
+  }
+
+  // Scroll to Sangam plan on initial load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToPlan(1) // Sangam plan is at index 1
+    }, 500) // Small delay to ensure DOM is ready
+    
+    return () => clearTimeout(timer)
+  }, [])
 
   // Removed local Supabase fetch – data comes from context
 
@@ -81,20 +129,58 @@ export default function StorePage() {
   // Plan pricing based on billing cycle
   const planPricing = {
     sparsh: {
-      monthly: { price: 299, duration: "month" },
-      quarterly: { price: 749, duration: "3 months", savings: "17%" },
+      quarterly: { originalPrice: 1497, price: 899, duration: "3 months", savings: "40%" },
+      biannual: { originalPrice: 2994, price: 1599, duration: "6 months", savings: "47%" },
+      yearly: { originalPrice: 5988, price: 2899, duration: "1 year", savings: "52%" },
     },
     sangam: {
-      monthly: { price: 499, duration: "month" },
-      quarterly: { price: 1299, duration: "3 months", savings: "13%" },
+      quarterly: { originalPrice: 2397, price: 1499, duration: "3 months", savings: "37%" },
+      biannual: { originalPrice: 4794, price: 2699, duration: "6 months", savings: "44%" },
+      yearly: { originalPrice: 9588, price: 4999, duration: "1 year", savings: "48%" },
     },
     samarpan: {
-      monthly: { price: 999, duration: "month" },
-      quarterly: { price: 2499, duration: "3 months", savings: "17%" },
+      quarterly: { originalPrice: 3597, price: 2299, duration: "3 months", savings: "36%" },
+      biannual: { originalPrice: 7194, price: 3999, duration: "6 months", savings: "44%" },
+      yearly: { originalPrice: 14388, price: 7499, duration: "1 year", savings: "48%" },
     },
   }
 
-  const handlePlanSelection = (planKey: string, billingCycle: "monthly" | "quarterly") => {
+  // Calculate starting monthly price (from yearly plan for best rate)
+  const getStartingMonthlyPrice = (planKey: string) => {
+    const plan = planPricing[planKey as keyof typeof planPricing]
+    return Math.round(plan.yearly.price / 12)
+  }
+
+  // Plan details for display
+  const planDisplayData = {
+    sparsh: {
+      name: "Sparsh",
+      emoji: "🤝",
+      description: "Perfect for meaningful connections",
+      tagline: "Connect with purpose",
+      color: "blue",
+      features: ["20 swipes daily", "Unlimited messaging", "View all matches"]
+    },
+    sangam: {
+      name: "Sangam",
+      emoji: "💫", 
+      description: "Enhanced features for deeper connections",
+      tagline: "See who likes you",
+      color: "purple",
+      isRecommended: true,
+      features: ["50 swipes daily", "Super Likes included", "AI matching analysis"]
+    },
+    samarpan: {
+      name: "Samarpan",
+      emoji: "👑",
+      description: "Premium experience with exclusive benefits", 
+      tagline: "Unlimited everything",
+      color: "yellow",
+      features: ["Unlimited swipes", "Priority support", "Advanced AI insights"]
+    }
+  }
+
+  const handlePlanSelection = (planKey: string, billingCycle: "quarterly" | "biannual" | "yearly") => {
     const planNames = {
       sparsh: "Sparsh Plan",
       sangam: "Sangam Plan",
@@ -114,51 +200,51 @@ export default function StorePage() {
         "Unlimited swipes",
         "Everything in Sangam",
         "15 Super Likes monthly",
-
         "Highest profile visibility",
         "Priority customer support",
         "Access to Elite verified profiles",
-        "Exclusive spiritual events & retreats",
         "In-depth compatibility analysis",
         "Enhanced privacy controls",
+        "Advanced AI Insights",
         "100% confidentiality guaranteed",
       ],
     }
 
     const features = [...planFeatures[planKey as keyof typeof planFeatures]]
-    if (billingCycle === "quarterly") {
-      features.push(`Save ${planPricing[planKey as keyof typeof planPricing].quarterly.savings} compared to monthly`)
+    const selectedPlan = planPricing[planKey as keyof typeof planPricing][billingCycle]
+    features.push(`Save ${selectedPlan.savings} with this Limited Time Offer!`)
+
+    const billingCycleNames = {
+      quarterly: "3 months",
+      biannual: "6 months", 
+      yearly: "1 year"
     }
 
     openPaymentModal({
       type: "plan",
-      name: `${planNames[planKey as keyof typeof planNames]} (${billingCycle === "monthly" ? "1 month" : "3 months"})`,
-      price: planPricing[planKey as keyof typeof planPricing][billingCycle].price,
-      description: `${billingCycle === "monthly" ? "1 month" : "3 months"} of ${planNames[planKey as keyof typeof planNames]} access`,
+      name: `${planNames[planKey as keyof typeof planNames]} (${billingCycleNames[billingCycle]})`,
+      price: selectedPlan.price,
+      description: `${billingCycleNames[billingCycle]} of ${planNames[planKey as keyof typeof planNames]} access`,
       features,
       user_id: user?.id || "",
     })
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
 
       {/* Main Content with proper spacing to avoid overlap */}
-      <main className="pt-20 pb-40 px-4 min-h-screen">
+      <main className="pb-40 px-4 min-h-screen">
         <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="mt-10 mb-8">
+          <div className="mt-4 mb-8">
             <div className="mx-auto max-w-2xl rounded-xl bg-white shadow-lg border border-gray-100 p-7 flex flex-col items-center relative" style={{borderBottom: '4px solid #e6c200'}}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[#fffbe6] border border-[#e6c200]">
-                  <ShoppingBag className="w-5 h-5 text-[#8b0000]" />
-                </span>
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight" style={{fontFamily:'Inter, sans-serif'}}>DharmaSaathi Store</h1>
-              </div>
               <p className="text-sm text-gray-500 mb-3 text-center">Enhance your journey with premium features</p>
               <div className="flex flex-wrap justify-center gap-2 text-xs mb-4">
-                <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Super Likes: <span className="text-orange-600 font-semibold">{profile?.super_likes_count || 0}</span></div>
+                {/* Only show Super Likes count for plans that have access */}
+                {profile?.account_status && ['sangam', 'samarpan'].includes(profile.account_status) && (
+                  <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Super Likes: <span className="text-orange-600 font-semibold">{profile?.super_likes_count || 0}</span></div>
+                )}
 
                 {profile?.account_status === "sparsh" && (
                   <div className="bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1 font-medium">
@@ -211,284 +297,258 @@ export default function StorePage() {
 
           {/* Premium Plans */}
           <div id="plans-section" className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Choose Your Plan</h2>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-900 mb-3">Find Your Perfect Plan</h2>
+              <p className="text-gray-600 text-lg">Choose a plan that resonates with your spiritual journey</p>
+            </div>
 
             {/* Free Plan - Drishti */}
-            <div className="mb-6">
-              <Card className="relative overflow-hidden border-2 border-gray-200 bg-gray-50">
-                <CardHeader className="bg-gradient-to-r from-gray-600 to-gray-700 text-white">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                        <span className="text-sm font-bold">👁️</span>
-                      </div>
-                      Drishti Plan
-                    </CardTitle>
-                    <div className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">Current Plan</div>
-                  </div>
-                  <div className="text-3xl font-bold">
+            <div className="mb-8">
+              <Card className="relative overflow-hidden border-2 border-gray-200 bg-gray-50 max-w-md mx-auto">
+                <CardHeader className="bg-gradient-to-r from-gray-600 to-gray-700 text-white text-center">
+                  <CardTitle className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">👁️</span>
+                    Drishti Plan
+                  </CardTitle>
+                  <div className="text-2xl font-bold">
                     Free<span className="text-lg font-normal">/forever</span>
                   </div>
+                  <p className="text-sm opacity-80">Start your spiritual journey</p>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>5 swipes per day</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>View your matches</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="w-5 h-5 text-red-500">✕</span>
-                      <span className="text-gray-500">Messaging (upgrade required)</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Basic profile features</span>
-                    </li>
-                  </ul>
+                <CardContent className="p-6 text-center">
+                  <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-green-500" />
+                      <span>5 swipes daily</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-green-500" />
+                      <span>View matches</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 text-red-500">✕</span>
+                      <span className="text-gray-500">Messaging</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-green-500" />
+                      <span>Basic features</span>
+                    </div>
+                  </div>
                   <Button disabled className="w-full bg-gray-400">
-                    Current Plan
+                    {["sparsh", "sangam", "samarpan"].includes(profile?.account_status || "")
+                      ? "Already Premium"
+                      : "Current Plan"}
                   </Button>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Paid Plans Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Sparsh Plan */}
-              <Card className="relative overflow-hidden border-2 border-blue-200 hover:border-blue-300 transition-colors">
-                <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                  <CardTitle className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                      <span className="text-sm font-bold">🤝</span>
-                    </div>
-                    Sparsh Plan
-                  </CardTitle>
-                  <div className="space-y-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold">₹{planPricing.sparsh.monthly.price}</span>
-                      <span className="text-sm opacity-80">/month</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-semibold">₹{planPricing.sparsh.quarterly.price}</span>
-                      <span className="text-xs opacity-80">/3 months</span>
-                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                        Save {planPricing.sparsh.quarterly.savings}
-                      </span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>20 swipes per day</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Unlimited messaging</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>View all matches</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Basic profile visibility</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="w-5 h-5 text-red-500">✕</span>
-                      <span className="text-gray-500">AI Matching Analysis (upgrade required)</span>
-                    </li>
-                  </ul>
-                  <div className="space-y-2">
-                    <Button
-                      onClick={() => handlePlanSelection("sparsh", "monthly")}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                      disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
-                    >
-                      {["sangam", "samarpan"].includes(profile?.account_status || "")
-                        ? "Already Premium"
-                        : "Monthly - ₹299"}
-                    </Button>
-                    <Button
-                      onClick={() => handlePlanSelection("sparsh", "quarterly")}
-                      variant="outline"
-                      className="w-full border-blue-500 text-blue-600 hover:bg-blue-50"
-                      disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
-                    >
-                      {["sangam", "samarpan"].includes(profile?.account_status || "")
-                        ? "Already Premium"
-                        : "Quarterly - ₹749"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Sangam Plan */}
-              <Card className="relative overflow-hidden border-2 border-purple-200 hover:border-purple-300 transition-colors">
-                <div className="absolute top-4 right-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                  Popular
+            {/* Attractive Header for Plans */}
+            <div className="text-center mb-8">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-full border-t border-gray-300"></div>
                 </div>
-                <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                  <CardTitle className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                      <span className="text-sm font-bold">💫</span>
-                    </div>
-                    Sangam Plan
-                  </CardTitle>
-                  <div className="space-y-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold">₹{planPricing.sangam.monthly.price}</span>
-                      <span className="text-sm opacity-80">/month</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-semibold">₹{planPricing.sangam.quarterly.price}</span>
-                      <span className="text-xs opacity-80">/3 months</span>
-                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                        Save {planPricing.sangam.quarterly.savings}
-                      </span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>50 swipes per day</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Everything in Sparsh</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Star className="w-5 h-5 text-yellow-500" />
-                      <span>5 Super Likes monthly</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Eye className="w-5 h-5 text-purple-500" />
-                      <span>See who likes you & match instantly</span>
-                    </li>
-
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Higher profile visibility</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Search className="w-5 h-5 text-blue-500" />
-                      <span className="font-medium">
-                        <span className="text-blue-600">AI Matching Analysis</span> 🔍
-                      </span>
-                    </li>
-                  </ul>
-                  <div className="space-y-2">
-                    <Button
-                      onClick={() => handlePlanSelection("sangam", "monthly")}
-                      className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                      disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
-                    >
-                      {["sangam", "samarpan"].includes(profile?.account_status || "")
-                        ? "Already Premium"
-                        : "Monthly - ₹499"}
-                    </Button>
-                    <Button
-                      onClick={() => handlePlanSelection("sangam", "quarterly")}
-                      variant="outline"
-                      className="w-full border-purple-500 text-purple-600 hover:bg-purple-50"
-                      disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
-                    >
-                      {["sangam", "samarpan"].includes(profile?.account_status || "")
-                        ? "Already Premium"
-                        : "Quarterly - ₹1299"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Samarpan Plan */}
-              <Card className="relative overflow-hidden border-2 border-gold-200 hover:border-gold-300 transition-colors">
-                <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                  Premium
+                <div className="relative flex justify-center">
+                  <span className="bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100 px-6 py-2 text-gray-500 text-sm font-medium">
+                    Premium Plans
+                  </span>
                 </div>
-                <CardHeader className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
-                  <CardTitle className="flex items-center gap-2">
-                    <Crown className="w-6 h-6" />
-                    Samarpan Plan
-                  </CardTitle>
-                  <div className="space-y-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold">₹{planPricing.samarpan.monthly.price}</span>
-                      <span className="text-sm opacity-80">/month</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-semibold">₹{planPricing.samarpan.quarterly.price}</span>
-                      <span className="text-xs opacity-80">/3 months</span>
-                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                        Save {planPricing.samarpan.quarterly.savings}
-                      </span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Unlimited swipes</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Everything in Sangam</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Star className="w-5 h-5 text-yellow-500" />
-                      <span>15 Super Likes monthly</span>
-                    </li>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mt-4 mb-2">
+                Unlock Your Spiritual Journey
+              </h3>
+              <p className="text-gray-600 max-w-md mx-auto">
+                Discover meaningful connections with our premium features designed for spiritual seekers
+              </p>
+            </div>
 
-                    <li className="flex items-center gap-3">
-                      <Crown className="w-5 h-5 text-yellow-500" />
-                      <span>Highest profile visibility</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-500" />
-                      <span>Priority customer support</span>
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <Search className="w-5 h-5 text-blue-500" />
-                      <span>AI Matching Analysis</span>
-                    </li>
-                    <li className="flex items-center gap-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-2 -m-2">
-                      <Brain className="w-5 h-5 text-indigo-600" />
-                      <span className="font-medium">
-                        <span className="text-indigo-600">Advanced AI Insights</span> 🧠
-                      </span>
-                    </li>
-                  </ul>
-                  <div className="space-y-2">
-                    <Button
-                      onClick={() => handlePlanSelection("samarpan", "monthly")}
-                      className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
-                      disabled={profile?.account_status === "samarpan"}
-                    >
-                      {profile?.account_status === "samarpan"
-                        ? "Current Plan"
-                        : "Monthly - ₹999"}
-                    </Button>
-                    <Button
-                      onClick={() => handlePlanSelection("samarpan", "quarterly")}
-                      variant="outline"
-                      className="w-full border-yellow-500 text-yellow-600 hover:bg-yellow-50"
-                      disabled={profile?.account_status === "samarpan"}
-                    >
-                      {profile?.account_status === "samarpan"
-                        ? "Current Plan"
-                        : "Quarterly - ₹2499"}
-                    </Button>
+            {/* Horizontal Slideable Premium Plans */}
+            <div className="relative overflow-visible">
+              <div className="overflow-x-auto overflow-y-visible scrollbar-hide plans-scroll-container">
+                <div className="flex gap-6 pb-4 pt-8 px-4" style={{ width: 'max-content' }}>
+                  {/* Sparsh Plan */}
+                  <div className="w-80 flex-shrink-0 plan-card-0">
+                    <Card className="relative overflow-hidden border-2 border-blue-200 hover:border-blue-300 transition-all hover:shadow-lg h-full">
+                      <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <span className="text-2xl">{planDisplayData.sparsh.emoji}</span>
+                          <CardTitle className="text-xl">{planDisplayData.sparsh.name}</CardTitle>
+                        </div>
+                        <p className="text-sm opacity-90 mb-3">{planDisplayData.sparsh.description}</p>
+                        <div className="space-y-1">
+                          <div className="text-sm opacity-80">Starting from</div>
+                          <div className="text-3xl font-bold">₹{getStartingMonthlyPrice('sparsh')}</div>
+                          <div className="text-sm opacity-80">/month</div>
+                        </div>
+                        <div className="text-xs bg-blue-400/30 px-3 py-1 rounded-full mt-2 inline-block">
+                          {planDisplayData.sparsh.tagline}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-6 flex flex-col justify-between">
+                        <div>
+                          <div className="space-y-3 mb-6">
+                            {planDisplayData.sparsh.features.map((feature, index) => (
+                              <div key={index} className="flex items-center gap-3 text-sm">
+                                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => openPricingPopup('sparsh')}
+                          className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                          disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
+                        >
+                          {["sangam", "samarpan"].includes(profile?.account_status || "")
+                            ? "Already Premium"
+                            : "View Pricing"}
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Sangam Plan - Recommended/Center */}
+                  <div className="w-80 flex-shrink-0 plan-card-1">
+                    <div className="relative">
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-20">
+                        <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-4 py-1 rounded-full text-sm font-semibold shadow-lg">
+                          <Sparkles className="w-3 h-3 inline mr-1" />
+                          Recommended
+                        </div>
+                      </div>
+                      <Card className="relative overflow-hidden border-2 border-purple-300 hover:border-purple-400 transition-all hover:shadow-xl h-full transform scale-105">
+                      <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <span className="text-2xl">{planDisplayData.sangam.emoji}</span>
+                          <CardTitle className="text-xl">{planDisplayData.sangam.name}</CardTitle>
+                        </div>
+                        <p className="text-sm opacity-90 mb-3">{planDisplayData.sangam.description}</p>
+                        <div className="space-y-1">
+                          <div className="text-sm opacity-80">Starting from</div>
+                          <div className="text-3xl font-bold">₹{getStartingMonthlyPrice('sangam')}</div>
+                          <div className="text-sm opacity-80">/month</div>
+                        </div>
+                        <div className="text-xs bg-purple-400/30 px-3 py-1 rounded-full mt-2 inline-block">
+                          {planDisplayData.sangam.tagline}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-6 flex flex-col justify-between">
+                        <div>
+                          <div className="space-y-3 mb-6">
+                            {planDisplayData.sangam.features.map((feature, index) => (
+                              <div key={index} className="flex items-center gap-3 text-sm">
+                                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => openPricingPopup('sangam')}
+                          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                          disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
+                        >
+                          {["sangam", "samarpan"].includes(profile?.account_status || "")
+                            ? "Already Premium"
+                            : "View Pricing"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                    </div>
+                  </div>
+
+                  {/* Samarpan Plan */}
+                  <div className="w-80 flex-shrink-0 plan-card-2">
+                    <Card className="relative overflow-hidden border-2 border-yellow-300 hover:border-yellow-400 transition-all hover:shadow-lg h-full">
+                      <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                        Premium
+                      </div>
+                      <CardHeader className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <span className="text-2xl">{planDisplayData.samarpan.emoji}</span>
+                          <CardTitle className="text-xl">{planDisplayData.samarpan.name}</CardTitle>
+                        </div>
+                        <p className="text-sm opacity-90 mb-3">{planDisplayData.samarpan.description}</p>
+                        <div className="space-y-1">
+                          <div className="text-sm opacity-80">Starting from</div>
+                          <div className="text-3xl font-bold">₹{getStartingMonthlyPrice('samarpan')}</div>
+                          <div className="text-sm opacity-80">/month</div>
+                        </div>
+                        <div className="text-xs bg-yellow-400/30 px-3 py-1 rounded-full mt-2 inline-block">
+                          {planDisplayData.samarpan.tagline}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-6 flex flex-col justify-between">
+                        <div>
+                          <div className="space-y-3 mb-6">
+                            {planDisplayData.samarpan.features.map((feature, index) => (
+                              <div key={index} className="flex items-center gap-3 text-sm">
+                                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => openPricingPopup('samarpan')}
+                          className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                          disabled={profile?.account_status === "samarpan"}
+                        >
+                          {profile?.account_status === "samarpan"
+                            ? "Current Plan"
+                            : "View Pricing"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Navigation arrows and indicators */}
+              <div className="flex items-center justify-center mt-6 gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigatePlan('prev')}
+                  disabled={currentPlanIndex === 0}
+                  className="h-8 w-8 p-0 rounded-full"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                {/* Scroll indicator dots */}
+                <div className="flex gap-2">
+                  {[0, 1, 2].map((index) => (
+                    <button
+                      key={index}
+                      onClick={() => scrollToPlan(index)}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        currentPlanIndex === index 
+                          ? index === 0 ? 'w-3 bg-blue-500' 
+                            : index === 1 ? 'w-3 bg-purple-500' 
+                            : 'w-3 bg-yellow-500'
+                          : 'bg-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigatePlan('next')}
+                  disabled={currentPlanIndex === 2}
+                  className="h-8 w-8 p-0 rounded-full"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="text-center mt-4">
+                <p className="text-sm text-gray-500">Swipe horizontally to explore all plans</p>
+              </div>
             </div>
           </div>
 
@@ -558,6 +618,14 @@ export default function StorePage() {
         onClose={closePaymentModal}
         item={paymentModal.item}
         onSuccess={handlePaymentSuccess}
+      />
+
+      {/* Pricing Popup */}
+      <PricingPopup
+        isOpen={pricingPopup.isOpen}
+        onClose={closePricingPopup}
+        planKey={pricingPopup.planKey}
+        onSelectPlan={handlePlanSelection}
       />
 
       {/* Toaster not used directly in this page */}

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { debugLog } from "@/lib/logger"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Heart, User } from "lucide-react"
 import SettingsCard from "@/components/dashboard/settings-card"
@@ -19,6 +19,7 @@ export default function DashboardPage() {
   // Include refreshProfile so we can manually trigger a fetch on first mount
   const { user, profile, loading: isLoading, error, isVerified, refreshProfile, isMobileLogin } = useAuthContext()
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   const {
     data: profiles = [],
@@ -32,7 +33,7 @@ export default function DashboardPage() {
       const data = await res.json()
       return (data.profiles || []).slice(0, 5)
     },
-    enabled: isVerified,
+    enabled: isVerified && !isLoading,
   })
 
   const {
@@ -53,7 +54,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error("Failed to fetch swipe stats")
       return res.json()
     },
-    enabled: !!(isVerified && user && profile), // More specific auth check
+    enabled: !!(isVerified && user && profile && !isLoading), // More specific auth check
     retry: (failureCount, error) => {
       // Retry up to 2 times, but not for 401 errors (those need user action)
       if (error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
@@ -66,7 +67,6 @@ export default function DashboardPage() {
 
   // Redirect unauthenticated users and handle onboarding status
   useEffect(() => {
-    debugLog('[Dashboard]', { isLoading, error, profile, user, isMobileLogin });
     if (isLoading) return;
     
     // For mobile login users, only check profile
@@ -120,6 +120,31 @@ export default function DashboardPage() {
       refreshProfile()
     }
   }, [isLoading, user, profile, refreshProfile])
+
+  // Refetch profiles when user returns to the dashboard tab (tab visibility change)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isVerified) {
+        debugLog("Dashboard became visible, refetching profiles to ensure fresh data")
+        refetchProfiles()
+      }
+    }
+
+    const handleFocus = () => {
+      if (isVerified) {
+        debugLog("Dashboard focused, refetching profiles to ensure fresh data") 
+        refetchProfiles()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [isVerified, refetchProfiles])
 
   const calculateProfileCompleteness = () => {
     if (!profile) return 0
@@ -188,15 +213,18 @@ export default function DashboardPage() {
 
   const handleSwipe = (direction: "left" | "right" | "superlike", profileId: string) => {
     debugLog(`Swiped ${direction} on profile ${profileId}`)
+    
     // Refresh stats after swipe
     refetchStats()
+    
+    // Note: We don't immediately update profiles here to avoid race conditions
+    // with SwipeStack's internal animation state. Fresh profiles will be loaded
+    // when user returns to the tab via the visibility change listeners.
   }
 
   if (isLoading) {
     return <>{require("./loading").default()}</>;
   }
-
-  debugLog("Dashboard - Is verified:", isVerified)
 
   return (
     <>
@@ -207,7 +235,7 @@ export default function DashboardPage() {
         </main>
       ) : (
         // UNVERIFIED USER - Verification Dashboard
-        <main className="pt-20 pb-32 min-h-screen flex flex-col">
+        <main className="pb-32 min-h-screen flex flex-col">
           <div className="px-4 space-y-6 max-w-4xl mx-auto">
             {/* New User Welcome */}
             <div>

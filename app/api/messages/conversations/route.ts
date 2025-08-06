@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
+    const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch user profiles' }, { status: 500 });
     }
 
-    // Process photo URLs to get signed URLs
+    // Process photo URLs to get signed URLs - optimize by limiting to first photo only for conversations list
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
       if (!photoPath) return null;
       
@@ -92,10 +92,10 @@ export async function GET(request: NextRequest) {
           return photoPath;
         }
         
-        // Generate signed URL for storage path
+        // Generate signed URL for storage path with longer expiry for conversations
         const { data } = await supabaseAdmin.storage
           .from('user-photos')
-          .createSignedUrl(photoPath, 3600); // 1 hour expiry
+          .createSignedUrl(photoPath, 7200); // 2 hour expiry for better caching
         
         return data?.signedUrl || null;
       } catch (error) {
@@ -104,31 +104,20 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    // Process user photos with signed URLs
+    // Process user photos with signed URLs - OPTIMIZED: only process profile photo for conversations list
     const processedUsers = await Promise.all(
       (otherUsers || []).map(async (userProfile) => {
-        let processedPhotos: string[] = [];
         let processedProfilePhoto = null;
 
-        // Process profile photo
+        // Only process profile photo for conversations list (skip user_photos array for performance)
         if (userProfile.profile_photo_url) {
           processedProfilePhoto = await processPhotoUrl(userProfile.profile_photo_url, userProfile.id);
-        }
-
-        // Process user photos array
-        if (userProfile.user_photos && Array.isArray(userProfile.user_photos)) {
-          const photoPromises = userProfile.user_photos.map(async (photoPath: string) => {
-            return await processPhotoUrl(photoPath, userProfile.id);
-          });
-          
-          const processedPhotoResults = await Promise.all(photoPromises);
-          processedPhotos = processedPhotoResults.filter((url: string | null) => url !== null);
         }
 
         return {
           ...userProfile,
           profile_photo_url: processedProfilePhoto,
-          user_photos: processedPhotos
+          user_photos: userProfile.user_photos || [] // Keep original array but don't process for signed URLs
         };
       })
     );

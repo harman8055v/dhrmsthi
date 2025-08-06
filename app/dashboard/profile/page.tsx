@@ -26,7 +26,7 @@ import {
 import MobileNav from "@/components/dashboard/mobile-nav"
 import ProfileImageUploader from "@/components/dashboard/profile-image-uploader"
 import { Badge } from "@/components/ui/badge"
-import SectionHeader from "@/components/dashboard/section-header"
+
 
 export default function ProfilePage() {
   // Get auth state from context (already fetched once globally)
@@ -83,17 +83,12 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
 
       {/* Main Content with proper spacing to avoid overlap */}
-      <main className="pt-20 pb-40 px-2 sm:px-4 min-h-screen">
+      <main className="pb-40 px-2 sm:px-4 min-h-screen">
         <div className="w-full max-w-lg mx-auto">
-          {/* Header */}
-          <SectionHeader
-            title="My Profile"
-            subtitle="View and manage your profile"
-          />
           {/* Button group under header */}
           <div className="mb-4 flex flex-row gap-2 w-full">
             <Button

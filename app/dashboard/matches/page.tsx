@@ -114,15 +114,15 @@ export default function MatchesPage() {
   }
 
   return (
-    <main className="pt-16 pb-24 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <main className="pt-4 pb-24 min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
       <div className="px-3 sm:px-4 max-w-2xl mx-auto">
         {isVerified ? (
           // VERIFIED USER - Show Matches
           <>
-            {/* Header */}
-            <div className="mb-6 pt-8">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Matches</h1>
-              <p className="text-gray-600">These people have also liked you back, start a conversation</p>
+            {/* Page Header */}
+            <div className="text-center mb-6 bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-sm">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Matches</h2>
+              <p className="text-gray-700">Discover meaningful connections with people who share your spiritual journey</p>
             </div>
 
             {matches.length === 0 ? (
@@ -239,11 +239,7 @@ export default function MatchesPage() {
         ) : (
           // UNVERIFIED USER - Show verification required
           <>
-            {/* Header */}
-            <div className="mb-6 pt-4">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Matches</h1>
-              <p className="text-gray-600">Find your spiritual life partner</p>
-            </div>
+
 
             {/* Verification Required Notice */}
             <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-gray-50">

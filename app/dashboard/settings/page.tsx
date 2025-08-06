@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import LocationSelector, { type LocationFormState } from "@/components/location-selector"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
-import SectionHeader from "@/components/dashboard/section-header"
+
 import { userService } from "@/lib/data-service"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { supabase } from "@/lib/supabase"
@@ -279,7 +279,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
 
       {showSuccessAlert && (
@@ -300,13 +300,8 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <main className="pt-24 pb-40 px-4 min-h-screen">
+      <main className="pb-40 px-4 min-h-screen">
         <div className="max-w-4xl w-full mx-auto px-2 sm:px-4">
-          {/* Header */}
-          <SectionHeader
-            title="Edit Profile"
-            subtitle="Update your profile information"
-          />
 
           <Tabs defaultValue="personal" className="space-y-6">
             <TabsList className="flex w-full justify-between gap-1 rounded-xl bg-white shadow-sm border border-gray-200 p-1 mb-6">

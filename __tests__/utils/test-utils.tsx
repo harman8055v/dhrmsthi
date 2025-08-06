@@ -88,9 +88,9 @@ export const mockProfile: UserProfile = {
   user_photos: ['https://example.com/photo1.jpg', 'https://example.com/photo2.jpg'],
   is_onboarded: true,
   verification_status: 'verified',
-  account_status: 'drishti',
+  account_status: 'drishti', // Default status from updated schema
   premium_expires_at: '2024-12-31T23:59:59Z',
-  super_likes_count: 5,
+  super_likes_count: 0, // Drishti plan default
   swipe_count: 10,
   message_highlights_count: 3,
   referral_code: 'TEST123',

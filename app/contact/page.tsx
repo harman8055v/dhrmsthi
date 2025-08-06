@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Mail, Phone, MapPin, Clock, Heart, Send, Loader2, CheckCircle } from "lucide-react"
-import Header from "@/components/header"
+
 import Footer from "@/components/footer"
 import { toast } from "@/hooks/use-toast"
 
@@ -92,8 +92,7 @@ export default function ContactPage() {
 
   return (
     <>
-      <Header />
-      <div className="min-h-screen bg-gradient-to-b from-background to-primary/5">
+      <div className="min-h-screen bg-gradient-to-b from-background to-primary/5 pt-14">
         {/* Hero Section */}
         <section className="relative py-20 md:py-32 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-rose-500/10" />

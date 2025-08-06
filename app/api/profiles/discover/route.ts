@@ -78,6 +78,16 @@ export async function GET(request: NextRequest) {
 
     const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
 
+    // Get users who have super-liked the current user
+    const { data: superLikedByProfiles } = await supabaseAdmin
+      .from("swipes")
+      .select("swiper_id")
+      .eq("swiped_id", userId)
+      .eq("action", "superlike")
+
+    const superLikedByIds = superLikedByProfiles?.map((s) => s.swiper_id) || []
+    console.log(`🌟 ${superLikedByIds.length} users have super-liked current user`)
+
     // 🔒 CALCULATE USER'S AGE FIRST - This is critical for safety
     const userAge = userProfile.birthdate ? 
       new Date().getFullYear() - new Date(userProfile.birthdate).getFullYear() : 25
@@ -493,7 +503,8 @@ export async function GET(request: NextRequest) {
           total: finalScore
         },
         match_rank: index + 1,
-        is_fallback_match: fallbackUsed // Flag to indicate if this used fallback
+        is_fallback_match: fallbackUsed, // Flag to indicate if this used fallback
+        has_super_liked_me: superLikedByIds.includes(profile.id) // Indicate if this user super-liked me
       }
     })
 

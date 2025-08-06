@@ -93,7 +93,7 @@ export default function ResetPasswordClient() {
         setSuccess(true)
         setTimeout(async () => {
           await supabase.auth.signOut()
-          router.push('/login?reset=success')
+          router.push('/?reset=success')
         }, 2000)
       }
     } catch (err: any) {
@@ -111,7 +111,7 @@ export default function ResetPasswordClient() {
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <CheckCircle className="w-12 h-12 text-green-600" />
             <h2 className="text-xl font-semibold">Password Updated!</h2>
-            <p className="text-muted-foreground">Redirecting to login...</p>
+            <p className="text-muted-foreground">Redirecting to home...</p>
           </CardContent>
         </Card>
       </div>
@@ -129,7 +129,7 @@ export default function ResetPasswordClient() {
             <h2 className="text-xl font-semibold text-red-600">Reset Link Issue</h2>
             <p className="text-muted-foreground">{error}</p>
             <Button 
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/')}
               className="mt-4"
             >
               Request New Reset Link

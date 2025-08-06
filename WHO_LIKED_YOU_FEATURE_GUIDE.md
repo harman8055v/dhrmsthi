@@ -112,22 +112,22 @@ const planFeatures = {
   drishti: {
     canSeeWhoLikedYou: false,
     dailySwipes: 5,
-    superlikes: 1
+    superlikes: 0
   },
   sparsh: {
     canSeeWhoLikedYou: false, // Still requires upgrade
     dailySwipes: 20,
-    superlikes: 5
+    superlikes: 0
   },
   sangam: {
     canSeeWhoLikedYou: true, // Full access
     dailySwipes: 50,
-    superlikes: 10
+    superlikes: 5
   },
   samarpan: {
     canSeeWhoLikedYou: true, // Full access
     dailySwipes: -1, // Unlimited
-    superlikes: -1 // Unlimited
+    superlikes: 15
   }
 }
 ```

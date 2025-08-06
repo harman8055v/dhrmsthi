@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Calendar, Clock, User, ArrowRight, Heart, Eye, Share2, Loader2 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
-import Header from "@/components/header"
+
 import Footer from "@/components/footer"
 import { toast } from "sonner"
 
@@ -164,8 +164,7 @@ export default function BlogPostPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-col min-h-screen pt-14">
       <main className="flex-1 px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <Card className="mb-8">

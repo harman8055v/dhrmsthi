@@ -1,45 +1,42 @@
 "use client"
 
-import { ReactNode } from "react"
-import { AuthProvider, useAuthContext } from "@/components/auth-provider"
-import { ReactQueryProvider } from "@/components/react-query-provider"
+import { ReactNode, useEffect } from "react"
+import { useAuthContext } from "@/components/auth-provider"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
 
 interface DashboardLayoutProps {
   children: ReactNode
 }
 
-// Top-level layout that provides auth context once and shows persistent mobile navigation.
+// Top-level layout that shows persistent mobile navigation.
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  return (
-    <AuthProvider>
-      <ReactQueryProvider>
-        <DashboardShell>{children}</DashboardShell>
-      </ReactQueryProvider>
-    </AuthProvider>
-  )
+  return <DashboardShell>{children}</DashboardShell>
 }
 
 function DashboardShell({ children }: { children: ReactNode }) {
   const { user, profile, loading } = useAuthContext()
   const router = useRouter()
 
-  // Redirect to /login only if we have neither Supabase user nor profile (covers mobile login)
+  // Redirect to home only if we have neither Supabase user nor profile (covers mobile login)
   useEffect(() => {
     if (!loading && !user && !profile) {
-      router.replace("/login")
+      // Use setTimeout to avoid setState during render
+      setTimeout(() => {
+        router.replace("/")
+      }, 0)
     }
   }, [loading, user, profile, router])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       {/* Persistent Mobile Navigation */}
       <MobileNav userProfile={profile} />
 
-      {/* Page content (individual routes) */}
-      {children}
+      {/* Page content (individual routes) with minimal padding for native header */}
+      <div className="pt-14">
+        {children}
+      </div>
     </div>
   )
 } 

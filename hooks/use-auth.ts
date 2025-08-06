@@ -22,6 +22,7 @@ export function useAuth() {
     error: null
   })
   const [authReady, setAuthReady] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   // Mobile login has been removed; this flag is always false but preserved for backward compatibility.
   const isMobileLoginUser = false;
 
@@ -29,21 +30,22 @@ export function useAuth() {
   useEffect(() => {
     // Initialise session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      logger.log('[useAuth] initial getSession done', { session });
       setAuthReady(true);
     });
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
-    logger.log('[useAuth] authReady effect fired');
     // Get initial session
     getInitialSession()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        logger.log('Auth state changed:', event, session?.user?.id)
+        // Only log important auth events
+        if (event !== 'INITIAL_SESSION') {
+          logger.log('Auth state changed:', event, session?.user?.id)
+        }
         
         // IGNORE PASSWORD_RECOVERY - let ResetPasswordClient handle it exclusively
         if (event === 'PASSWORD_RECOVERY') {
@@ -72,7 +74,6 @@ export function useAuth() {
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
       const { data: { session }, error } = await supabase.auth.getSession()
-      logger.log('[useAuth] getInitialSession result', { session, error });
       
       if (error) {
         logger.error('Session error:', error)
@@ -86,7 +87,6 @@ export function useAuth() {
       }
 
       if (session?.user) {
-        logger.log('[useAuth] session.user present, calling handleUserSession');
         await handleUserSession(session.user)
       } else {
         setAuthState({
@@ -108,14 +108,12 @@ export function useAuth() {
   }
 
   const handleUserSession = async (user: User) => {
-    if (!authReady) return;    // ← do not fetch until token set
+    if (!authReady || isLoadingProfile) return;    // ← do not fetch until token set or if already loading
     
     try {
+      setIsLoadingProfile(true);
       // Get user profile
-      logger.time('[useAuth] getCurrentProfile');
       const profile = await userService.getCurrentProfile(user.id)
-      logger.timeEnd('[useAuth] getCurrentProfile');
-      logger.log('[useAuth] profile loaded', profile);
       
       setAuthState({
         user,
@@ -131,6 +129,8 @@ export function useAuth() {
         loading: false,
         error: 'Failed to load profile'
       })
+    } finally {
+      setIsLoadingProfile(false);
     }
   }
 

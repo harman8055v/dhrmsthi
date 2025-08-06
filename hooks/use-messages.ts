@@ -19,25 +19,32 @@ export function useMessages(matchId: string) {
     sending: false
   })
   
+  // Add loading timeout to reload page if loading takes too long
+  useEffect(() => {
+    if (messageState.loading) {
+      const timeoutId = setTimeout(() => {
+        console.warn('[useMessages] Loading timeout - reloading page')
+        if (typeof window !== 'undefined') {
+          window.location.reload()
+        }
+      }, 3000) // 3 seconds timeout
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [messageState.loading])
+  
   // Remove all polling - real-time only!
 
   // Load messages on mount and when matchId changes
   useEffect(() => {
     if (user && matchId) {
-      loadMessages().then(() => {
-        // Mark messages as read after they're loaded
-        setTimeout(() => {
-          markMessagesAsRead()
-        }, 500) // Small delay to ensure messages are processed
-      }).catch((error) => {
-        console.error('[useMessages] Error loading messages:', error)
-      })
+      loadMessages()
     }
   }, [user, matchId])
 
-  // Simplified real-time subscription (more reliable)
+  // Simplified real-time subscription (more reliable) - setup after initial load
   useEffect(() => {
-    if (!user || !matchId) {
+    if (!user || !matchId || messageState.loading) {
       return
     }
 
@@ -69,7 +76,7 @@ export function useMessages(matchId: string) {
           
           // Mark as read if from other user
           if (newMessage.sender_id !== user.id) {
-            markMessagesAsRead()
+            setTimeout(() => markMessagesAsRead(), 1000)
           }
         }
       )
@@ -97,7 +104,7 @@ export function useMessages(matchId: string) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [user, matchId])
+  }, [user, matchId, messageState.loading])
 
   const loadMessages = async () => {
     if (!user || !matchId) return
@@ -107,11 +114,16 @@ export function useMessages(matchId: string) {
       
       const messages = await messageService.getMessages(matchId)
       
-              setMessageState(prev => ({
-          ...prev,
-          messages,
-          loading: false
-        }))
+      setMessageState(prev => ({
+        ...prev,
+        messages,
+        loading: false
+      }))
+
+      // Auto-mark messages as read after successful load
+      setTimeout(() => {
+        markMessagesAsRead()
+      }, 800)
     } catch (error: any) {
       console.error('Load messages error:', error)
       setMessageState(prev => ({

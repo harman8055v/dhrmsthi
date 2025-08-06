@@ -26,7 +26,7 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Send, MoreVertical, Flag, UserX, X } from "lucide-react"
+import { ArrowLeft, Send, MoreVertical, Flag, UserX, X, MessageCircle } from "lucide-react"
 import { getAvatarInitials } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -63,12 +63,26 @@ export default function ChatPage() {
   const [showUnmatchDialog, setShowUnmatchDialog] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [loadingCountdown, setLoadingCountdown] = useState(3)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // Check if user has premium access to messaging
   const hasMessagingAccess = profile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(profile.account_status)
   
+  // Get match details - run this first to validate access
+  const { data: match, isLoading: matchLoading } = useQuery({
+    queryKey: ["match", matchId],
+    queryFn: async () => {
+      const res = await fetch(`/api/profiles/matches`, { credentials: "include" })
+      if (!res.ok) throw new Error("Failed to fetch match")
+      const data = await res.json()
+      return data.matches?.find((m: Match) => m.id === matchId) || null
+    },
+    enabled: !!(isVerified && matchId),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+
   const { 
     messages, 
     loading: messagesLoading, 
@@ -76,10 +90,12 @@ export default function ChatPage() {
     sending, 
     sendMessage,
     markMessagesAsRead 
-  } = useMessages(matchId)
+  } = useMessages(match ? matchId : '')
 
-  // Mark messages as read when chat is viewed/focused
+  // Mark messages as read when chat is viewed/focused - only after match is loaded
   useEffect(() => {
+    if (!match || matchLoading) return
+
     const markAsReadDelayed = () => {
       if (markAsReadTimeoutRef.current) {
         clearTimeout(markAsReadTimeoutRef.current)
@@ -111,19 +127,7 @@ export default function ChatPage() {
         clearTimeout(markAsReadTimeoutRef.current)
       }
     }
-  }, [matchId, markMessagesAsRead])
-
-  // Get match details
-  const { data: match } = useQuery({
-    queryKey: ["match", matchId],
-    queryFn: async () => {
-      const res = await fetch(`/api/profiles/matches`, { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch match")
-      const data = await res.json()
-      return data.matches?.find((m: Match) => m.id === matchId) || null
-    },
-    enabled: !!(isVerified && matchId),
-  })
+  }, [matchId, markMessagesAsRead, match, matchLoading])
 
   useEffect(() => {
     if (loading) return
@@ -141,14 +145,37 @@ export default function ChatPage() {
     }
   }, [loading, user, profile, isVerified, router])
 
+  // Show loading state while both match and messages are loading
+  const isInitialLoading = matchLoading || (messagesLoading && messages.length === 0)
+
+  // Add timeout to reload page if loading takes too long
+  useEffect(() => {
+    if (isInitialLoading) {
+      setLoadingCountdown(3)
+      const countdownInterval = setInterval(() => {
+        setLoadingCountdown(prev => {
+          if (prev <= 1) {
+            console.warn('[Chat] Loading timeout - reloading page')
+            window.location.reload()
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => clearInterval(countdownInterval)
+    }
+  }, [isInitialLoading])
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    // Auto-scroll to bottom when new messages arrive
-    const timer = setTimeout(() => {
-      scrollToBottom()
-    }, 100) // Small delay to ensure DOM has updated
-    
-    return () => clearTimeout(timer)
+    if (messages.length > 0) {
+      const timer = setTimeout(() => {
+        scrollToBottom()
+      }, 100) // Small delay to ensure DOM has updated
+      
+      return () => clearTimeout(timer)
+    }
   }, [messages])
 
   const scrollToBottom = () => {
@@ -316,10 +343,18 @@ export default function ChatPage() {
     return "Active now"
   }
 
-  if (loading || messagesLoading) {
+  if (loading || isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b0000]"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b0000] mx-auto mb-4"></div>
+          <p className="text-gray-600 mb-2">Loading conversation...</p>
+          {isInitialLoading && loadingCountdown > 0 && (
+            <p className="text-sm text-gray-500">
+              Auto-refresh in {loadingCountdown}s if still loading
+            </p>
+          )}
+        </div>
       </div>
     )
   }
@@ -457,7 +492,12 @@ export default function ChatPage() {
 
       {/* Messages Container - Scrollable with bottom padding for floating input */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
-        {messages.length === 0 ? (
+        {messagesLoading && messages.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8b0000] mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading messages...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-16 h-16 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
               <Send className="w-8 h-8 text-white" />

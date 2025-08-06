@@ -12,7 +12,7 @@ import { toast } from "sonner"
 import { Heart, Brain, Sparkles, Save, Info, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import MobileNav from "@/components/dashboard/mobile-nav"
-import SectionHeader from "@/components/dashboard/section-header"
+
 
 export default function PreferencesPage() {
   const { user } = useAuthContext()
@@ -45,17 +45,12 @@ export default function PreferencesPage() {
   const isComplete = wordCount >= 100
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-pink-100">
       <MobileNav userProfile={profile} />
 
       {/* Main Content with proper spacing to avoid overlap */}
-      <main className="pt-20 pb-40 px-4 min-h-screen">
+      <main className="pb-40 px-4 min-h-screen">
         <div className="max-w-4xl w-full mx-auto px-2 sm:px-4">
-          {/* Header */}
-          <SectionHeader
-            title="Partner Preferences"
-            subtitle="Describe your ideal life partner and relationship goals"
-          />
 
           {/* AI Matching Info Alert */}
           <Alert className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">

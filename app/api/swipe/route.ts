@@ -81,12 +81,29 @@ export async function POST(request: NextRequest) {
     // Don't check for existing swipe - let the database handle it with unique constraint
     // This avoids race conditions with optimistic updates
 
-    // For superlikes, check if user has superlikes available
+    // For superlikes, check if user has superlikes available and plan access
     if (action === "superlike") {
-      const { data: userProfile } = await supabase.from("users").select("super_likes_count").eq("id", user.id).single()
+      const { data: userProfile } = await supabase.from("users").select("super_likes_count, account_status").eq("id", user.id).single()
 
-      if (!userProfile || userProfile.super_likes_count <= 0) {
-        return NextResponse.json({ error: "No superlikes available" }, { status: 400 })
+      if (!userProfile) {
+        return NextResponse.json({ error: "User profile not found" }, { status: 404 })
+      }
+
+      // Check if user's plan allows Super Likes (only sangam and samarpan)
+      if (!['sangam', 'samarpan'].includes(userProfile.account_status || '')) {
+        return NextResponse.json({ 
+          error: "Super Likes not available on your plan", 
+          upgrade_required: true,
+          message: "Upgrade to Sangam or Samarpan plan to use Super Likes",
+          store_link: "/dashboard/store"
+        }, { status: 403 })
+      }
+
+      if (userProfile.super_likes_count <= 0) {
+        return NextResponse.json({ 
+          error: "No superlikes available",
+          message: "You've used all your monthly Super Likes. They reset monthly or you can purchase more."
+        }, { status: 400 })
       }
 
       // Deduct superlike

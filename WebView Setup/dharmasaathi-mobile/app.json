@@ -1,0 +1,87 @@
+{
+  "expo": {
+    "name": "DharmaSaathi",
+    "slug": "dharmasaathi-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "dharmasaathi",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dharmasaathi.mobile",
+      "associatedDomains": ["applinks:dharmasaathi.com", "applinks:www.dharmasaathi.com"],
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses camera to upload profile photos and verify identity",
+        "NSPhotoLibraryUsageDescription": "This app accesses photo library to upload profile photos",
+        "NSMicrophoneUsageDescription": "This app may use microphone for video calls in the future"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.dharmasaathi.mobile",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dharmasaathi.com"
+            },
+            {
+              "scheme": "https", 
+              "host": "www.dharmasaathi.com"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "permissions": [
+        "CAMERA",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow DharmaSaathi to access your camera to upload profile photos"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow DharmaSaathi to access your photo library to upload profile photos"
+        }
+      ]
+    ],
+    "extra": {
+      "webAppUrl": "https://dharmasaathi.com",
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
+  }
+}

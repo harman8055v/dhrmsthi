@@ -4,6 +4,9 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { ToastProvider } from "@/components/toast-manager"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Toaster } from "@/components/ui/sonner"
+import { AuthProvider } from "@/components/auth-provider"
+import { ReactQueryProvider } from "@/components/react-query-provider"
+import NativeHeader from "@/components/native-header"
 import type { Metadata } from "next"
 import { Mona_Sans as FontSans } from "next/font/google"
 import { cn } from "@/lib/utils"
@@ -82,8 +85,13 @@ export default function RootLayout({
         <ErrorBoundary>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
             <ToastProvider>
-              {children}
-              <Toaster position="top-right" richColors />
+              <AuthProvider>
+                <ReactQueryProvider>
+                  <NativeHeader />
+                  {children}
+                  <Toaster position="top-right" richColors />
+                </ReactQueryProvider>
+              </AuthProvider>
             </ToastProvider>
           </ThemeProvider>
         </ErrorBoundary>

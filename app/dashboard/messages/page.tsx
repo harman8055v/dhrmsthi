@@ -50,9 +50,10 @@ export default function MessagesPage() {
       const data = await res.json()
       return data
     },
-    enabled: isVerified,
+    enabled: isVerified && !loading,
     retry: 2,
     retryDelay: 1000,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   })
 
   // Safely extract conversations array with robust error handling
@@ -65,8 +66,8 @@ export default function MessagesPage() {
         return conversationsResponse.slice(0, 10)
       }
       
-      if (conversationsResponse.conversations && Array.isArray(conversationsResponse.conversations)) {
-        return conversationsResponse.conversations.slice(0, 10)
+      if ((conversationsResponse as any).conversations && Array.isArray((conversationsResponse as any).conversations)) {
+        return (conversationsResponse as any).conversations.slice(0, 10)
       }
       
       console.warn('[Messages] Unexpected conversations response structure:', conversationsResponse)
@@ -127,7 +128,7 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!user || !isVerified) return
 
-    console.log('[Messages] Setting up real-time subscription for messages and matches')
+    // console.log('[Messages] Setting up real-time subscription for messages and matches')
     
     const channel = supabase
       .channel(`conversations_updates_${user.id}`)
@@ -175,7 +176,7 @@ export default function MessagesPage() {
       .subscribe()
 
     return () => {
-      console.log('[Messages] Cleaning up real-time subscription')
+      // console.log('[Messages] Cleaning up real-time subscription')
       channel.unsubscribe()
     }
   }, [user, isVerified, refetchConversations])
@@ -248,15 +249,11 @@ export default function MessagesPage() {
   }
 
   return (
-    <main className="pt-16 pb-24 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <main className="pt-4 pb-24 min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
       <div className="px-3 sm:px-4 max-w-2xl mx-auto">
         {!isVerified ? (
           <>
-            {/* Header */}
-            <div className="mb-6 pt-4">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
-              <p className="text-gray-600">Connect with your spiritual matches</p>
-            </div>
+
 
             {/* Verification Required Notice */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 text-center py-16 px-6">
@@ -287,11 +284,7 @@ export default function MessagesPage() {
           </>
         ) : !hasMessagingAccess ? (
           <>
-            {/* Header */}
-            <div className="mb-6 pt-4">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
-              <p className="text-gray-600">Connect with your spiritual matches</p>
-            </div>
+
 
             {/* Upgrade Required Notice */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 text-center py-16 px-6">
@@ -322,10 +315,10 @@ export default function MessagesPage() {
           </>
         ) : (
           <>
-            {/* Header */}
-            <div className="mb-6 pt-4">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Messages</h1>
-              <p className="text-gray-600">Connect with your spiritual matches</p>
+            {/* Page Header */}
+            <div className="text-center mb-6 bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-sm">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Conversations</h2>
+              <p className="text-gray-700">Connect with your spiritual matches and start meaningful conversations</p>
             </div>
 
             {/* Messages List */}

@@ -32,10 +32,15 @@ export async function POST(request: NextRequest) {
     if (item_type === "plan") {
       // Calculate premium duration based on plan name
       const expiryDate = new Date()
-      if (item_name.includes("3 months")) {
+      if (item_name.includes("1 year")) {
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1)
+      } else if (item_name.includes("6 months")) {
+        expiryDate.setMonth(expiryDate.getMonth() + 6)
+      } else if (item_name.includes("3 months")) {
         expiryDate.setMonth(expiryDate.getMonth() + 3)
       } else {
-        expiryDate.setMonth(expiryDate.getMonth() + 1)
+        // Default to 3 months for backwards compatibility
+        expiryDate.setMonth(expiryDate.getMonth() + 3)
       }
 
       // Determine account status based on plan type
@@ -61,6 +66,14 @@ export async function POST(request: NextRequest) {
       if (userUpdateError) {
         logger.error("User update error:", userUpdateError)
         return NextResponse.json({ error: "Failed to activate premium" }, { status: 500 })
+      }
+
+      // Allocate Super Likes based on new plan
+      try {
+        await supabase.rpc('allocate_user_superlikes', { p_user_id: user_id })
+      } catch (allocationError) {
+        logger.error("Super Likes allocation error:", allocationError)
+        // Don't fail the payment - just log the error
       }
     } else if (item_type === "super_likes") {
       // Add super likes to user account
