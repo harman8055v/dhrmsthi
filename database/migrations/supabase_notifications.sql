@@ -178,6 +178,7 @@ DECLARE
   rendered_message TEXT;
   rendered_action_url TEXT;
   expires_at_calc TIMESTAMPTZ;
+  key_record RECORD;
 BEGIN
   -- Get template
   SELECT * INTO template FROM notification_templates 
@@ -198,10 +199,12 @@ BEGIN
   rendered_action_url := template.action_url_template;
   
   -- Replace template variables
-  FOR key IN SELECT jsonb_object_keys(template_data) LOOP
-    rendered_title := REPLACE(rendered_title, '{{' || key || '}}', template_data->>key);
-    rendered_message := REPLACE(rendered_message, '{{' || key || '}}', template_data->>key);
-    rendered_action_url := REPLACE(rendered_action_url, '{{' || key || '}}', template_data->>key);
+  FOR key_record IN SELECT jsonb_object_keys(template_data) AS key_name LOOP
+    rendered_title := REPLACE(rendered_title, '{{' || key_record.key_name || '}}', template_data->>key_record.key_name);
+    rendered_message := REPLACE(rendered_message, '{{' || key_record.key_name || '}}', template_data->>key_record.key_name);
+    IF rendered_action_url IS NOT NULL THEN
+      rendered_action_url := REPLACE(rendered_action_url, '{{' || key_record.key_name || '}}', template_data->>key_record.key_name);
+    END IF;
   END LOOP;
   
   -- Calculate expiration
