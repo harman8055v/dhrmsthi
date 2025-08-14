@@ -5,7 +5,8 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = cookies(); 
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
     // Get current user
@@ -68,6 +69,53 @@ export async function POST(request: NextRequest) {
       // Don't fail the request for this
     }
 
+    // 🔔 SEND PUSH NOTIFICATION TO RECIPIENT
+    try {
+      // Get the recipient (other user in the match)
+      const recipientId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+      
+      // Get sender info for notification
+      const { data: senderProfile } = await supabaseAdmin
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+
+      const senderName = senderProfile 
+        ? `${senderProfile.first_name} ${senderProfile.last_name}`
+        : 'Someone';
+
+      // Send push notification (non-blocking)
+      const notificationPromise = fetch(new URL('/api/expo/send', request.url).toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': request.headers.get('Cookie') || '', // Forward session
+        },
+        body: JSON.stringify({
+          userId: recipientId,
+          title: `💕 New message from ${senderName}`,
+          body: content.length > 50 ? content.substring(0, 47) + '...' : content,
+          data: {
+            type: 'message',
+            matchId: match_id,
+            senderId: user.id,
+            route: `/dashboard/messages/${match_id}`
+          }
+        }),
+      }).catch(error => {
+        console.error('Push notification failed:', error);
+        // Don't fail the message send if notification fails
+      });
+
+      // Don't await - let notification send in background
+      console.log('Push notification triggered for recipient:', recipientId);
+      
+    } catch (notificationError) {
+      console.error('Error sending push notification:', notificationError);
+      // Don't fail message send if notification fails
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: {
@@ -92,7 +140,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = cookies(); 
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
     // Get current user
@@ -153,7 +202,8 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = await cookies(); const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = cookies(); 
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
     // Get current user

@@ -6,8 +6,9 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { Toaster } from "@/components/ui/sonner"
 import { AuthProvider } from "@/components/auth-provider"
 import { ReactQueryProvider } from "@/components/react-query-provider"
-import { WebViewNotificationProvider, NotificationTester } from "@/components/webview-notification-provider"
+import { WebViewNotificationProvider } from "@/components/webview-notification-provider"
 import NativeHeader from "@/components/native-header"
+import NativeBridge from "@/app/native-bridge"
 import type { Metadata } from "next"
 import { Mona_Sans as FontSans } from "next/font/google"
 import { cn } from "@/lib/utils"
@@ -94,9 +95,9 @@ export default function RootLayout({
                     enableDeepLinking={true}
                   >
                     <NativeHeader />
+                    <NativeBridge />
                     {children}
                     <Toaster position="top-right" richColors />
-                    {process.env.NODE_ENV === 'development' && <NotificationTester />}
                   </WebViewNotificationProvider>
                 </ReactQueryProvider>
               </AuthProvider>
