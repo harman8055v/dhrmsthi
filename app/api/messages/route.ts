@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
           'Cookie': request.headers.get('Cookie') || '', // Forward session
+          'x-internal-api-key': process.env.INTERNAL_API_KEY || '',
         },
         body: JSON.stringify({
           userId: recipientId,
