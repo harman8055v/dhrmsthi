@@ -20,6 +20,7 @@ export default function PushDiagnosticsPage() {
   const [hasNativeChannel, setHasNativeChannel] = useState<boolean>(false);
   const [lastRequestTs, setLastRequestTs] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
+  const [lastNativeStatus, setLastNativeStatus] = useState<any>(null);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -67,6 +68,19 @@ export default function PushDiagnosticsPage() {
         // Check for expo push token
         if (data?.type === 'expo_push_token' && data?.payload?.token) {
           console.log('🎯 Captured expo_push_token:', data.payload.token);
+          setLatestToken({ token: data.payload.token, platform: data.payload.platform || 'android' });
+        }
+
+        // Accept native status payloads too
+        if (data?.type === 'native_push_status') {
+          setLastNativeStatus(data.payload || data);
+          if (data?.payload?.token) {
+            setLatestToken({ token: data.payload.token, platform: data.payload.platform || 'android' });
+          }
+        }
+
+        // Fallback: any message with payload.token
+        if (data?.payload?.token && typeof data.payload.token === 'string') {
           setLatestToken({ token: data.payload.token, platform: data.payload.platform || 'android' });
         }
       } catch (err) {
@@ -307,6 +321,9 @@ export default function PushDiagnosticsPage() {
         </div>
         {latestToken?.token && (
           <div className="text-xs text-gray-600">Latest native token: <span className="font-mono break-all">{latestToken.token}</span></div>
+        )}
+        {lastNativeStatus && (
+          <pre className="text-xs bg-gray-50 p-2 rounded border overflow-x-auto">{JSON.stringify(lastNativeStatus, null, 2)}</pre>
         )}
         <table className="w-full text-sm">
           <thead>
