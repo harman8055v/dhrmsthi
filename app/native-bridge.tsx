@@ -61,7 +61,8 @@ export default function NativeBridge() {
     
     try {
       console.log('💾 Saving push token to server...');
-      const res = await fetch("/api/expo/save-token", {
+      // Prefer new unified endpoint
+      const res = await fetch("/api/push/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
