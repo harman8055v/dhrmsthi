@@ -75,11 +75,29 @@ export default function NativeBridge() {
       if (res.ok) {
         console.log('✅ Push token saved successfully');
         hasSavedRef.current = true;
+        // Acknowledge to native app (optional UX signal)
+        try {
+          if (window.ReactNativeWebView?.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'push_token_saved' }));
+          }
+        } catch {}
       } else {
-        console.error('❌ Failed to save push token:', res.status);
+        let body: any = null
+        try { body = await res.json() } catch {}
+        console.error('❌ Failed to save push token:', res.status, body);
+        try {
+          if (window.ReactNativeWebView?.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'push_token_save_failed', status: res.status, body }));
+          }
+        } catch {}
       }
     } catch (error) {
       console.error('❌ Error saving push token:', error);
+      try {
+        if (window.ReactNativeWebView?.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'push_token_save_failed', error: String(error) }));
+        }
+      } catch {}
     }
   }
 

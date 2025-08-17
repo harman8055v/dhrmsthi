@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       app_version: appVersion,
       updated_at: now,
     }, {
-      onConflict: "token",
+      onConflict: "user_id,token",
     });
 
   if (error) {
@@ -44,6 +44,22 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+// List current user's tokens (diagnostics)
+export async function GET() {
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { data, error } = await supabase
+    .from("expo_push_tokens")
+    .select("token, platform, updated_at, last_used_at")
+    .eq("user_id", user.id)
+    .order("updated_at", { ascending: false });
+
+  if (error) return NextResponse.json({ error: "db error" }, { status: 500 });
+  return NextResponse.json({ tokens: data ?? [] });
 }
 
 

@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -131,9 +132,14 @@ export default function NativeHeader() {
           </h1>
         </div>
 
-        {/* Profile dropdown or spacer */}
-        <div className="w-10 flex justify-end">
-          <SafeHeaderProfileDropdown />
+        {/* Right controls */}
+        <div className="w-auto flex items-center gap-2">
+          <Link href="/diagnostics/push" className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+            Diagnostics
+          </Link>
+          <div className="w-10 flex justify-end">
+            <SafeHeaderProfileDropdown />
+          </div>
         </div>
       </div>
     </header>
