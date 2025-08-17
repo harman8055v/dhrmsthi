@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type TokenRow = {
   token: string;
@@ -18,6 +19,8 @@ export default function PushDiagnosticsPage() {
   const [latestToken, setLatestToken] = useState<{ token: string; platform?: string } | null>(null);
   const [hasNativeChannel, setHasNativeChannel] = useState<boolean>(false);
   const [lastRequestTs, setLastRequestTs] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -34,7 +37,17 @@ export default function PushDiagnosticsPage() {
         setStatus("error");
       }
     };
+    
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUser({ id: user.id, email: user.email });
+        setUserId(user.id);
+      }
+    };
+    
     fetchTokens();
+    checkAuth();
   }, []);
 
   useEffect(() => {
@@ -183,12 +196,15 @@ export default function PushDiagnosticsPage() {
 
   async function getCurrentUserAndRegisterTestToken() {
     try {
-      // Get current user
-      const userRes = await fetch('/api/users/profile');
-      const userData = await userRes.json();
-      if (!userRes.ok || !userData?.id) {
-        alert('Not logged in or could not get user ID');
-        return;
+      // Try to get current user from Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      let targetUserId = user?.id;
+      
+      // If no user from Supabase, prompt for manual entry
+      if (!targetUserId) {
+        targetUserId = prompt('No auth session found. Enter your User ID manually (UUID):');
+        if (!targetUserId) return;
       }
       
       const testToken = `ExponentPushToken[TEST_${Date.now()}]`;
@@ -198,7 +214,7 @@ export default function PushDiagnosticsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: userData.id,
+          userId: targetUserId,
           token: testToken,
           platform: 'android'
         }),
@@ -208,8 +224,47 @@ export default function PushDiagnosticsPage() {
       if (!res.ok) throw new Error(JSON.stringify(json));
       
       await refreshTokens();
-      alert(`Test token registered for user ${userData.id}`);
-      setUserId(userData.id); // Set for easy test push
+      alert(`Test token registered for user ${targetUserId}`);
+      setUserId(targetUserId); // Set for easy test push
+    } catch (e: any) {
+      alert('Failed: ' + String(e?.message || e));
+    }
+  }
+  
+  async function registerRealToken() {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      let targetUserId = user?.id || userId;
+      
+      if (!targetUserId) {
+        targetUserId = prompt('Enter User ID (UUID):');
+        if (!targetUserId) return;
+      }
+      
+      const realToken = prompt('Enter real Expo push token (ExponentPushToken[...]):');
+      if (!realToken || !realToken.startsWith('ExponentPushToken[')) {
+        alert('Invalid token format');
+        return;
+      }
+      
+      // Register via public endpoint
+      const res = await fetch('/api/push/register-public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: targetUserId,
+          token: realToken,
+          platform: 'android'
+        }),
+      });
+      
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(JSON.stringify(json));
+      
+      await refreshTokens();
+      alert(`Real token registered for user ${targetUserId}`);
+      setUserId(targetUserId);
     } catch (e: any) {
       alert('Failed: ' + String(e?.message || e));
     }
@@ -218,6 +273,20 @@ export default function PushDiagnosticsPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
       <h1 className="text-xl font-semibold">Push Diagnostics</h1>
+      
+      {/* User Info Card */}
+      <div className="rounded-md border p-4 bg-blue-50">
+        <div className="text-sm font-semibold mb-2">Current User</div>
+        {currentUser ? (
+          <div className="text-xs space-y-1">
+            <div>ID: <span className="font-mono">{currentUser.id}</span></div>
+            <div>Email: {currentUser.email || 'N/A'}</div>
+          </div>
+        ) : (
+          <div className="text-xs text-gray-600">Not logged in (you can still test with manual User ID)</div>
+        )}
+      </div>
+      
       <div className="rounded-md border p-4 space-y-3">
         <div className="mb-2 text-sm text-gray-600">Token Save Status: {status}</div>
         <div className="text-xs text-gray-600">Native channel: {hasNativeChannel ? 'connected' : 'not detected'}{lastRequestTs ? ` · last request ${lastRequestTs}` : ''}</div>
@@ -229,6 +298,7 @@ export default function PushDiagnosticsPage() {
           <button className="px-2 py-1 rounded border" onClick={upsertLatestNativeToken}>Upsert Latest Native Token</button>
           <button className="px-2 py-1 rounded border" onClick={clearTokens}>Clear Tokens</button>
           <button className="px-2 py-1 rounded border bg-green-100" onClick={getCurrentUserAndRegisterTestToken}>Register Test Token</button>
+          <button className="px-2 py-1 rounded border bg-yellow-100" onClick={registerRealToken}>Register Real Token</button>
         </div>
         {latestToken?.token && (
           <div className="text-xs text-gray-600">Latest native token: <span className="font-mono break-all">{latestToken.token}</span></div>
