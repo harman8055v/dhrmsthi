@@ -62,4 +62,23 @@ export async function GET() {
   return NextResponse.json({ tokens: data ?? [] });
 }
 
+// Delete current user's tokens (diagnostics)
+export async function DELETE(req: Request) {
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  let tokenToDelete: string | undefined;
+  try {
+    const body = await req.json();
+    tokenToDelete = body?.token ? String(body.token) : undefined;
+  } catch {}
+
+  const query = supabase.from("expo_push_tokens").delete().eq("user_id", user.id);
+  const exec = tokenToDelete ? query.eq("token", tokenToDelete) : query;
+  const { error } = await exec;
+  if (error) return NextResponse.json({ error: "db error" }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 
