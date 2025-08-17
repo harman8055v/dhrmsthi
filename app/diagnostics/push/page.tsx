@@ -115,6 +115,11 @@ export default function PushDiagnosticsPage() {
         for (let i = 0; i < 5; i++) {
           setTimeout(() => {
             (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'request_push_token' }));
+            // Also request a status snapshot and permission refresh
+            (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'request_native_push_status' }));
+            if (i === 0) {
+              (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'request_push_permissions' }));
+            }
           }, i * 800);
         }
       } else {
