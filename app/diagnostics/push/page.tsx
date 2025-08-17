@@ -16,6 +16,8 @@ export default function PushDiagnosticsPage() {
   const [sending, setSending] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [latestToken, setLatestToken] = useState<{ token: string; platform?: string } | null>(null);
+  const [hasNativeChannel, setHasNativeChannel] = useState<boolean>(false);
+  const [lastRequestTs, setLastRequestTs] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -36,6 +38,7 @@ export default function PushDiagnosticsPage() {
   }, []);
 
   useEffect(() => {
+    setHasNativeChannel(Boolean((window as any).ReactNativeWebView?.postMessage));
     const onMsg = (e: MessageEvent) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
@@ -67,8 +70,16 @@ export default function PushDiagnosticsPage() {
 
   function requestTokenFromNative() {
     try {
+      setLastRequestTs(new Date().toISOString());
       if ((window as any).ReactNativeWebView?.postMessage) {
-        (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'request_push_token' }));
+        // Fire multiple times to be robust
+        for (let i = 0; i < 5; i++) {
+          setTimeout(() => {
+            (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'request_push_token' }));
+          }, i * 800);
+        }
+      } else {
+        alert('Native channel not detected. Are you running inside the mobile app WebView?');
       }
     } catch {}
   }
@@ -149,6 +160,7 @@ export default function PushDiagnosticsPage() {
       <h1 className="text-xl font-semibold">Push Diagnostics</h1>
       <div className="rounded-md border p-4 space-y-3">
         <div className="mb-2 text-sm text-gray-600">Token Save Status: {status}</div>
+        <div className="text-xs text-gray-600">Native channel: {hasNativeChannel ? 'connected' : 'not detected'}{lastRequestTs ? ` · last request ${lastRequestTs}` : ''}</div>
         {error && <pre className="text-red-600 text-xs whitespace-pre-wrap">{error}</pre>}
         <div className="flex gap-2 text-sm">
           <button className="px-2 py-1 rounded border" onClick={refreshTokens}>Refresh Tokens</button>
