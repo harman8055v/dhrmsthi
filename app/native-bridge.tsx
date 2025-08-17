@@ -102,12 +102,15 @@ export default function NativeBridge() {
   }
 
   useEffect(() => {
+    console.log('🌉 NativeBridge mounted and listening for messages');
+    
     function onMsg(e: MessageEvent) {
       try {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         console.log('📱 Message from native app:', msg);
         
         if (msg?.type === "expo_push_token" && msg?.payload?.token) {
+          console.log('🎯 Received expo_push_token message');
           handlePushToken({
             token: msg.payload.token,
             platform: msg.payload.platform || "android",

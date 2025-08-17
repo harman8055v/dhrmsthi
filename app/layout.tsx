@@ -9,6 +9,7 @@ import { ReactQueryProvider } from "@/components/react-query-provider"
 import { WebViewNotificationProvider } from "@/components/webview-notification-provider"
 import NativeHeader from "@/components/native-header"
 import NativeBridge from "@/app/native-bridge"
+import NativeBridgeEnhanced from "@/components/native-bridge-enhanced"
 import type { Metadata } from "next"
 import { Mona_Sans as FontSans } from "next/font/google"
 import { cn } from "@/lib/utils"
@@ -95,7 +96,10 @@ export default function RootLayout({
                     enableDeepLinking={true}
                   >
                     <NativeHeader />
+                    {/* Original bridge (kept for compatibility) */}
                     <NativeBridge />
+                    {/* Enhanced bridge: informs native about auth state for direct registration */}
+                    <NativeBridgeEnhanced />
                     {children}
                     <Toaster position="top-right" richColors />
                   </WebViewNotificationProvider>
