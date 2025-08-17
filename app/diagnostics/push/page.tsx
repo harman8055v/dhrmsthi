@@ -15,6 +15,7 @@ export default function PushDiagnosticsPage() {
   const [nativeEvents, setNativeEvents] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
   const [userId, setUserId] = useState<string>("");
+  const [latestToken, setLatestToken] = useState<{ token: string; platform?: string } | null>(null);
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -40,6 +41,9 @@ export default function PushDiagnosticsPage() {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (data?.type && (data.type === 'expo_push_token' || data.type?.startsWith('push_token_'))) {
           setNativeEvents(prev => [{ ts: new Date().toISOString(), data }, ...prev].slice(0, 20));
+          if (data.type === 'expo_push_token' && data.payload?.token) {
+            setLatestToken({ token: data.payload.token, platform: data.payload.platform });
+          }
         }
       } catch {}
     };
@@ -82,6 +86,26 @@ export default function PushDiagnosticsPage() {
       if (!res.ok) throw new Error(JSON.stringify(json));
       await refreshTokens();
       alert('Saved');
+    } catch (e: any) {
+      alert('Save failed: ' + String(e?.message || e));
+    }
+  }
+
+  async function upsertLatestNativeToken() {
+    if (!latestToken?.token) {
+      alert('No latest native token captured yet. Tap Request Token (Native) and try again.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/push/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: latestToken.token, platform: latestToken.platform || 'android' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(JSON.stringify(json));
+      await refreshTokens();
+      alert('Latest native token saved');
     } catch (e: any) {
       alert('Save failed: ' + String(e?.message || e));
     }
@@ -130,8 +154,12 @@ export default function PushDiagnosticsPage() {
           <button className="px-2 py-1 rounded border" onClick={refreshTokens}>Refresh Tokens</button>
           <button className="px-2 py-1 rounded border" onClick={requestTokenFromNative}>Request Token (Native)</button>
           <button className="px-2 py-1 rounded border" onClick={saveManualToken}>Save Manual Token</button>
+          <button className="px-2 py-1 rounded border" onClick={upsertLatestNativeToken}>Upsert Latest Native Token</button>
           <button className="px-2 py-1 rounded border" onClick={clearTokens}>Clear Tokens</button>
         </div>
+        {latestToken?.token && (
+          <div className="text-xs text-gray-600">Latest native token: <span className="font-mono break-all">{latestToken.token}</span></div>
+        )}
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-600">
