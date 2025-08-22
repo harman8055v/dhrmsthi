@@ -57,6 +57,7 @@
     "crypto": "latest",
     "date-fns": "4.1.0",
     "embla-carousel-react": "latest",
+    "expo-server-sdk": "^3.10.0",
     "framer-motion": "latest",
     "input-otp": "latest",
     "jsonwebtoken": "^9.0.2",
