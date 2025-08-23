@@ -69,74 +69,7 @@ export async function POST(request: NextRequest) {
       // Don't fail the request for this
     }
 
-    // 🔔 SEND PUSH NOTIFICATION TO RECIPIENT (fast path) + enqueue job for reliability
-    try {
-      // Get the recipient (other user in the match)
-      const recipientId = match.user1_id === user.id ? match.user2_id : match.user1_id;
-      
-      // Get sender info for notification
-      const { data: senderProfile } = await supabaseAdmin
-        .from('users')
-        .select('first_name, last_name')
-        .eq('id', user.id)
-        .single();
-
-      const senderName = senderProfile 
-        ? `${senderProfile.first_name} ${senderProfile.last_name}`
-        : 'Someone';
-
-      // Send push notification immediately (non-blocking)
-      const notificationPromise = fetch(new URL('/api/expo/send', request.url).toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': request.headers.get('Cookie') || '', // Forward session
-          'x-internal-api-key': process.env.INTERNAL_API_KEY || '',
-        },
-        body: JSON.stringify({
-          userId: recipientId,
-          title: `New message from ${senderName}`,
-          body: content.length > 50 ? content.substring(0, 47) + '...' : content,
-          data: {
-            type: 'message',
-            matchId: match_id,
-            senderId: user.id,
-            route: `/dashboard/messages/${match_id}`
-          }
-        }),
-      }).then(async (r) => {
-        const txt = await r.text().catch(() => '')
-        console.log('[Push] /api/expo/send status:', r.status, 'body:', txt?.slice(0, 200))
-      }).catch(error => {
-        console.error('Push notification failed:', error);
-        // Don't fail the message send if notification fails
-      });
-
-      // Don't await - let notification send in background
-      console.log('Push notification triggered for recipient:', recipientId);
-
-      // Also enqueue a job for reliability & analytics
-      try {
-        const minuteBucket = Math.floor(Date.now() / 60000); // 1-minute dedupe window
-        await supabaseAdmin.rpc('enqueue_notification_job', {
-          p_type: 'message',
-          p_recipient_id: recipientId,
-          p_payload: {
-            preview: content.length > 140 ? content.substring(0, 137) + '...' : content,
-            matchId: match_id,
-            senderId: user.id
-          },
-          p_scheduled_at: null,
-          p_dedupe_key: `msg:${match_id}:${recipientId}:${minuteBucket}`,
-        } as any);
-      } catch (e) {
-        console.warn('Failed to enqueue message notification job', e);
-      }
-      
-    } catch (notificationError) {
-      console.error('Error sending push notification:', notificationError);
-      // Don't fail message send if notification fails
-    }
+    // Backend now handles notifications via DB triggers and the dispatcher
 
     return NextResponse.json({ 
       success: true, 
