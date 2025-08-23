@@ -120,7 +120,7 @@ export async function handler(req: Request): Promise<Response> {
   return new Response(JSON.stringify({ ok: true, processed: jobs.length, ticketsCount: tickets.length }))
 }
 
-// HTTP entrypoint
-serve(handler)
+// HTTP entrypoint (Supabase Edge Functions use Deno.serve)
+Deno.serve(handler)
 
 
