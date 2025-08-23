@@ -1,11 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
     const { swiped_user_id, action } = await request.json()
 
     // Get current user
@@ -147,7 +149,7 @@ export async function POST(request: NextRequest) {
           // original liker is reciprocalSwipe.swiper_id
           const originalLikerId = reciprocalSwipe.swiper_id
           const dedupe = `match:${[user1_id, user2_id].join(':')}`
-          await supabase.rpc('enqueue_notification_job', {
+          await supabaseAdmin.rpc('enqueue_notification_job', {
             p_type: 'match',
             p_recipient_id: originalLikerId,
             p_payload: { otherUserId: user.id },
@@ -241,7 +243,7 @@ export async function POST(request: NextRequest) {
     try {
       if (action === 'like' || action === 'superlike') {
         const minuteBucket = Math.floor(Date.now() / 60000)
-        await supabase.rpc('enqueue_notification_job', {
+        await supabaseAdmin.rpc('enqueue_notification_job', {
           p_type: action === 'superlike' ? 'superlike' : 'like',
           p_recipient_id: swiped_user_id,
           p_payload: { fromUserId: user.id },
