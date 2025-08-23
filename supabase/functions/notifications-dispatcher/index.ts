@@ -97,6 +97,9 @@ export async function handler(req: Request): Promise<Response> {
       body = `Start a conversation with ${otherName}`
     }
 
+    // Debug: confirm computed title/body
+    try { console.log('dispatching', { jobId: job.id, type: job.type, title, body }); } catch {}
+
     for (const token of toTokens) {
       if (!isExpoPushToken(token)) continue
       messages.push({ to: token, title, body, sound: 'default', data, priority: 'high' })
