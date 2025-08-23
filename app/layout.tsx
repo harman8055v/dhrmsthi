@@ -85,6 +85,23 @@ export default function RootLayout({
         </noscript>
       </head>
       <body className={cn("min-h-screen bg-background font-sans antialiased", fontSans.variable)}>
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var isNative = !!(window.ReactNativeWebView || window.isNativeApp);
+              var onAppSubdomain = location.hostname === 'app.dharmasaathi.com';
+              if (!isNative && onAppSubdomain) {
+                var target = 'https://www.dharmasaathi.com';
+                if (location.pathname && location.pathname !== '/') {
+                  target += location.pathname;
+                }
+                if (location.search) target += location.search;
+                if (location.hash) target += location.hash;
+                location.replace(target);
+              }
+            } catch (e) {}
+          })();
+        `}} />
         <ErrorBoundary>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
             <ToastProvider>
