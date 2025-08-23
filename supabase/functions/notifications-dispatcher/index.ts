@@ -82,7 +82,8 @@ export async function handler(req: Request): Promise<Response> {
     let data: any = { type: job.type, ...(job.payload || {}) }
 
     if (job.type === 'message') {
-      title = `New message`
+      const senderName = (job.payload?.senderName && String(job.payload.senderName).trim()) || 'New message'
+      title = senderName
       body = job.payload?.preview || 'Open DharmaSaathi to read it'
     } else if (job.type === 'like') {
       title = `Someone liked you`
@@ -91,8 +92,9 @@ export async function handler(req: Request): Promise<Response> {
       title = `You received a Super Like`
       body = 'Open DharmaSaathi to see who'
     } else if (job.type === 'match') {
+      const otherName = (job.payload?.otherName && String(job.payload.otherName).trim()) || 'your match'
       title = `It’s a match!`
-      body = 'Start chatting now'
+      body = `Start a conversation with ${otherName}`
     }
 
     for (const token of toTokens) {
