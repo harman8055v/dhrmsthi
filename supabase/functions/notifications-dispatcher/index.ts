@@ -86,13 +86,53 @@ export async function handler(req: Request): Promise<Response> {
       title = senderName
       body = job.payload?.preview || 'Open DharmaSaathi to read it'
     } else if (job.type === 'like') {
+      // Skip like if a match already exists between fromUserId and recipient
+      try {
+        const fromUserId = job.payload?.fromUserId as string | undefined
+        if (fromUserId) {
+          const { data: matchExists } = await supabase
+            .from('matches')
+            .select('id')
+            .or(`and(user1_id.eq.${job.recipient_id},user2_id.eq.${fromUserId}),and(user1_id.eq.${fromUserId},user2_id.eq.${job.recipient_id})`)
+            .limit(1)
+          if (matchExists && matchExists.length > 0) {
+            // Mark job cancelled and continue
+            await supabase.from('notification_jobs').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', job.id)
+            continue
+          }
+        }
+      } catch {}
       title = `Someone liked you`
       body = 'Open DharmaSaathi to see who'
     } else if (job.type === 'superlike') {
+      // Same skip as like
+      try {
+        const fromUserId = job.payload?.fromUserId as string | undefined
+        if (fromUserId) {
+          const { data: matchExists } = await supabase
+            .from('matches')
+            .select('id')
+            .or(`and(user1_id.eq.${job.recipient_id},user2_id.eq.${fromUserId}),and(user1_id.eq.${fromUserId},user2_id.eq.${job.recipient_id})`)
+            .limit(1)
+          if (matchExists && matchExists.length > 0) {
+            await supabase.from('notification_jobs').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', job.id)
+            continue
+          }
+        }
+      } catch {}
       title = `You received a Super Like`
       body = 'Open DharmaSaathi to see who'
     } else if (job.type === 'match') {
-      const otherName = (job.payload?.otherName && String(job.payload.otherName).trim()) || 'your match'
+      let otherName = (job.payload?.otherName && String(job.payload.otherName).trim()) || ''
+      if (!otherName && job.payload?.otherUserId) {
+        try {
+          const { data: u } = await supabase.from('users').select('first_name,last_name').eq('id', job.payload.otherUserId).single()
+          if (u) otherName = `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || 'your match'
+        } catch {
+          otherName = 'your match'
+        }
+      }
+      if (!otherName) otherName = 'your match'
       title = `It’s a match!`
       body = `Start a conversation with ${otherName}`
     }
