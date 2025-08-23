@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           userId: recipientId,
-          title: `💕 New message from ${senderName}`,
+          title: `New message from ${senderName}`,
           body: content.length > 50 ? content.substring(0, 47) + '...' : content,
           data: {
             type: 'message',
