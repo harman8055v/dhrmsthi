@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
             route: `/dashboard/messages/${match_id}`
           }
         }),
+      }).then(async (r) => {
+        const txt = await r.text().catch(() => '')
+        console.log('[Push] /api/expo/send status:', r.status, 'body:', txt?.slice(0, 200))
       }).catch(error => {
         console.error('Push notification failed:', error);
         // Don't fail the message send if notification fails
