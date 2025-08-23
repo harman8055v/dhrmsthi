@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS notification_templates (
 );
 
 -- Insert default notification templates
-INSERT INTO notification_templates (type, category, priority, title_template, message_template, action_url_template, expires_after_hours) VALUES
+INSERT INTO notification_templates (type, category, priority, title_template, message_template, action_url_template, expires_after_hours)
+VALUES
 -- Social notifications
 ('message', 'social', 'high', 'New Message from {{sender_name}}', '{{sender_name}} sent you a message: "{{message_preview}}"', '/dashboard/messages/{{match_id}}', 168),
 ('like', 'social', 'normal', 'Someone Liked You! 💖', '{{sender_name}} liked your profile. Check them out!', '/dashboard/likes', 72),
@@ -93,7 +94,8 @@ INSERT INTO notification_templates (type, category, priority, title_template, me
 -- System notifications
 ('account_verification', 'system', 'high', 'Verify Your Account', 'Please verify your account to unlock all features.', '/dashboard/settings?tab=verification', null),
 ('security_alert', 'system', 'critical', 'Security Alert', '{{security_message}}', '/dashboard/settings?tab=security', null),
-('maintenance', 'system', 'normal', 'Scheduled Maintenance', 'We''ll be performing maintenance on {{maintenance_date}}.', null, 48);
+('maintenance', 'system', 'normal', 'Scheduled Maintenance', 'We''ll be performing maintenance on {{maintenance_date}}.', null, 48)
+ON CONFLICT (type) DO NOTHING;
 
 -- Function to check if user should receive notification based on settings
 CREATE OR REPLACE FUNCTION should_send_notification(
@@ -490,14 +492,17 @@ END;
 $$ language 'plpgsql';
 
 -- Create triggers for updated_at
+DROP TRIGGER IF EXISTS update_notifications_updated_at ON notifications;
 CREATE TRIGGER update_notifications_updated_at 
   BEFORE UPDATE ON notifications 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_notification_settings_updated_at ON notification_settings;
 CREATE TRIGGER update_notification_settings_updated_at 
   BEFORE UPDATE ON notification_settings 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_notification_templates_updated_at ON notification_templates;
 CREATE TRIGGER update_notification_templates_updated_at 
   BEFORE UPDATE ON notification_templates 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -507,22 +512,27 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_templates ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies for notifications
+-- Create RLS policies for notifications (idempotent)
+DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
 CREATE POLICY "Users can view own notifications" ON notifications
   FOR SELECT USING (recipient_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
 CREATE POLICY "Users can update own notifications" ON notifications
   FOR UPDATE USING (recipient_id = auth.uid());
 
--- Create RLS policies for notification settings
+-- Create RLS policies for notification settings (idempotent)
+DROP POLICY IF EXISTS "Users can manage own notification settings" ON notification_settings;
 CREATE POLICY "Users can manage own notification settings" ON notification_settings
   FOR ALL USING (user_id = auth.uid());
 
--- Public read access to notification templates
+-- Public read access to notification templates (idempotent)
+DROP POLICY IF EXISTS "Public read access to notification templates" ON notification_templates;
 CREATE POLICY "Public read access to notification templates" ON notification_templates
   FOR SELECT USING (is_active = true);
 
--- Admin access to notification templates
+-- Admin access to notification templates (idempotent)
+DROP POLICY IF EXISTS "Admin can manage notification templates" ON notification_templates;
 CREATE POLICY "Admin can manage notification templates" ON notification_templates
   FOR ALL USING (
     EXISTS (
@@ -536,8 +546,15 @@ CREATE POLICY "Admin can manage notification templates" ON notification_template
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created ON notifications(recipient_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_real_time ON notifications(recipient_id, is_read, created_at DESC);
 
--- Enable real-time for notifications table
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+-- Enable real-time for notifications table (idempotent)
+DO $$ BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  EXCEPTION WHEN others THEN
+    -- ignore if already added
+    NULL;
+  END;
+END $$;
 
 COMMENT ON TABLE notifications IS 'Stores all user notifications with real-time capabilities';
 COMMENT ON TABLE notification_settings IS 'User notification preferences and settings';

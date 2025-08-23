@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       // Don't fail the request for this
     }
 
-    // 🔔 SEND PUSH NOTIFICATION TO RECIPIENT
+    // 🔔 SEND PUSH NOTIFICATION TO RECIPIENT (fast path) + enqueue job for reliability
     try {
       // Get the recipient (other user in the match)
       const recipientId = match.user1_id === user.id ? match.user2_id : match.user1_id;
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         ? `${senderProfile.first_name} ${senderProfile.last_name}`
         : 'Someone';
 
-      // Send push notification (non-blocking)
+      // Send push notification immediately (non-blocking)
       const notificationPromise = fetch(new URL('/api/expo/send', request.url).toString(), {
         method: 'POST',
         headers: {
@@ -111,6 +111,24 @@ export async function POST(request: NextRequest) {
 
       // Don't await - let notification send in background
       console.log('Push notification triggered for recipient:', recipientId);
+
+      // Also enqueue a job for reliability & analytics
+      try {
+        const minuteBucket = Math.floor(Date.now() / 60000); // 1-minute dedupe window
+        await supabaseAdmin.rpc('enqueue_notification_job', {
+          p_type: 'message',
+          p_recipient_id: recipientId,
+          p_payload: {
+            preview: content.length > 140 ? content.substring(0, 137) + '...' : content,
+            matchId: match_id,
+            senderId: user.id
+          },
+          p_scheduled_at: null,
+          p_dedupe_key: `msg:${match_id}:${recipientId}:${minuteBucket}`,
+        } as any);
+      } catch (e) {
+        console.warn('Failed to enqueue message notification job', e);
+      }
       
     } catch (notificationError) {
       console.error('Error sending push notification:', notificationError);

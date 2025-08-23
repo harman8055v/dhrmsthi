@@ -141,6 +141,22 @@ export async function POST(request: NextRequest) {
         if (matchError && matchError.code !== '23505') {
           console.error("Error creating match:", matchError)
         }
+
+        // Enqueue match notification to the original liker (the one who liked first)
+        try {
+          // original liker is reciprocalSwipe.swiper_id
+          const originalLikerId = reciprocalSwipe.swiper_id
+          const dedupe = `match:${[user1_id, user2_id].join(':')}`
+          await supabase.rpc('enqueue_notification_job', {
+            p_type: 'match',
+            p_recipient_id: originalLikerId,
+            p_payload: { otherUserId: user.id },
+            p_scheduled_at: null,
+            p_dedupe_key: dedupe,
+          } as any)
+        } catch (e) {
+          console.warn('Failed to enqueue match notification job', e)
+        }
       }
     }
 
@@ -219,6 +235,22 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error("[Swipe API] Error updating daily stats:", error)
       // Don't fail the swipe if stats update fails
+    }
+
+    // Enqueue like/superlike notification to the recipient
+    try {
+      if (action === 'like' || action === 'superlike') {
+        const minuteBucket = Math.floor(Date.now() / 60000)
+        await supabase.rpc('enqueue_notification_job', {
+          p_type: action === 'superlike' ? 'superlike' : 'like',
+          p_recipient_id: swiped_user_id,
+          p_payload: { fromUserId: user.id },
+          p_scheduled_at: null,
+          p_dedupe_key: `${action}:${swiped_user_id}:${user.id}:${minuteBucket}`,
+        } as any)
+      }
+    } catch (e) {
+      console.warn('Failed to enqueue like/superlike notification job', e)
     }
 
     return NextResponse.json({
