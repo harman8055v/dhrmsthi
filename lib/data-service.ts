@@ -515,60 +515,24 @@ export const matchService = {
 
 // Message Operations
 export const messageService = {
-  // Send a message - Direct Supabase (much faster!)
+  // Send a message via server API so notifications fire (fast path + queue)
   async sendMessage(matchId: string, content: string): Promise<Message> {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
-
-      // Verify user is part of the match
-      const { data: match } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('id', matchId)
-        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-        .single()
-
-      if (!match) {
-        throw new DataServiceError('Match not found or access denied', 'ACCESS_DENIED')
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ match_id: matchId, content })
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new DataServiceError(json?.error || 'Failed to send message', 'API_ERROR', json)
       }
-
-      // Insert message directly
-      const messageData = {
-        match_id: matchId,
-        sender_id: user.id,
-        content: content.trim(),
-        created_at: new Date().toISOString()
-      }
-      
-      const { data, error } = await supabase
-        .from('messages')
-        .insert(messageData)
-        .select()
-        .single()
-
-      if (error) {
-        throw new DataServiceError(error.message || 'Failed to send message', 'DB_ERROR')
-      }
-
-      // Update match's last_message_at
-      const { error: updateError } = await supabase
-        .from('matches')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', matchId);
-      
-      if (updateError) {
-        console.error('[messageService] Error updating last_message_at:', updateError);
-        // Don't throw error - message was sent successfully, just timestamp update failed
-      }
-
-      return data
+      return json.message as Message
     } catch (error: any) {
       console.error('[messageService] ❌ Send message error:', error)
-      if (error instanceof DataServiceError) {
-        throw error
-      }
-      throw new DataServiceError(error.message || 'Failed to send message', 'DB_ERROR')
+      if (error instanceof DataServiceError) throw error
+      throw new DataServiceError(error.message || 'Failed to send message', 'API_ERROR')
     }
   },
 
