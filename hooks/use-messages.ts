@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { messageService, Message } from '@/lib/data-service'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/components/auth-provider'
+import { messagingBridge } from '@/lib/webview-messaging-bridge'
 
 interface MessageState {
   messages: Message[]
@@ -18,12 +19,6 @@ export function useMessages(matchId: string) {
     error: null,
     sending: false
   })
-  
-  // Presence & typing state
-  const [isOtherTyping, setIsOtherTyping] = useState(false)
-  const [isOtherOnline, setIsOtherOnline] = useState(false)
-  const channelRef = useRef<any>(null)
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // Add loading timeout to reload page if loading takes too long
   useEffect(() => {
@@ -48,7 +43,7 @@ export function useMessages(matchId: string) {
     }
   }, [user, matchId])
 
-  // Enhanced real-time subscription with presence & typing
+  // Enhanced real-time subscription with better error handling and logging
   useEffect(() => {
     if (!user || !matchId || messageState.loading) {
       return
@@ -56,13 +51,8 @@ export function useMessages(matchId: string) {
 
     console.log('[useMessages] Setting up real-time subscription for match:', matchId)
     
-    const channel = supabase
-      .channel(`messages_${matchId}`, {
-        config: {
-          broadcast: { ack: true },
-          presence: { key: user.id }
-        }
-      })
+    const subscription = supabase
+      .channel(`messages_${matchId}`)
       .on(
         'postgres_changes',
         {
@@ -83,27 +73,20 @@ export function useMessages(matchId: string) {
               return prev
             }
             
-            console.log('[useMessages] Adding new message to state:', newMessage.id)
-            return {
-              ...prev,
-              messages: [...prev.messages, newMessage]
-            }
-          })
-
-          // Haptic feedback on receive (mobile bridge)
-          try {
-            if (typeof window !== 'undefined' && newMessage.sender_id !== user.id) {
-              ;(window as any)?.ReactNativeWebView?.postMessage?.(JSON.stringify({
-                type: 'haptic',
-                style: 'notification'
-              }))
-            }
-          } catch {}
-          
-          // Mark as read if from other user
-          if (newMessage.sender_id !== user.id) {
-            setTimeout(() => markMessagesAsRead(), 1000)
+                      console.log('[useMessages] Adding new message to state:', newMessage.id)
+          return {
+            ...prev,
+            messages: [...prev.messages, newMessage]
           }
+        })
+        
+        // Mark as read if from other user
+        if (newMessage.sender_id !== user.id) {
+          // Native-like feedback for received messages
+          messagingBridge.hapticFeedback('medium')
+          messagingBridge.playSound('received')
+          setTimeout(() => markMessagesAsRead(), 1000)
+        }
         }
       )
       .on(
@@ -126,35 +109,10 @@ export function useMessages(matchId: string) {
           }))
         }
       )
-      // Typing indicator via broadcast
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        const fromUserId = (payload as any)?.userId
-        if (fromUserId && fromUserId !== user.id) {
-          setIsOtherTyping(true)
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-          typingTimeoutRef.current = setTimeout(() => setIsOtherTyping(false), 1600)
-        }
-      })
-      // Presence sync
-      .on('presence', { event: 'sync' }, () => {
-        try {
-          const state = (channel as any).presenceState?.() as Record<string, unknown>
-          const others = Object.keys(state || {}).filter((uid) => uid !== user.id)
-          setIsOtherOnline(others.length > 0)
-        } catch (e) {
-          console.warn('[useMessages] presence sync error', e)
-        }
-      })
       .subscribe((status) => {
         console.log('[useMessages] Subscription status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('[useMessages] Successfully subscribed to real-time updates')
-          // Track own presence
-          try {
-            ;(channel as any).track?.({ userId: user.id, matchId })
-          } catch (e) {
-            console.warn('[useMessages] presence track error', e)
-          }
         } else if (status === 'CLOSED') {
           console.log('[useMessages] Subscription closed')
         } else if (status === 'CHANNEL_ERROR') {
@@ -164,15 +122,9 @@ export function useMessages(matchId: string) {
         }
       })
 
-    channelRef.current = channel
-
     return () => {
       console.log('[useMessages] Cleaning up subscription for match:', matchId)
-      try { (channel as any).unsubscribe?.() } catch {}
-      channelRef.current = null
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-      setIsOtherTyping(false)
-      setIsOtherOnline(false)
+      subscription.unsubscribe()
     }
   }, [user, matchId, messageState.loading])
 
@@ -230,6 +182,10 @@ export function useMessages(matchId: string) {
             sending: false
           }
         })
+        
+        // Native-like feedback
+        messagingBridge.hapticFeedback('light')
+        messagingBridge.playSound('sent')
       } else {
         setMessageState(prev => ({ ...prev, sending: false }))
       }
@@ -277,17 +233,6 @@ export function useMessages(matchId: string) {
     setMessageState(prev => ({ ...prev, error: null }))
   }
 
-  // Send typing indicator (debounced in caller)
-  const sendTyping = useCallback(() => {
-    try {
-      channelRef.current?.send?.({
-        type: 'broadcast',
-        event: 'typing',
-        payload: { userId: user?.id, at: Date.now() }
-      })
-    } catch {}
-  }, [user?.id])
-
   const getUnreadCount = (): number => {
     if (!user) return 0
     return messageState.messages.filter(
@@ -306,14 +251,11 @@ export function useMessages(matchId: string) {
     loading: messageState.loading,
     error: messageState.error,
     sending: messageState.sending,
-    isOtherTyping,
-    isOtherOnline,
     
     // Actions
     sendMessage,
     loadMessages,
     markMessagesAsRead,
-    sendTyping,
     clearError,
     
     // Computed values
