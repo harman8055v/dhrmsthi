@@ -57,7 +57,7 @@ export class MessagingBridge {
   }
 
   /**
-   * Play native-like sound effects
+   * Play native-like sound effects with nicer, subtler tones
    */
   playSound(type: 'sent' | 'received' | 'error' = 'sent') {
     if (!this.audioContext) return
@@ -69,25 +69,34 @@ export class MessagingBridge {
       oscillator.connect(gainNode)
       gainNode.connect(this.audioContext.destination)
 
-      // Different sounds for different events
+      // Nicer, subtler sounds with harmonics
       switch (type) {
         case 'sent':
-          oscillator.frequency.value = 800
-          gainNode.gain.value = 0.05
-          oscillator.start()
-          oscillator.stop(this.audioContext.currentTime + 0.05)
-          break
-        case 'received':
-          oscillator.frequency.value = 600
-          gainNode.gain.value = 0.03
-          oscillator.start()
-          oscillator.stop(this.audioContext.currentTime + 0.08)
-          break
-        case 'error':
-          oscillator.frequency.value = 300
-          gainNode.gain.value = 0.04
+          // Subtle high chime
+          oscillator.frequency.value = 1200
+          oscillator.type = 'sine'
+          gainNode.gain.value = 0.02
+          gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.1)
           oscillator.start()
           oscillator.stop(this.audioContext.currentTime + 0.1)
+          break
+        case 'received':
+          // Warm, pleasant notification
+          oscillator.frequency.value = 880
+          oscillator.type = 'triangle'
+          gainNode.gain.value = 0.025
+          gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.15)
+          oscillator.start()
+          oscillator.stop(this.audioContext.currentTime + 0.15)
+          break
+        case 'error':
+          // Soft error tone
+          oscillator.frequency.value = 440
+          oscillator.type = 'sine'
+          gainNode.gain.value = 0.03
+          gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.08)
+          oscillator.start()
+          oscillator.stop(this.audioContext.currentTime + 0.08)
           break
       }
     } catch (error) {

@@ -171,27 +171,29 @@ export default function ChatPage() {
     }
   }, [isInitialLoading])
 
+  // Define scrollToBottom function first
+  const scrollToBottom = useCallback(() => {
+    // Force scroll to bottom with a small delay to ensure DOM is ready
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }
+      // Also try scrolling the container directly as fallback
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+      }
+    }, 10)
+  }, [])
+
   // Auto-scroll to bottom when new messages arrive with native-like behavior
   useEffect(() => {
     if (messages.length > 0) {
-      const timer = setTimeout(() => {
-        scrollToBottom()
-      }, 50) // Faster scroll for more responsive feel
-      
-      return () => clearTimeout(timer)
+      // Use multiple timeouts to ensure scrolling works
+      scrollToBottom()
+      setTimeout(scrollToBottom, 100)
+      setTimeout(scrollToBottom, 300)
     }
-  }, [messages])
-
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      // Use native bridge for smoother scrolling if available
-      if (messagingBridge.isNative) {
-        messagingBridge.smoothScrollTo(messagesEndRef.current, { behavior: 'smooth', block: 'end' })
-      } else {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
-      }
-    }
-  }, [])
+  }, [messages, scrollToBottom])
 
   // Track scroll position for dynamic behaviors
   const handleScroll = useCallback(() => {
@@ -223,8 +225,10 @@ export default function ChatPage() {
           }
         }, 50)
         
-        // Scroll to bottom after sending
-        setTimeout(scrollToBottom, 100)
+        // Ensure scroll to bottom after sending with multiple attempts
+        scrollToBottom()
+        setTimeout(scrollToBottom, 150)
+        setTimeout(scrollToBottom, 500)
       } else {
         // Restore message on failure
         setMessageText(messageToSend)
@@ -556,50 +560,52 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          messages.map((message, index) => (
+          messages.map((message, index) => {
+            // Debug log to check message sender
+            console.log('Message:', message.content, 'Sender ID:', message.sender_id, 'Current User ID:', user?.id, 'Is User Message:', message.sender_id === user?.id)
+            
+            return (
             <div
               key={message.id}
               className={`flex ${message.sender_id === user?.id ? 'justify-end' : 'justify-start'} message-animate-in group`}
               style={{ animationDelay: `${index * 0.02}s` }}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl message-bubble message-interactive relative ${
+                className={`max-w-xs lg:max-w-md px-3 py-2.5 rounded-2xl message-bubble message-interactive relative ${
                   message.sender_id === user?.id
-                    ? 'bg-gradient-to-br from-[#8b0000] via-red-600 to-red-700 text-white rounded-br-lg shadow-lg shadow-red-900/25 message-tail sent'
-                    : 'bg-white text-gray-900 border border-gray-200/50 rounded-bl-lg shadow-lg shadow-gray-900/10 message-tail received backdrop-blur-sm'
+                    ? 'bg-gradient-to-br from-purple-50 via-white to-purple-50 text-gray-800 shadow-sm shadow-purple-900/5 border border-purple-200/20'
+                    : 'bg-gradient-to-br from-[#8b0000] via-red-600 to-orange-600 text-white shadow-md shadow-red-900/15'
                 }`}
               >
-                <p className="text-sm leading-relaxed font-medium">{message.content}</p>
-                <div className={`flex items-center gap-1.5 mt-2 ${
+                <p className="text-sm leading-relaxed">{message.content}</p>
+                <div className={`flex items-center gap-1 mt-1.5 ${
                   message.sender_id === user?.id ? 'justify-end' : 'justify-start'
                 }`}>
-                  <span className={`text-xs font-medium ${
-                    message.sender_id === user?.id ? 'text-white/80' : 'text-gray-500'
-                  } message-timestamp opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
+                  <span className={`text-[10px] ${
+                    message.sender_id === user?.id ? 'text-gray-400' : 'text-white/60'
+                  }`}>
                     {formatMessageTime(message.created_at)}
                   </span>
                   {message.sender_id === user?.id && (
-                    <div className={`flex items-center ${
-                      message.read_at ? 'text-blue-300' : 'text-white/70'
+                    <span className={`text-[10px] ml-0.5 ${
+                      message.read_at ? 'text-blue-500' : 'text-gray-400'
                     }`}>
-                      <span className="text-xs font-medium">
-                        {message.read_at ? '✓✓' : '✓'}
-                      </span>
-                    </div>
+                      {message.read_at ? '✓✓' : '✓'}
+                    </span>
                   )}
                 </div>
                 
                 {/* Premium message glow effect */}
-                {message.sender_id === user?.id && (
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-red-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-br-lg"></div>
+                {message.sender_id !== user?.id && (
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-orange-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-bl-lg"></div>
                 )}
               </div>
             </div>
-          ))
+            )
+          })
         )}
-        <div ref={messagesEndRef} className="h-8" />
-        {/* Spacer for floating input */}
-        <div className="h-20" />
+        {/* Scroll anchor point */}
+        <div ref={messagesEndRef} style={{ height: '1px' }} />
       </div>
 
       {/* Error Display */}

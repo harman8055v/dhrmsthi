@@ -14,10 +14,10 @@
 
 @keyframes messageGlow {
   0%, 100% {
-    box-shadow: 0 4px 15px rgba(139, 0, 0, 0.2);
+    box-shadow: 0 4px 15px rgba(251, 146, 60, 0.3);
   }
   50% {
-    box-shadow: 0 8px 25px rgba(139, 0, 0, 0.4);
+    box-shadow: 0 8px 25px rgba(251, 146, 60, 0.5);
   }
 }
 
@@ -65,8 +65,8 @@
   transition: transform 0.2s ease-out;
 }
 
-/* Premium glow effects */
-.message-bubble.sent:hover {
+/* Premium glow effects for received messages */
+.message-bubble.received:hover {
   animation: messageGlow 2s ease-in-out infinite;
 }
 
@@ -184,31 +184,7 @@ input:focus {
   animation: messagePulse 0.3s ease-out;
 }
 
-/* iOS-style message tail */
-.message-tail {
-  position: relative;
-}
-
-.message-tail::before {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-}
-
-.message-tail.sent::before {
-  right: -8px;
-  border-width: 0 0 10px 10px;
-  border-color: transparent transparent #dcf8c6 transparent;
-}
-
-.message-tail.received::before {
-  left: -8px;
-  border-width: 0 10px 10px 0;
-  border-color: transparent #f0f0f0 transparent transparent;
-}
+/* Message tails removed for cleaner look */
 
 /* Prevent zoom on input focus (mobile) */
 @media screen and (max-width: 768px) {
