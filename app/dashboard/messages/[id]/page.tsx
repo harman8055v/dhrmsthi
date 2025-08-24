@@ -89,7 +89,10 @@ export default function ChatPage() {
     error: messagesError, 
     sending, 
     sendMessage,
-    markMessagesAsRead 
+    markMessagesAsRead,
+    isOtherTyping,
+    isOtherOnline,
+    sendTyping 
   } = useMessages(match ? matchId : '')
 
   // Mark messages as read when chat is viewed/focused - only after match is loaded
@@ -196,6 +199,9 @@ export default function ChatPage() {
       if (success) {
         setMessageText("")
         console.log('[Chat] Message sent successfully')
+        try {
+          ;(window as any)?.ReactNativeWebView?.postMessage?.(JSON.stringify({ type: 'haptic', style: 'light' }))
+        } catch {}
       } else {
         console.error('[Chat] Send failed - success is false')
         toast.error("Failed to send message. Please try again.")
@@ -456,8 +462,8 @@ export default function ChatPage() {
               <h2 className="font-semibold text-gray-900 text-base truncate">
                 {match.other_user.first_name} {match.other_user.last_name}
               </h2>
-              <p className={`text-xs truncate ${getActiveStatus() === 'Active now' ? 'text-green-600' : 'text-gray-500'}`}>
-                {getActiveStatus()}
+              <p className={`text-xs truncate ${isOtherOnline ? 'text-green-600' : 'text-gray-500'}`}>
+                {isOtherTyping ? 'Typing…' : isOtherOnline ? 'Online' : getActiveStatus()}
               </p>
             </div>
           </div>
@@ -567,7 +573,16 @@ export default function ChatPage() {
             <div className="flex-1 relative">
               <Input
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
+                onChange={(e) => {
+                  setMessageText(e.target.value)
+                  // Throttle typing indicator
+                  if ((e.target as HTMLInputElement).value.trim()) {
+                    if (!(window as any)._lastTypingTs || Date.now() - (window as any)._lastTypingTs > 800) {
+                      ;(window as any)._lastTypingTs = Date.now()
+                      sendTyping()
+                    }
+                  }
+                }}
                 placeholder="Type a message..."
                 className="w-full rounded-full border-gray-300 focus:border-[#8b0000] focus:ring-[#8b0000] h-12 text-base pl-4 pr-4 bg-gray-50 hover:bg-white transition-colors"
                 disabled={sending}
