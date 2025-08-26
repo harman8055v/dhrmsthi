@@ -60,6 +60,7 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
   const [processing, setProcessing] = useState<string | null>(null)
   const [showInstantMatchDialog, setShowInstantMatchDialog] = useState(false)
   const [matchedUser, setMatchedUser] = useState<any>(null)
+  const [matchAnimation, setMatchAnimation] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -125,12 +126,16 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
           setMatchedUser(likedUser.profile)
           setShowInstantMatchDialog(true)
         }
-        // Remove the liked user from the list
-        setData(prev => prev ? {
-          ...prev,
-          likes: prev.likes.filter(like => like.profile.id !== likedUserId),
-          total_likes: prev.total_likes - 1
-        } : null)
+        // Trigger match animation and then remove from the list after a short delay
+        setMatchAnimation(likedUserId)
+        setTimeout(() => {
+          setData(prev => prev ? {
+            ...prev,
+            likes: prev.likes.filter(like => like.profile.id !== likedUserId),
+            total_likes: Math.max(prev.total_likes - 1, 0)
+          } : null)
+          setMatchAnimation(null)
+        }, 5000)
       } else {
         if (result.upgrade_required) {
           toast.error("Premium subscription required for instant matching")

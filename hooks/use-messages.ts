@@ -149,7 +149,8 @@ export function useMessages(matchId: string) {
     try {
       setMessageState(prev => ({ ...prev, loading: true, error: null }))
       
-      const messages = await messageService.getMessages(matchId)
+      // Fetch only the most recent 50 messages for fast initial render
+      const messages = await messageService.getMessages(matchId, { limit: 50 })
       
       setMessageState(prev => ({
         ...prev,
@@ -180,32 +181,37 @@ export function useMessages(matchId: string) {
 
     try {
       setMessageState(prev => ({ ...prev, sending: true, error: null }))
-      
-      const serverMessage = await messageService.sendMessage(matchId, content)
-      
-      // Optimistically add the message to state immediately
-      // Real-time will handle duplicates with the exists check in line 66
-      if (serverMessage) {
-        setMessageState(prev => {
-          // Check if message already exists (in case real-time was super fast)
-          const exists = prev.messages.find(msg => msg.id === serverMessage.id)
-          if (exists) {
-            return { ...prev, sending: false }
-          }
-          
-          return {
-            ...prev,
-            messages: [...prev.messages, serverMessage],
-            sending: false
-          }
-        })
-        
-        // Native-like feedback
-        messagingBridge.hapticFeedback('light')
-        messagingBridge.playSound('sent')
-      } else {
-        setMessageState(prev => ({ ...prev, sending: false }))
+
+      // Create a temp optimistic message
+      const tempId = `temp-${Date.now()}`
+      const tempMessage: Message = {
+        id: tempId as any,
+        match_id: matchId,
+        sender_id: user.id,
+        content: content.trim(),
+        is_highlighted: false,
+        created_at: new Date().toISOString(),
       }
+
+      // Add optimistic message immediately
+      setMessageState(prev => ({
+        ...prev,
+        messages: [...prev.messages, tempMessage]
+      }))
+
+      // Fire-and-wait for server persistence
+      const serverMessage = await messageService.sendMessage(matchId, content)
+
+      // Reconcile: replace temp with real
+      setMessageState(prev => ({
+        ...prev,
+        sending: false,
+        messages: prev.messages.map(m => m.id === tempId ? serverMessage : m)
+      }))
+
+      // Native-like feedback
+      messagingBridge.hapticFeedback('light')
+      messagingBridge.playSound('sent')
       
       return true
     } catch (error: any) {
@@ -214,6 +220,11 @@ export function useMessages(matchId: string) {
         ...prev,
         sending: false,
         error: error.message || 'Failed to send message'
+      }))
+      // Remove temp message if present
+      setMessageState(prev => ({
+        ...prev,
+        messages: prev.messages.filter(m => typeof m.id === 'string' && (m.id as unknown as string).startsWith('temp-') === false)
       }))
       return false
     }

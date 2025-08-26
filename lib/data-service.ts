@@ -568,18 +568,38 @@ export const messageService = {
   },
 
   // Get messages for a match - Direct Supabase (much faster!)
-  async getMessages(matchId: string): Promise<Message[]> {
+  // Optionally limit to the most recent N messages for faster initial loads
+  async getMessages(matchId: string, options?: { limit?: number }): Promise<Message[]> {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
 
       // Skip match verification for performance - assume it's already verified in the UI
       // The RLS policies will handle security at the database level
-      const { data, error } = await supabase
+      const base = supabase
         .from('messages')
         .select('*')
         .eq('match_id', matchId)
-        .order('created_at', { ascending: true })
+      
+      // If a limit is provided, fetch newest first then reverse for chronological display
+      const limit = options?.limit
+      let data: Message[] | null = null
+      let error: any = null
+      
+      if (limit && limit > 0) {
+        const resp = await base
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        error = (resp as any).error
+        data = (resp as any).data
+        if (data) {
+          data = [...data].reverse()
+        }
+      } else {
+        const resp = await base.order('created_at', { ascending: true })
+        error = (resp as any).error
+        data = (resp as any).data
+      }
 
       if (error) throw error
       return data || []
