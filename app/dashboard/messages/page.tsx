@@ -40,9 +40,15 @@ export default function MessagesPage() {
     refetch: refetchConversations,
     error: conversationsError,
   } = useQuery({
-    queryKey: ["conversations"],
+    queryKey: ["conversations", "list"],
     queryFn: async () => {
-      const res = await fetch("/api/messages/conversations?limit=10", { credentials: "include" })
+      const res = await fetch("/api/messages/conversations?limit=20", { 
+        credentials: "include",
+        // Add cache headers for better performance
+        headers: {
+          'Cache-Control': 'max-age=60',
+        }
+      })
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         throw new Error(errorData.message || `Failed to fetch conversations: ${res.status}`)
@@ -51,9 +57,12 @@ export default function MessagesPage() {
       return data
     },
     enabled: isVerified && !loading,
-    retry: 2,
-    retryDelay: 1000,
-    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+    retry: 1,
+    retryDelay: 500,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnMount: false, // Don't refetch if data exists in cache
   })
 
   // Safely extract conversations array with robust error handling
@@ -63,11 +72,11 @@ export default function MessagesPage() {
       
       // Handle different possible response structures
       if (Array.isArray(conversationsResponse)) {
-        return conversationsResponse.slice(0, 10)
+        return conversationsResponse
       }
       
       if ((conversationsResponse as any).conversations && Array.isArray((conversationsResponse as any).conversations)) {
-        return (conversationsResponse as any).conversations.slice(0, 10)
+        return (conversationsResponse as any).conversations
       }
       
       console.warn('[Messages] Unexpected conversations response structure:', conversationsResponse)
@@ -351,7 +360,26 @@ export default function MessagesPage() {
                 </div>
               ) : convLoading ? (
                 <div className="text-center py-12 px-6">
-                  <div className="w-8 h-8 animate-spin rounded-full border-2 border-[#8b0000] border-t-transparent mx-auto mb-4"></div>
+                  {/* Simple spiritual loader */}
+                  <div className="relative w-12 h-12 mx-auto mb-4">
+                    <div className="absolute inset-0 animate-spin">
+                      {[...Array(8)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="absolute w-1.5 h-1.5 bg-[#8b0000] rounded-full"
+                          style={{
+                            top: '50%',
+                            left: '50%',
+                            transform: `rotate(${i * 45}deg) translateX(20px) translateY(-50%)`,
+                            opacity: 0.3 + (i * 0.1)
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-2 h-2 bg-[#8b0000] rounded-full"></div>
+                    </div>
+                  </div>
                   <p className="text-gray-600">Loading conversations...</p>
                 </div>
               ) : conversations.length === 0 ? (

@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
     // Get URL parameters
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
+    const offset = parseInt(searchParams.get('offset') || '0');
 
     // Fetch user's matches (these become conversations when there are messages)
     const { data: matches, error: matchesError } = await supabaseAdmin
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false, nullsFirst: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     if (matchesError) {
       console.error('Error fetching matches:', matchesError);
@@ -62,11 +63,50 @@ export async function GET(request: NextRequest) {
     }
 
     // Get other user IDs from matches
+    const matchIds = matches.map(m => m.id);
     const otherUserIds = matches.map(match => 
       match.user1_id === user.id ? match.user2_id : match.user1_id
     );
 
-    // Fetch other users' profiles with full data
+    // Batch fetch: Get ALL last messages for ALL matches in ONE query
+    const { data: allLastMessages, error: messagesError } = await supabaseAdmin
+      .from('messages')
+      .select('match_id, content, created_at, sender_id')
+      .in('match_id', matchIds)
+      .order('created_at', { ascending: false });
+
+    if (messagesError) {
+      console.error('Error fetching messages:', messagesError);
+    }
+
+    // Group last messages by match_id (take first message per match since ordered by created_at DESC)
+    const lastMessagesByMatch = new Map();
+    allLastMessages?.forEach(msg => {
+      if (!lastMessagesByMatch.has(msg.match_id)) {
+        lastMessagesByMatch.set(msg.match_id, msg);
+      }
+    });
+
+    // Batch fetch: Get ALL unread messages for ALL matches in ONE query
+    const { data: allUnreadMessages, error: unreadError } = await supabaseAdmin
+      .from('messages')
+      .select('match_id, id')
+      .in('match_id', matchIds)
+      .neq('sender_id', user.id)
+      .is('read_at', null);
+
+    if (unreadError) {
+      console.error('Error fetching unread messages:', unreadError);
+    }
+
+    // Count unread messages per match
+    const unreadCountsByMatch = new Map();
+    allUnreadMessages?.forEach(msg => {
+      const count = unreadCountsByMatch.get(msg.match_id) || 0;
+      unreadCountsByMatch.set(msg.match_id, count + 1);
+    });
+
+    // Batch fetch: Get ALL other users' profiles in ONE query
     const { data: otherUsers, error: usersError } = await supabaseAdmin
       .from('users')
       .select(`
@@ -82,7 +122,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch user profiles' }, { status: 500 });
     }
 
-    // Process photo URLs to get signed URLs - optimize by limiting to first photo only for conversations list
+    // Create a map for easy lookup
+    const userMap = new Map();
+    otherUsers?.forEach(userProfile => {
+      userMap.set(userProfile.id, userProfile);
+    });
+
+    // Process all photo URLs in parallel
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
       if (!photoPath) return null;
       
@@ -104,101 +150,61 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    // Process user photos with signed URLs - OPTIMIZED: only process profile photo for conversations list
-    const processedUsers = await Promise.all(
-      (otherUsers || []).map(async (userProfile) => {
-        let processedProfilePhoto = null;
+    // Prepare all photo processing promises
+    const photoProcessingPromises = otherUsers?.map(async (userProfile) => {
+      if (userProfile.profile_photo_url) {
+        const processedUrl = await processPhotoUrl(userProfile.profile_photo_url, userProfile.id);
+        return { userId: userProfile.id, photoUrl: processedUrl };
+      }
+      return { userId: userProfile.id, photoUrl: null };
+    }) || [];
 
-        // Only process profile photo for conversations list (skip user_photos array for performance)
-        if (userProfile.profile_photo_url) {
-          processedProfilePhoto = await processPhotoUrl(userProfile.profile_photo_url, userProfile.id);
-        }
-
-        return {
-          ...userProfile,
-          profile_photo_url: processedProfilePhoto,
-          user_photos: userProfile.user_photos || [] // Keep original array but don't process for signed URLs
-        };
-      })
-    );
-
-    // Create a map for easy lookup
-    const userMap = new Map();
-    processedUsers.forEach(userProfile => {
-      userMap.set(userProfile.id, userProfile);
+    // Process all photos in parallel
+    const processedPhotos = await Promise.all(photoProcessingPromises);
+    
+    // Create photo URL map
+    const photoUrlMap = new Map();
+    processedPhotos.forEach(({ userId, photoUrl }) => {
+      photoUrlMap.set(userId, photoUrl);
     });
 
-    // For each match, get the last message and unread count
-    const conversationsWithMessages = await Promise.all(
-      matches.map(async (match) => {
-        const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
-        const otherUser = userMap.get(otherUserId);
+    // Build conversations array efficiently (no async operations in map)
+    const conversations = matches.map(match => {
+      const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+      const otherUser = userMap.get(otherUserId);
 
-        if (!otherUser) {
-          return null; // Skip if we couldn't load the other user
+      if (!otherUser) {
+        return null; // Skip if we couldn't load the other user
+      }
+
+      // Get pre-fetched data from our maps
+      const lastMessage = lastMessagesByMatch.get(match.id);
+      const unreadCount = unreadCountsByMatch.get(match.id) || 0;
+      const profilePhotoUrl = photoUrlMap.get(otherUserId);
+
+      return {
+        id: match.id,
+        user1_id: match.user1_id,
+        user2_id: match.user2_id,
+        created_at: match.created_at,
+        last_message_at: match.last_message_at,
+        last_message_text: lastMessage?.content || null,
+        unread_count: unreadCount,
+        other_user: {
+          ...otherUser,
+          profile_photo_url: profilePhotoUrl,
+          user_photos: otherUser.user_photos || [] // Keep original array but don't process for signed URLs
         }
+      };
+    });
 
-        // Get last message for this match
-        const { data: lastMessage } = await supabaseAdmin
-          .from('messages')
-          .select('content, created_at, sender_id')
-          .eq('match_id', match.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        // Get unread message count (messages from other user that current user hasn't read)
-        // Use a more robust query that handles edge cases
-        let unreadCount = 0;
-        try {
-          const { data: unreadMessages, error: unreadError } = await supabaseAdmin
-            .from('messages')
-            .select('id, created_at, read_at')
-            .eq('match_id', match.id)
-            .eq('sender_id', otherUserId)
-            .is('read_at', null)
-            .order('created_at', { ascending: false });
-
-          if (unreadError) {
-            console.error(`[Conversations] Error fetching unread messages for match ${match.id}:`, unreadError);
-            unreadCount = 0;
-          } else {
-            unreadCount = unreadMessages?.length || 0;
-            console.log(`[Conversations] Match ${match.id}: ${unreadCount} unread messages from user ${otherUserId}`);
-            if (unreadCount > 0) {
-              console.log(`[Conversations] Unread message IDs:`, unreadMessages?.map(m => m.id));
-            }
-          }
-        } catch (err) {
-          console.error(`[Conversations] Exception counting unread for match ${match.id}:`, err);
-          unreadCount = 0;
-        }
-
-        return {
-          id: match.id,
-          user1_id: match.user1_id,
-          user2_id: match.user2_id,
-          created_at: match.created_at,
-          last_message_at: match.last_message_at,
-          last_message_text: lastMessage?.content || null,
-          unread_count: unreadCount || 0,
-          other_user: otherUser
-        };
-      })
-    );
-
-    // Filter out null results and sort by last message time
-    const validConversations = conversationsWithMessages
-      .filter(conv => conv !== null)
-      .sort((a, b) => {
-        const aTime = a!.last_message_at || a!.created_at;
-        const bTime = b!.last_message_at || b!.created_at;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+    // Filter out null results and they're already sorted by the original query
+    const validConversations = conversations.filter(conv => conv !== null);
 
     return NextResponse.json({ 
       conversations: validConversations,
-      total: validConversations.length 
+      total: validConversations.length,
+      hasMore: validConversations.length === limit 
     });
 
   } catch (error) {
@@ -208,4 +214,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

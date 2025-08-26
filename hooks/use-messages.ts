@@ -20,20 +20,6 @@ export function useMessages(matchId: string) {
     sending: false
   })
   
-  // Add loading timeout to reload page if loading takes too long
-  useEffect(() => {
-    if (messageState.loading) {
-      const timeoutId = setTimeout(() => {
-        console.warn('[useMessages] Loading timeout - reloading page')
-        if (typeof window !== 'undefined') {
-          window.location.reload()
-        }
-      }, 3000) // 3 seconds timeout
-
-      return () => clearTimeout(timeoutId)
-    }
-  }, [messageState.loading])
-  
   // Remove all polling - real-time only!
 
   // Load messages on mount and when matchId changes
@@ -45,7 +31,7 @@ export function useMessages(matchId: string) {
 
   // Enhanced real-time subscription with better error handling and logging
   useEffect(() => {
-    if (!user || !matchId || messageState.loading) {
+    if (!user || !matchId) {
       return
     }
 
@@ -142,10 +128,12 @@ export function useMessages(matchId: string) {
         loading: false
       }))
 
-      // Auto-mark messages as read after successful load
-      setTimeout(() => {
-        markMessagesAsRead()
-      }, 800)
+      // Auto-mark messages as read after successful load (non-blocking)
+      if (messages.length > 0) {
+        requestAnimationFrame(() => {
+          markMessagesAsRead()
+        })
+      }
     } catch (error: any) {
       console.error('Load messages error:', error)
       setMessageState(prev => ({

@@ -592,66 +592,75 @@ export const messageService = {
     }
   },
 
-  // Mark messages as read - Direct Supabase (much faster!)
+  // Mark messages as read - Optimized batch update using RPC
   async markMessagesAsRead(matchId: string): Promise<void> {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
 
-      // Get all unread messages from the other user first
-      const { data: unreadMessages, error: fetchError } = await supabase
+      // Use a single RPC call for batch update (much faster than individual updates)
+      const readTimestamp = new Date().toISOString()
+      
+      // This performs a batch update in a single database round-trip
+      const { data, error, count } = await supabase
         .from('messages')
-        .select('id, sender_id, read_at, created_at')
+        .update({ read_at: readTimestamp }, { count: 'exact' })
         .eq('match_id', matchId)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .order('created_at', { ascending: false })
+        .neq('sender_id', user.id)  // Only messages from other user
+        .is('read_at', null)  // Only unread messages
 
-      if (fetchError) {
-        console.error(`[markMessagesAsRead] Error fetching unread messages:`, fetchError)
-        throw fetchError
-      }
-
-      const unreadCount = unreadMessages?.length || 0
-
-      if (unreadCount === 0) {
-        return
-      }
-
-              // Mark messages as read with current timestamp
-        const readTimestamp = new Date().toISOString()
-        const messageIds = unreadMessages.map(m => m.id)
-
-        // Update messages one by one to avoid RLS issues with .in() queries
-        let successCount = 0
-        for (const messageId of messageIds) {
-
-          const { error: updateError, count } = await supabase
-            .from('messages')
-            .update({ read_at: readTimestamp }, { count: 'exact' })
-            .eq('id', messageId)
-            .eq('match_id', matchId)  // Explicit match for RLS
-            .neq('sender_id', user.id)  // Only messages from other user
-            .is('read_at', null)  // Only unread messages
-
-          if (updateError) {
-            console.error(`[markMessagesAsRead] Error updating message ${messageId}:`, updateError)
-          } else {
-            successCount += (count || 0)
-          }
-        }
+      if (error) {
+        // If batch update fails due to RLS, fall back to individual updates (but with batching)
+        console.warn('[markMessagesAsRead] Batch update failed, trying chunked updates:', error)
         
-        // Double-check by querying unread count again
-        const { data: remainingUnread, error: remainingError } = await supabase
+        // Get unread message IDs
+        const { data: unreadMessages, error: fetchError } = await supabase
           .from('messages')
           .select('id')
           .eq('match_id', matchId)
           .neq('sender_id', user.id)
           .is('read_at', null)
-        
-        if (remainingError) {
-          console.error(`[markMessagesAsRead] Error checking remaining unread:`, remainingError)
+          .limit(100) // Process max 100 messages at a time
+
+        if (fetchError) {
+          console.error(`[markMessagesAsRead] Error fetching unread messages:`, fetchError)
+          throw fetchError
         }
+
+        if (!unreadMessages || unreadMessages.length === 0) {
+          return
+        }
+
+        const messageIds = unreadMessages.map(m => m.id)
+        
+        // Update in chunks of 10 for better performance
+        const chunkSize = 10
+        const chunks = []
+        for (let i = 0; i < messageIds.length; i += chunkSize) {
+          chunks.push(messageIds.slice(i, i + chunkSize))
+        }
+
+        // Process chunks in parallel
+        const updatePromises = chunks.map(chunk => 
+          supabase
+            .from('messages')
+            .update({ read_at: readTimestamp })
+            .in('id', chunk)
+            .eq('match_id', matchId)
+            .neq('sender_id', user.id)
+        )
+
+        const results = await Promise.all(updatePromises)
+        
+        const failedChunks = results.filter(r => r.error)
+        if (failedChunks.length > 0) {
+          console.error('[markMessagesAsRead] Some chunks failed:', failedChunks)
+        }
+        
+        console.log(`[markMessagesAsRead] Updated ${messageIds.length} messages in ${chunks.length} chunks`)
+      } else {
+        console.log(`[markMessagesAsRead] Batch updated ${count || 0} messages`)
+      }
 
     } catch (error: any) {
       console.error('Mark messages as read error:', error)

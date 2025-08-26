@@ -65,7 +65,7 @@ export default function ChatPage() {
   const [showUnmatchDialog, setShowUnmatchDialog] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
-  const [loadingCountdown, setLoadingCountdown] = useState(3)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -152,48 +152,47 @@ export default function ChatPage() {
   // Show loading state while both match and messages are loading
   const isInitialLoading = matchLoading || (messagesLoading && messages.length === 0)
 
-  // Add timeout to reload page if loading takes too long
-  useEffect(() => {
-    if (isInitialLoading) {
-      setLoadingCountdown(3)
-      const countdownInterval = setInterval(() => {
-        setLoadingCountdown(prev => {
-          if (prev <= 1) {
-            console.warn('[Chat] Loading timeout - reloading page')
-            window.location.reload()
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
 
-      return () => clearInterval(countdownInterval)
+
+  // Define scrollToBottom function with instant option
+  const scrollToBottom = useCallback((instant = false) => {
+    // Scroll to bottom - instantly for initial load, smooth for new messages
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: instant ? 'instant' : 'smooth', 
+        block: 'end' 
+      })
     }
-  }, [isInitialLoading])
-
-  // Define scrollToBottom function first
-  const scrollToBottom = useCallback(() => {
-    // Force scroll to bottom with a small delay to ensure DOM is ready
-    setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
-      }
-      // Also try scrolling the container directly as fallback
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
-      }
-    }, 10)
+    // Also try scrolling the container directly as fallback
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
   }, [])
 
-  // Auto-scroll to bottom when new messages arrive with native-like behavior
+  // Auto-scroll to bottom when messages first load or new messages arrive
+  const [hasInitiallyScrolled, setHasInitiallyScrolled] = useState(false)
+  
   useEffect(() => {
     if (messages.length > 0) {
-      // Use multiple timeouts to ensure scrolling works
-      scrollToBottom()
-      setTimeout(scrollToBottom, 100)
-      setTimeout(scrollToBottom, 300)
+      if (!hasInitiallyScrolled) {
+        // First load - scroll instantly to bottom (no animation)
+        setTimeout(() => {
+          scrollToBottom(true)
+          setHasInitiallyScrolled(true)
+        }, 0)
+      } else {
+        // New message - smooth scroll only if user is near bottom
+        if (scrollContainerRef.current) {
+          const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+          const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+          
+          if (isNearBottom) {
+            scrollToBottom(false)
+          }
+        }
+      }
     }
-  }, [messages, scrollToBottom])
+  }, [messages.length, scrollToBottom, hasInitiallyScrolled])
 
   // Track scroll position for dynamic behaviors
   const handleScroll = useCallback(() => {
@@ -225,10 +224,8 @@ export default function ChatPage() {
           }
         }, 50)
         
-        // Ensure scroll to bottom after sending with multiple attempts
-        scrollToBottom()
-        setTimeout(scrollToBottom, 150)
-        setTimeout(scrollToBottom, 500)
+        // Smooth scroll to bottom after sending
+        setTimeout(() => scrollToBottom(false), 50)
       } else {
         // Restore message on failure
         setMessageText(messageToSend)
@@ -384,15 +381,41 @@ export default function ChatPage() {
 
   if (loading || isInitialLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-rose-50/50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b0000] mx-auto mb-4"></div>
-          <p className="text-gray-600 mb-2">Loading conversation...</p>
-          {isInitialLoading && loadingCountdown > 0 && (
-            <p className="text-sm text-gray-500">
-              Auto-refresh in {loadingCountdown}s if still loading
-            </p>
-          )}
+          {/* Elegant lotus-inspired loader */}
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            {/* Breathing circle background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#8b0000]/10 to-orange-300/10 rounded-full animate-pulse"></div>
+            
+            {/* Rotating lotus petals */}
+            <div className="absolute inset-2 animate-spin">
+              {[...Array(8)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-2 h-2 bg-gradient-to-br from-[#8b0000] to-orange-500 rounded-full"
+                  style={{
+                    top: '50%',
+                    left: '50%',
+                    transform: `rotate(${i * 45}deg) translateX(24px) translateY(-50%)`,
+                    opacity: 0.4 + (i * 0.075)
+                  }}
+                />
+              ))}
+            </div>
+            
+            {/* Center dot */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-3 h-3 bg-gradient-to-br from-[#8b0000] to-orange-500 rounded-full"></div>
+            </div>
+          </div>
+          
+          <h3 className="text-lg font-medium text-gray-800 mb-1">Opening conversation</h3>
+          <p className="text-sm text-gray-500">
+            Connecting with {match?.other_user?.first_name || 'your match'}...
+          </p>
+          
+
         </div>
       </div>
     )
@@ -534,12 +557,31 @@ export default function ChatPage() {
       {/* Premium Messages Container */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-6 space-y-3 pb-32 scroll-smooth bg-gradient-to-b from-transparent via-gray-50/30 to-transparent"
+        className="flex-1 overflow-y-auto px-4 py-6 space-y-3 pb-32 bg-gradient-to-b from-transparent via-gray-50/30 to-transparent"
         onScroll={handleScroll}>
         {messagesLoading && messages.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8b0000] mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading messages...</p>
+          <div className="text-center py-12">
+            {/* Elegant spiritual loader */}
+            <div className="relative w-12 h-12 mx-auto mb-4">
+              <div className="absolute inset-0 animate-spin">
+                {[...Array(6)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-1.5 h-1.5 bg-gradient-to-br from-[#8b0000] to-orange-400 rounded-full"
+                    style={{
+                      top: '50%',
+                      left: '50%',
+                      transform: `rotate(${i * 60}deg) translateX(16px) translateY(-50%)`,
+                      opacity: 0.3 + (i * 0.1)
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-[#8b0000] rounded-full"></div>
+              </div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading messages...</p>
           </div>
         ) : messages.length === 0 ? (
           <div className="text-center py-8">
@@ -636,8 +678,8 @@ export default function ChatPage() {
                 spellCheck="true"
                 enterKeyHint="send"
                 onFocus={() => {
-                  // Scroll to bottom when focusing input
-                  setTimeout(scrollToBottom, 100)
+                  // Smooth scroll to bottom when focusing input
+                  setTimeout(() => scrollToBottom(false), 100)
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -653,7 +695,22 @@ export default function ChatPage() {
               className="bg-gradient-to-br from-[#8b0000] via-red-600 to-red-700 hover:from-red-700 hover:via-red-800 hover:to-red-900 text-white rounded-full w-14 h-14 p-0 flex items-center justify-center flex-shrink-0 button-press transition-all duration-300 shadow-xl shadow-red-900/30 hover:shadow-2xl hover:shadow-red-900/40 disabled:opacity-50 disabled:cursor-not-allowed send-button-active hover:scale-105 active:scale-95"
             >
               {sending ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                <div className="relative w-5 h-5">
+                  {/* Elegant sending animation */}
+                  <div className="absolute inset-0 animate-spin">
+                    {[...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute w-1 h-1 bg-white rounded-full"
+                        style={{
+                          top: '50%',
+                          left: '50%',
+                          transform: `rotate(${i * 120}deg) translateX(8px) translateY(-50%)`
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <Send className="w-5 h-5 ml-0.5" />
               )}

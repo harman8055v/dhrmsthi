@@ -13,38 +13,38 @@ export default function ChatLoading() {
         </div>
       </div>
 
-      {/* Messages Skeleton */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Message bubbles skeleton */}
-        <div className="flex justify-start">
-          <div className="max-w-xs bg-gray-200 rounded-2xl p-4 animate-pulse">
-            <div className="w-40 h-4 bg-gray-300 rounded mb-2"></div>
-            <div className="w-24 h-3 bg-gray-300 rounded"></div>
+      {/* Simple centered loader */}
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          {/* Simple lotus-inspired spinner */}
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            <div className="absolute inset-0">
+              {/* Petals as loading dots with CSS animation classes */}
+              {[...Array(8)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-2 h-2 bg-[#8b0000] rounded-full animate-pulse"
+                  style={{
+                    top: '50%',
+                    left: '50%',
+                    transform: `rotate(${i * 45}deg) translateX(20px) translateY(-50%)`,
+                    animationDelay: `${i * 0.1}s`
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-        
-        <div className="flex justify-end">
-          <div className="max-w-xs bg-gray-300 rounded-2xl p-4 animate-pulse">
-            <div className="w-32 h-4 bg-gray-400 rounded mb-2"></div>
-            <div className="w-16 h-3 bg-gray-400 rounded"></div>
-          </div>
-        </div>
-        
-        <div className="flex justify-start">
-          <div className="max-w-xs bg-gray-200 rounded-2xl p-4 animate-pulse">
-            <div className="w-48 h-4 bg-gray-300 rounded mb-2"></div>
-            <div className="w-20 h-3 bg-gray-300 rounded"></div>
-          </div>
+          <p className="text-gray-600">Loading conversation...</p>
         </div>
       </div>
 
       {/* Input Skeleton */}
       <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-12 bg-gray-200 rounded-full animate-pulse"></div>
-          <div className="w-12 h-12 bg-gray-200 rounded-full animate-pulse"></div>
+        <div className="flex gap-3">
+          <div className="flex-1 h-10 bg-gray-200 rounded-full animate-pulse"></div>
+          <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
         </div>
       </div>
     </div>
   )
-} 
+}
