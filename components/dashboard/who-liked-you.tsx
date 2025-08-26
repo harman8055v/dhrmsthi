@@ -296,13 +296,28 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
             <motion.div
               key={like.id}
               initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.02 }}
+              animate={{ 
+                opacity: matchAnimation === like.profile.id ? 0 : 1,
+                scale: matchAnimation === like.profile.id ? 1.1 : 1,
+                rotate: matchAnimation === like.profile.id ? 5 : 0
+              }}
+              whileHover={{ scale: processing !== like.profile.id && matchAnimation !== like.profile.id ? 1.02 : 1 }}
               className="relative"
             >
               <Card className={`p-3 cursor-pointer transition-all duration-200 ${
                 data.can_see_details ? 'hover:shadow-md' : ''
+              } ${
+                matchAnimation === like.profile.id ? 'ring-4 ring-green-400 shadow-2xl' : ''
               }`}>
+                {/* Match Success Overlay */}
+                {matchAnimation === like.profile.id && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-400/95 to-emerald-500/95 z-50 rounded-lg flex items-center justify-center">
+                    <div className="text-white text-center animate-bounce">
+                      <Heart className="w-12 h-12 mx-auto mb-1" fill="currentColor" />
+                      <p className="text-sm font-bold">Matched!</p>
+                    </div>
+                  </div>
+                )}
                 <div className="text-center">
                   {/* Profile Image */}
                   <div className="relative mb-3">
@@ -390,7 +405,13 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
                     }`}
                   >
                     {processing === like.profile.id ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      </div>
+                    ) : matchAnimation === like.profile.id ? (
+                      <>
+                        <Heart className="w-3 h-3 animate-pulse" fill="currentColor" />
+                      </>
                     ) : data.can_see_details ? (
                       <>
                         <Heart className="w-3 h-3 mr-1" fill="currentColor" />
@@ -408,6 +429,29 @@ export default function WhoLikedYou({ userProfile }: WhoLikedYouProps) {
             </motion.div>
           ))}
         </div>
+        
+        <style jsx>{`
+          @keyframes matchPulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          
+          @keyframes fadeInScale {
+            from { 
+              opacity: 0; 
+              transform: scale(0.8);
+            }
+            to { 
+              opacity: 1; 
+              transform: scale(1);
+            }
+          }
+          
+          .animate-fade-in {
+            animation: fadeInScale 0.3s ease-out forwards;
+          }
+        `}</style>
 
         {/* Show More Button for Premium Users */}
         {data.can_see_details && data.total_likes > 8 && (

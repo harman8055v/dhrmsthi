@@ -19,6 +19,7 @@ export function useMessages(matchId: string) {
     error: null,
     sending: false
   })
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
   
   // Remove all polling - real-time only!
 
@@ -37,8 +38,11 @@ export function useMessages(matchId: string) {
 
     console.log('[useMessages] Setting up real-time subscription for match:', matchId)
     
+    // Create a unique channel name to avoid conflicts
+    const channelName = `messages:${matchId}:${user.id}`
+    
     const subscription = supabase
-      .channel(`messages_${matchId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -48,18 +52,18 @@ export function useMessages(matchId: string) {
           filter: `match_id=eq.${matchId}`
         },
         (payload) => {
-          console.log('[useMessages] Received INSERT event:', payload)
+          console.log('[useMessages] New message received')
           const newMessage = payload.new as Message
           
           setMessageState(prev => {
             // Check for duplicates
             const exists = prev.messages.find(msg => msg.id === newMessage.id)
             if (exists) {
-              console.log('[useMessages] Message already exists, skipping:', newMessage.id)
+              // Message already exists, skip
               return prev
             }
             
-                      console.log('[useMessages] Adding new message to state:', newMessage.id)
+
           return {
             ...prev,
             messages: [...prev.messages, newMessage]
@@ -84,7 +88,7 @@ export function useMessages(matchId: string) {
           filter: `match_id=eq.${matchId}`
         },
         (payload) => {
-          console.log('[useMessages] Received UPDATE event:', payload)
+          console.log('[useMessages] Message updated')
           const updatedMessage = payload.new as Message
           
           setMessageState(prev => ({
@@ -99,12 +103,16 @@ export function useMessages(matchId: string) {
         console.log('[useMessages] Subscription status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('[useMessages] Successfully subscribed to real-time updates')
+          setRealtimeConnected(true)
         } else if (status === 'CLOSED') {
           console.log('[useMessages] Subscription closed')
+          setRealtimeConnected(false)
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('[useMessages] Channel error - real-time updates may not work')
-          // Fallback: reload messages if subscription fails
-          setTimeout(() => loadMessages(), 1000)
+          console.warn('[useMessages] Channel error - real-time may not work')
+          setRealtimeConnected(false)
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[useMessages] Subscription timed out')
+          setRealtimeConnected(false)
         }
       })
 
@@ -112,7 +120,28 @@ export function useMessages(matchId: string) {
       console.log('[useMessages] Cleaning up subscription for match:', matchId)
       subscription.unsubscribe()
     }
-  }, [user, matchId, messageState.loading])
+  }, [user, matchId]) // Removed messageState.loading to prevent unnecessary re-subscriptions
+
+  // Fallback polling when real-time is not connected
+  useEffect(() => {
+    if (realtimeConnected || !user || !matchId) return
+    
+    // Poll every 5 seconds only if real-time is disconnected
+    const pollInterval = setInterval(() => {
+      console.log('[useMessages] Polling for new messages (real-time disconnected)')
+      // Directly fetch messages without using loadMessages to avoid dependency issues
+      messageService.getMessages(matchId).then(messages => {
+        setMessageState(prev => ({
+          ...prev,
+          messages
+        }))
+      }).catch(error => {
+        console.error('[useMessages] Polling error:', error)
+      })
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [realtimeConnected, matchId, user])
 
   const loadMessages = async () => {
     if (!user || !matchId) return
