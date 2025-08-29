@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { useMessages } from "@/hooks/use-messages"
@@ -31,8 +31,10 @@ import { ArrowLeft, Send, MoreVertical, Flag, UserX, X, MessageCircle } from "lu
 import { getAvatarInitials } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import ProfileModal from "@/components/profile-modal"
+import dynamic from "next/dynamic"
+const ProfileModal = dynamic(() => import("@/components/profile-modal"), { ssr: false })
 import "@/styles/native-messaging.css"
+import { matchService } from "@/lib/data-service"
 
 interface Match {
   id: string
@@ -74,18 +76,39 @@ export default function ChatPage() {
   // Check if user has premium access to messaging
   const hasMessagingAccess = profile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(profile.account_status)
   
-  // Get match details - run this first to validate access
-  const { data: match, isLoading: matchLoading } = useQuery({
+  // Get match details - lightweight, fetch only this match and other user's profile
+  const { data: matchData, isLoading: matchLoading } = useQuery({
     queryKey: ["match", matchId],
     queryFn: async () => {
-      const res = await fetch(`/api/profiles/matches`, { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch match")
-      const data = await res.json()
-      return data.matches?.find((m: Match) => m.id === matchId) || null
+      return await matchService.getMatchWithProfile(matchId)
     },
     enabled: !!(isVerified && matchId),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
   })
+
+  // Normalize to existing Match shape with other_user for UI
+  const match: Match | null = useMemo(() => {
+    if (!matchData) return null
+    const { match, otherUser } = matchData
+    return {
+      id: match.id,
+      user1_id: match.user1_id,
+      user2_id: match.user2_id,
+      created_at: match.created_at,
+      other_user: {
+        id: otherUser.id,
+        first_name: otherUser.first_name,
+        last_name: otherUser.last_name,
+        profile_photo_url: otherUser.profile_photo_url,
+        user_photos: otherUser.user_photos as any,
+        city: (otherUser as any).city,
+        state: (otherUser as any).state,
+        birthdate: otherUser.birthdate,
+        gender: otherUser.gender,
+        verification_status: otherUser.verification_status,
+      },
+    }
+  }, [matchData])
 
   const { 
     messages, 
@@ -94,7 +117,7 @@ export default function ChatPage() {
     sending, 
     sendMessage,
     markMessagesAsRead 
-  } = useMessages(match ? matchId : '')
+  } = useMessages(matchId)
 
   // Mark messages as read when chat is viewed/focused - only after match is loaded
   useEffect(() => {
@@ -603,9 +626,6 @@ export default function ChatPage() {
           </div>
         ) : (
           messages.map((message, index) => {
-            // Debug log to check message sender
-            console.log('Message:', message.content, 'Sender ID:', message.sender_id, 'Current User ID:', user?.id, 'Is User Message:', message.sender_id === user?.id)
-            
             return (
             <div
               key={message.id}

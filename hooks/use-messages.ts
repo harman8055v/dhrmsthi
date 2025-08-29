@@ -54,29 +54,38 @@ export function useMessages(matchId: string) {
         (payload) => {
           console.log('[useMessages] New message received')
           const newMessage = payload.new as Message
-          
-          setMessageState(prev => {
-            // Check for duplicates
-            const exists = prev.messages.find(msg => msg.id === newMessage.id)
-            if (exists) {
-              // Message already exists, skip
-              return prev
-            }
-            
 
-          return {
-            ...prev,
-            messages: [...prev.messages, newMessage]
+          setMessageState(prev => {
+            // If server message already present, skip
+            const exists = prev.messages.some(msg => msg.id === newMessage.id)
+            if (exists) return prev
+
+            // If a temp optimistic message matches (same sender/content), replace it
+            const tempIndex = prev.messages.findIndex(msg =>
+              typeof msg.id === 'string' && (msg.id as unknown as string).startsWith('temp-') &&
+              msg.sender_id === newMessage.sender_id &&
+              msg.content === newMessage.content
+            )
+            if (tempIndex !== -1) {
+              const nextMessages = [...prev.messages]
+              nextMessages[tempIndex] = newMessage
+              return { ...prev, messages: nextMessages }
+            }
+
+            // Otherwise append
+            return {
+              ...prev,
+              messages: [...prev.messages, newMessage]
+            }
+          })
+
+          // Mark as read if from other user
+          if (newMessage.sender_id !== user.id) {
+            // Native-like feedback for received messages
+            messagingBridge.hapticFeedback('medium')
+            messagingBridge.playSound('received')
+            setTimeout(() => markMessagesAsRead(), 1000)
           }
-        })
-        
-        // Mark as read if from other user
-        if (newMessage.sender_id !== user.id) {
-          // Native-like feedback for received messages
-          messagingBridge.hapticFeedback('medium')
-          messagingBridge.playSound('received')
-          setTimeout(() => markMessagesAsRead(), 1000)
-        }
         }
       )
       .on(
@@ -202,12 +211,15 @@ export function useMessages(matchId: string) {
       // Fire-and-wait for server persistence
       const serverMessage = await messageService.sendMessage(matchId, content)
 
-      // Reconcile: replace temp with real
-      setMessageState(prev => ({
-        ...prev,
-        sending: false,
-        messages: prev.messages.map(m => m.id === tempId ? serverMessage : m)
-      }))
+      // Reconcile robustly: remove temp and any duplicate server id, then append server message
+      setMessageState(prev => {
+        const withoutTempAndDup = prev.messages.filter(m => m.id !== tempId && m.id !== (serverMessage as any).id)
+        return {
+          ...prev,
+          sending: false,
+          messages: [...withoutTempAndDup, serverMessage]
+        }
+      })
 
       // Native-like feedback
       messagingBridge.hapticFeedback('light')

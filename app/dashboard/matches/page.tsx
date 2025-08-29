@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -40,6 +40,7 @@ export default function MatchesPage() {
   const router = useRouter()
   const [selectedProfile, setSelectedProfile] = useState<any>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [search, setSearch] = useState("")
 
   const {
     data: matches = [],
@@ -55,6 +56,17 @@ export default function MatchesPage() {
     },
     enabled: isVerified,
   })
+
+  const filteredMatches = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return matches
+    return matches.filter((m: Match) => {
+      const name = `${m.other_user.first_name || ""} ${m.other_user.last_name || ""}`.toLowerCase()
+      const city = (m.other_user.city?.name || "").toLowerCase()
+      const state = (m.other_user.state?.name || "").toLowerCase()
+      return name.includes(term) || city.includes(term) || state.includes(term)
+    })
+  }, [search, matches])
 
   useEffect(() => {
     if (loading) return
@@ -114,49 +126,63 @@ export default function MatchesPage() {
   }
 
   return (
-    <main className="pt-4 pb-24 min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
-      <div className="px-3 sm:px-4 max-w-2xl mx-auto">
+    <main className="relative pt-4 pb-24 min-h-screen bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/60 via-transparent to-transparent pointer-events-none" />
+      <div className="px-3 sm:px-4 max-w-2xl mx-auto relative z-10">
         {isVerified ? (
           // VERIFIED USER - Show Matches
           <>
-            {/* Page Header */}
-            <div className="text-center mb-6 bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-sm">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Matches</h2>
-              <p className="text-gray-700">Discover meaningful connections with people who share your spiritual journey</p>
+            <div className="mb-4">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search matches by name or location..."
+                className="w-full h-10 rounded-full border border-gray-200 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#8b0000]/20 focus:border-[#8b0000] bg-white/95"
+              />
             </div>
+            
 
-            {matches.length === 0 ? (
-              <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-gray-50">
+            {filteredMatches.length === 0 ? (
+              <Card className="border border-rose-100 shadow-sm bg-white/95 backdrop-blur rounded-2xl">
                 <CardContent className="text-center py-12 px-6">
-                  <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
                     <Heart className="w-10 h-10 text-white" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">No matches yet</h3>
-                  <p className="text-gray-600 mb-6 leading-relaxed">
-                    Start swiping to find your spiritual life partner. 
-                    When you both like each other, you'll match and can start chatting.
-                  </p>
-                  <Button 
-                    onClick={() => router.push("/dashboard")} 
-                    className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
-                  >
-                    Start Swiping
-                  </Button>
+                  {search.trim() ? (
+                    <>
+                      <h3 className="text-xl font-bold text-gray-900 mb-3">No results</h3>
+                      <p className="text-gray-600">Try a different name or location.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-bold text-gray-900 mb-3">No matches yet</h3>
+                      <p className="text-gray-600 mb-6 leading-relaxed">
+                        Start swiping to find your spiritual life partner. 
+                        When you both like each other, you'll match and can start chatting.
+                      </p>
+                      <Button 
+                        onClick={() => router.push("/dashboard")} 
+                        className="bg-[#8b0000] hover:bg-[#7a0000] text-white px-8 py-3 rounded-full font-semibold shadow-md"
+                      >
+                        Start Swiping
+                      </Button>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
-                {matches.map((match: Match) => (
-                  <Card key={match.id} className="border-0 shadow-md hover:shadow-lg transition-all duration-200 bg-white rounded-2xl overflow-hidden">
+              <div className="space-y-4">
+                {filteredMatches.map((match: Match) => (
+                  <Card key={match.id} className="border border-rose-100/70 bg-white/95 backdrop-blur rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="p-0">
-                      <div className="p-4">
+                      <div className="p-5">
                         {/* Top Section - Avatar and Basic Info */}
-                        <div className="flex items-start gap-3 mb-3">
+                        <div className="flex items-start gap-4 mb-3">
                           <div 
                             className="relative cursor-pointer" 
                             onClick={() => handleViewProfile(match.other_user)}
                           >
-                            <Avatar className="h-14 w-14 ring-2 ring-[#8b0000]/20">
+                            <Avatar className="h-14 w-14 ring-1 ring-[#8b0000]/30 shadow-sm">
                               <AvatarImage
                                 src={
                                   match.other_user.profile_photo_url ||
@@ -180,6 +206,9 @@ export default function MatchesPage() {
                               >
                                 {match.other_user.first_name} {match.other_user.last_name}
                               </h3>
+                              {match.other_user.verification_status === 'verified' && (
+                                <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 text-xs font-medium">Verified</Badge>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
@@ -211,7 +240,7 @@ export default function MatchesPage() {
                         <div className="flex gap-2">
                           <Button
                             onClick={() => router.push(`/dashboard/messages/${match.id}`)}
-                            className="flex-1 bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white font-semibold rounded-xl py-2.5 shadow-sm"
+                            className="flex-1 bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white font-semibold rounded-full py-3 shadow-sm"
                           >
                             <MessageCircle className="w-4 h-4 mr-2" />
                             Message
@@ -219,7 +248,7 @@ export default function MatchesPage() {
                           <Button
                             variant="outline"
                             onClick={() => handleViewProfile(match.other_user)}
-                            className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white rounded-xl py-2.5 px-4"
+                            className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000] hover:text-white rounded-full py-3 px-5"
                           >
                             Profile
                           </Button>
@@ -242,9 +271,9 @@ export default function MatchesPage() {
 
 
             {/* Verification Required Notice */}
-            <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-gray-50">
+            <Card className="border border-rose-100 shadow-sm bg-white/95 backdrop-blur rounded-2xl">
               <CardContent className="text-center py-12 px-6">
-                <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
                   <Heart className="w-10 h-10 text-white" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-3">Verification Required</h3>
@@ -253,7 +282,7 @@ export default function MatchesPage() {
                 </p>
                 <Button 
                   onClick={() => router.push("/dashboard")} 
-                  className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                  className="bg-[#8b0000] hover:bg-[#7a0000] text-white px-8 py-3 rounded-full font-semibold shadow-md"
                 >
                   Check Verification Status
                 </Button>

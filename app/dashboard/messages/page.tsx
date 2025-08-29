@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useAuthContext } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -60,7 +61,7 @@ export default function MessagesPage() {
     retry: 1,
     retryDelay: 500,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     refetchOnWindowFocus: false, // Don't refetch on window focus
     refetchOnMount: false, // Don't refetch if data exists in cache
   })
@@ -87,6 +88,27 @@ export default function MessagesPage() {
     }
   })()
   const router = useRouter()
+  const [search, setSearch] = useState("")
+
+  const filteredConversations = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return conversations
+    return conversations.filter(c => {
+      const name = `${c.other_user.first_name || ""} ${c.other_user.last_name || ""}`.toLowerCase()
+      const preview = (c.last_message_text || "").toLowerCase()
+      return name.includes(term) || preview.includes(term)
+    })
+  }, [search, conversations])
+
+  // Coalesce bursts of refetch triggers into a single call
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleRefetch = () => {
+    if (refetchTimerRef.current) return
+    refetchTimerRef.current = setTimeout(() => {
+      refetchConversations()
+      refetchTimerRef.current = null
+    }, 200)
+  }
 
   // Check if user has premium access to messaging
   const hasMessagingAccess = profile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(profile.account_status)
@@ -152,7 +174,7 @@ export default function MessagesPage() {
         (payload) => {
           console.log('[Messages] 📖 Message marked as read - refreshing conversations')
           console.log('[Messages] Payload:', payload)
-          refetchConversations()
+          scheduleRefetch()
         }
       )
       .on(
@@ -165,7 +187,7 @@ export default function MessagesPage() {
         (payload) => {
           console.log('[Messages] 📩 New message received - refreshing conversations')
           console.log('[Messages] New message payload:', payload.new)
-          refetchConversations()
+          scheduleRefetch()
         }
       )
       .on(
@@ -179,7 +201,7 @@ export default function MessagesPage() {
         (payload) => {
           console.log('[Messages] 🔄 Match last_message_at updated - refreshing conversations')
           console.log('[Messages] Match update payload:', payload.new)
-          refetchConversations()
+          scheduleRefetch()
         }
       )
       .subscribe()
@@ -199,16 +221,7 @@ export default function MessagesPage() {
         setTimeout(() => {
           console.log('[Messages] 🔄 Refreshing conversations after messages marked as read...')
           // Force refresh by invalidating cache and refetching
-          refetchConversations().then(() => {
-            console.log('[Messages] ✅ Conversations refreshed successfully')
-            // Also force a second refresh after a short delay to ensure data is fresh
-            setTimeout(() => {
-              console.log('[Messages] 🔄 Double-checking with second refresh...')
-              refetchConversations()
-            }, 500)
-          }).catch((error) => {
-            console.error('[Messages] ❌ Error refreshing conversations:', error)
-          })
+          scheduleRefetch()
         }, 200)
       } else {
         console.log('[Messages] ❌ User not verified, skipping refresh')
@@ -324,14 +337,16 @@ export default function MessagesPage() {
           </>
         ) : (
           <>
-            {/* Page Header */}
-            <div className="text-center mb-6 bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-sm">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Conversations</h2>
-              <p className="text-gray-700">Connect with your spiritual matches and start meaningful conversations</p>
-            </div>
-
             {/* Messages List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-3 border-b border-gray-100">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name or message..."
+                  className="w-full h-10 rounded-full border border-gray-200 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#8b0000]/20 focus:border-[#8b0000]"
+                />
+              </div>
               {conversationsError ? (
                 <div className="text-center py-12 px-6">
                   <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -382,31 +397,41 @@ export default function MessagesPage() {
                   </div>
                   <p className="text-gray-600">Loading conversations...</p>
                 </div>
-              ) : conversations.length === 0 ? (
+              ) : filteredConversations.length === 0 ? (
                 <div className="text-center py-12 px-6">
                   <div className="w-20 h-20 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
                     <MessageCircle className="w-10 h-10 text-white" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">No conversations yet</h3>
-                  <p className="text-gray-600 mb-6 leading-relaxed">
-                    Start swiping and matching to begin meaningful conversations with your spiritual life partner.
-                  </p>
-                  <Button 
-                    onClick={() => router.push("/dashboard")} 
-                    className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
-                  >
-                    Start Swiping
-                  </Button>
+                  {search.trim() ? (
+                    <>
+                      <h3 className="text-xl font-bold text-gray-900 mb-3">No results</h3>
+                      <p className="text-gray-600 mb-2">Try a different name or keyword.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-bold text-gray-900 mb-3">No conversations yet</h3>
+                      <p className="text-gray-600 mb-6 leading-relaxed">
+                        Start swiping and matching to begin meaningful conversations with your spiritual life partner.
+                      </p>
+                      <Button 
+                        onClick={() => router.push("/dashboard")} 
+                        className="bg-[#8b0000] hover:bg-red-800 text-white px-8 py-2 rounded-full font-semibold shadow-lg"
+                      >
+                        Start Swiping
+                      </Button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div>
-                  {Array.isArray(conversations) && conversations.map((conversation: Conversation) => (
-                    <div 
-                      key={conversation.id} 
-                      className="bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors duration-150 cursor-pointer border-b border-gray-100 last:border-b-0"
-                      onClick={() => router.push(`/dashboard/messages/${conversation.id}`)}
+                  {Array.isArray(filteredConversations) && filteredConversations.map((conversation: Conversation) => (
+                    <Link 
+                      key={conversation.id}
+                      href={`/dashboard/messages/${conversation.id}`}
+                      className="block bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors duration-150 border-b border-gray-100 last:border-b-0"
+                      prefetch
                     >
-                      <div className="flex items-center gap-3 p-4">
+                      <div className="flex items-center gap-3 p-4 cursor-pointer">
                         {/* Avatar */}
                         <div className="relative flex-shrink-0">
                           <Avatar className="h-12 w-12">
@@ -451,7 +476,7 @@ export default function MessagesPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}

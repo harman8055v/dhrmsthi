@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Heart, Sparkles, Mail, User, Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Heart, Sparkles, Mail, User, Lock, Eye, EyeOff, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Crown, Shield, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PhoneInput from "@/components/ui/phone-input";
 import { logger } from "@/lib/logger";
@@ -72,7 +72,123 @@ interface FormErrors {
   [key: string]: string | undefined;
 }
 
-function MobileAuthPage() {
+function LandingSlider({ onCreate, onLogin }: { onCreate: () => void; onLogin: () => void; }) {
+  const slides = [
+    {
+      icon: Crown,
+      title: "Premium Matches",
+      desc: "High-quality, curated profiles for serious relationships",
+      bullets: ["Verified profiles", "Priority visibility", "Exclusive perks"],
+      gradient: "from-amber-400 via-yellow-500 to-orange-500",
+      bgGlow: "bg-amber-500/20",
+    },
+    {
+      icon: Shield,
+      title: "Safe & Secure",
+      desc: "Privacy-first experience with community moderation",
+      bullets: ["Profile verification", "Report & block", "Clear guidelines"],
+      gradient: "from-emerald-400 via-teal-500 to-cyan-500",
+      bgGlow: "bg-emerald-500/20",
+    },
+    {
+      icon: Heart,
+      title: "Made for Dharma",
+      desc: "Find your spiritual life partner with aligned values",
+      bullets: ["Values aligned", "Community-first", "Modern experience"],
+      gradient: "from-rose-400 via-pink-500 to-purple-500",
+      bgGlow: "bg-rose-500/20",
+    },
+  ];
+
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % slides.length), 4000);
+    return () => clearInterval(t);
+  }, [slides.length]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200 flex flex-col relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/60 via-transparent to-transparent pointer-events-none"></div>
+
+      <div className="w-full px-6 pt-16 pb-6 relative z-10">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-pink-400 to-rose-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
+            <Image
+              src="/logo.png"
+              alt="DharmaSaathi Logo"
+              width={140}
+              height={140}
+              className="mx-auto block relative z-10 drop-shadow-2xl"
+              priority
+            />
+          </div>
+          <div className="text-center space-y-2">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-gray-800 via-gray-900 to-gray-800 bg-clip-text text-transparent">
+              India's #1 Spiritual Matrimony
+            </h1>
+            <p className="text-sm text-gray-600 font-medium">Find Your Divine Life Partner</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 px-6 pb-32 relative z-10">
+        <div className="max-w-sm mx-auto">
+          <div className="bg-white/95 backdrop-blur rounded-2xl border border-rose-100 shadow-md p-8 min-h-[320px]">
+            {slides.map((s, i) => (
+              <div key={i} className={`${i === index ? 'block' : 'hidden'}`}>
+                <div className="flex flex-col items-center text-center">
+                  <div className="w-14 h-14 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4">
+                    <s.icon className="w-7 h-7 text-[#8b0000]" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{s.title}</h3>
+                  <p className="text-sm text-gray-600 mb-5 leading-relaxed">{s.desc}</p>
+                  <div className="w-full max-w-xs mx-auto space-y-2 text-left">
+                    {s.bullets.map((b, bi) => (
+                      <div key={bi} className="flex items-center gap-2 text-gray-800">
+                        <CheckCircle2 className="w-4 h-4 text-[#8b0000]" />
+                        <span className="text-sm font-medium">{b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="pt-5 flex items-center justify-center gap-2">
+              {slides.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIndex(i)}
+                  aria-label={`Go to slide ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${i === index ? 'w-6 bg-[#8b0000]' : 'w-2 bg-rose-300 hover:bg-rose-400'}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 px-6 pb-8 pt-6 bg-gradient-to-t from-white via-rose-50/95 to-transparent backdrop-blur-sm z-20">
+        <div className="max-w-sm mx-auto grid grid-cols-1 gap-3">
+          <button
+            onClick={onCreate}
+            className="w-full rounded-full bg-[#8b0000] hover:bg-[#7a0000] text-white font-semibold py-4 text-base shadow-md hover:shadow-lg transition"
+          >
+            Create new account
+          </button>
+          <button
+            onClick={onLogin}
+            className="w-full rounded-full bg-rose-50 text-[#8b0000] border border-rose-200 hover:bg-rose-100 font-semibold py-4 text-base shadow-sm hover:shadow transition"
+          >
+            Log in to existing account
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileAuthPage({ initialMode = "signup", onBack }: { initialMode?: "signup" | "login"; onBack?: () => void }) {
   const [mode, setMode] = useState<"signup" | "login">("signup");
   const [form, setForm] = useState<FormState>({ firstName: "", lastName: "", email: "", mobile: "", password: "" });
   const [showPwd, setShowPwd] = useState(false);
@@ -87,6 +203,10 @@ function MobileAuthPage() {
   const [referralCode, setReferralCode] = useState<string>("");
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   useEffect(() => {
     const refParam = searchParams.get('ref');
@@ -217,9 +337,19 @@ function MobileAuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen relative flex flex-col bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/60 via-transparent to-transparent pointer-events-none"></div>
       {/* Header with Logo */}
-      <div className="w-full px-6 pt-16 pb-6">
+      <div className="w-full px-6 pt-16 pb-6 relative z-10">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="absolute left-4 top-12 p-2 rounded-full bg-white/70 backdrop-blur border border-gray-200 text-gray-700 hover:text-[#8b0000] transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
         <div className="flex flex-col items-center space-y-4">
           <Image
             src="/logo.png"
@@ -241,7 +371,7 @@ function MobileAuthPage() {
       </div>
 
       {/* Main Auth Container */}
-      <div className="flex-1 px-6 pb-8">
+      <div className="flex-1 px-6 pb-8 relative z-10">
         <div className="max-w-sm mx-auto">
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             {/* Tab Switcher */}
@@ -558,8 +688,25 @@ function MobileAuthPage() {
 }
 
 function AuthPageWrapper() {
-  const searchParams = useSearchParams();
-  return <MobileAuthPage />;
+  const [showAuth, setShowAuth] = useState(false);
+  const [initialMode, setInitialMode] = useState<"signup" | "login">("signup");
+
+  if (!showAuth) {
+    return (
+      <LandingSlider
+        onCreate={() => {
+          setInitialMode("signup");
+          setShowAuth(true);
+        }}
+        onLogin={() => {
+          setInitialMode("login");
+          setShowAuth(true);
+        }}
+      />
+    );
+  }
+
+  return <MobileAuthPage initialMode={initialMode} onBack={() => setShowAuth(false)} />;
 }
 
 export default function Home() {
