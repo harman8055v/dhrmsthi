@@ -37,14 +37,17 @@ export default function ResetPasswordClient() {
     if (tokenHash && type === 'recovery') {
       addDebug('Found token_hash & type=recovery - Supabase will trigger PASSWORD_RECOVERY')
     } else if (code) {
-      addDebug('Found code parameter - attempting exchangeCodeForSession...')
+      addDebug('Found code parameter - attempting verifyOtp(recovery)...')
       ;(async () => {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        const { data, error } = await supabase.auth.verifyOtp({
+          token_hash: code,
+          type: 'recovery'
+        })
         if (error) {
-          addDebug(`exchangeCodeForSession error: ${error.message}`)
+          addDebug(`verifyOtp error: ${error.message}`)
           setError('Invalid or expired reset link. Please request a new one.')
         } else {
-          addDebug('Session established via code exchange. Ready to reset password.')
+          addDebug('OTP verified successfully. Ready to reset password.')
           setShowForm(true)
         }
       })()
@@ -92,8 +95,11 @@ export default function ResetPasswordClient() {
         addDebug(`Password update error: ${error.message}`)
         setError(error.message)
       } else {
-        addDebug('Password updated successfully! Redirecting...')
-        window.location.href = '/?reset=success'
+        addDebug('Password updated successfully! Redirecting to login...')
+        try {
+          await supabase.auth.signOut()
+        } catch {}
+        window.location.href = '/?reset=success&login=1'
       }
     } catch (err: any) {
       addDebug(`Password update exception: ${err.message}`)

@@ -6,7 +6,9 @@ import { Menu, X } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import AuthDialog from "./auth-dialog"
+import React from "react"
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -14,6 +16,17 @@ export default function Header() {
   const [authMode, setAuthMode] = useState<"signup" | "login">("login")
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  
+  // Auto-open login after password reset success or explicit login flag
+  React.useEffect(() => {
+    const resetSuccess = searchParams?.get('reset') === 'success'
+    const loginFlag = searchParams?.get('login') === '1'
+    if ((resetSuccess || loginFlag) && pathname === '/') {
+      setAuthMode('login')
+      setIsAuthOpen(true)
+    }
+  }, [searchParams, pathname])
 
   const scrollToSection = (sectionId: string) => {
     // If we're on the home page, scroll to the section
