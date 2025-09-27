@@ -28,45 +28,35 @@ export default function ResetPasswordClient() {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
 
-    // Parse URL params to support both token_hash (implicit) and code (PKCE) formats
-    const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
-    const tokenHash = urlParams.get('token_hash')
-    const type = urlParams.get('type')
-
-    if (tokenHash && type === 'recovery') {
-      addDebug('Found token_hash & type=recovery - Supabase will trigger PASSWORD_RECOVERY')
-    } else if (code) {
-      addDebug('Found code parameter - attempting verifyOtp(recovery)...')
-      ;(async () => {
-        const { data, error } = await supabase.auth.verifyOtp({
-          token_hash: code,
-          type: 'recovery'
-        })
-        if (error) {
-          addDebug(`verifyOtp error: ${error.message}`)
-          setError('Invalid or expired reset link. Please request a new one.')
-        } else {
-          addDebug('OTP verified successfully. Ready to reset password.')
-          setShowForm(true)
-        }
-      })()
-    } else {
-      addDebug('No password reset parameters found in URL')
-      setError('Invalid password reset link. Please request a new one.')
-    }
-
-    // Supabase-recommended flow: also listen for PASSWORD_RECOVERY and then show the form
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
-      if (event === "PASSWORD_RECOVERY") {
+      if (event === 'PASSWORD_RECOVERY') {
         addDebug('PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    // Fallback: if the event never fires but a session exists (user refreshed), show form
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        addDebug('Found existing session on load; showing form')
+        setShowForm(true)
+      }
+    })
+
+    // Timeout safety: surface an error if nothing happens
+    const timeout = setTimeout(() => {
+      if (!showForm) {
+        addDebug('Timeout - PASSWORD_RECOVERY event did not fire')
+        setError('Reset link may be invalid or expired. Please request a new one.')
+      }
+    }, 15000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
+  }, [showForm])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -86,20 +76,14 @@ export default function ResetPasswordClient() {
     addDebug('Updating password...')
 
     try {
-      // Supabase-recommended: simply update the password after PASSWORD_RECOVERY
-      const { data, error } = await supabase.auth.updateUser({
-        password: password
-      })
-
+      const { error } = await supabase.auth.updateUser({ password })
       if (error) {
         addDebug(`Password update error: ${error.message}`)
         setError(error.message)
       } else {
         addDebug('Password updated successfully! Redirecting to login...')
-        try {
-          await supabase.auth.signOut()
-        } catch {}
-        window.location.href = '/?reset=success&login=1'
+        try { await supabase.auth.signOut() } catch {}
+        router.push('/?reset=success&login=1')
       }
     } catch (err: any) {
       addDebug(`Password update exception: ${err.message}`)
@@ -116,7 +100,7 @@ export default function ResetPasswordClient() {
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <CheckCircle className="w-12 h-12 text-green-600" />
             <h2 className="text-xl font-semibold">Password Updated!</h2>
-            <p className="text-muted-foreground">Redirecting to home...</p>
+            <p className="text-muted-foreground">Redirecting to login...</p>
           </CardContent>
         </Card>
       </div>
@@ -133,17 +117,10 @@ export default function ResetPasswordClient() {
             </div>
             <h2 className="text-xl font-semibold text-red-600">Reset Link Issue</h2>
             <p className="text-muted-foreground">{error}</p>
-            <Button 
-              onClick={() => router.push('/')}
-              className="mt-4"
-            >
-              Request New Reset Link
-            </Button>
+            <Button onClick={() => router.push('/') } className="mt-4">Request New Reset Link</Button>
             <div className="text-xs text-gray-400 mt-4 text-left">
               <div className="font-mono">Debug Log:</div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="font-mono">{log}</div>
-              ))}
+              {debugLog.map((log, i) => (<div key={i} className="font-mono">{log}</div>))}
             </div>
           </CardContent>
         </Card>
@@ -160,9 +137,7 @@ export default function ResetPasswordClient() {
             <p className="text-muted-foreground">Waiting for password reset verification...</p>
             <div className="text-xs text-gray-400 mt-4 text-left">
               <div className="font-mono">Debug Log:</div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="font-mono">{log}</div>
-              ))}
+              {debugLog.map((log, i) => (<div key={i} className="font-mono">{log}</div>))}
             </div>
           </CardContent>
         </Card>
@@ -178,47 +153,15 @@ export default function ResetPasswordClient() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">
-                {error}
-              </div>
-            )}
-            
+            {error && (<div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">{error}</div>)}
             <div>
-              <Input
-                type="password"
-                placeholder="New password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={updating}
-                required
-              />
+              <Input type="password" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={updating} required />
             </div>
-
             <div>
-              <Input
-                type="password"
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={updating}
-                required
-              />
+              <Input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={updating} required />
             </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={updating || !password || !confirmPassword}
-            >
-              {updating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Updating Password...
-                </>
-              ) : (
-                'Update Password'
-              )}
+            <Button type="submit" className="w-full" disabled={updating || !password || !confirmPassword}>
+              {updating ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Updating Password...</>) : ('Update Password')}
             </Button>
           </form>
         </CardContent>
