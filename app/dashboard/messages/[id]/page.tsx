@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { useMessages } from "@/hooks/use-messages"
+import { messagingBridge } from "@/lib/webview-messaging-bridge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -26,29 +27,20 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Send, MoreVertical, Flag, UserX, X } from "lucide-react"
+import { ArrowLeft, Send, MoreVertical, Flag, UserX, X, MessageCircle } from "lucide-react"
 import { getAvatarInitials } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import ProfileModal from "@/components/profile-modal"
+import "@/styles/native-messaging.css"
+import { matchService } from "@/lib/data-service"
 
 interface Match {
   id: string
   user1_id: string
   user2_id: string
   created_at: string
-  other_user: {
-    id: string
-    first_name?: string
-    last_name?: string
-    profile_photo_url?: string
-    user_photos?: string[]
-    city?: { name: string }
-    state?: { name: string }
-    birthdate?: string
-    gender?: string
-    verification_status?: string
-  }
+  other_user: any // Using any to match the full profile structure from matchService
 }
 
 export default function ChatPage() {
@@ -63,12 +55,38 @@ export default function ChatPage() {
   const [showUnmatchDialog, setShowUnmatchDialog] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   
   // Check if user has premium access to messaging
   const hasMessagingAccess = profile?.account_status && ['sparsh', 'sangam', 'samarpan'].includes(profile.account_status)
   
+  // Get match details - lightweight, fetch only this match and other user's profile
+  const { data: matchData, isLoading: matchLoading } = useQuery({
+    queryKey: ["match", matchId],
+    queryFn: async () => {
+      return await matchService.getMatchWithProfile(matchId)
+    },
+    enabled: !!(isVerified && matchId),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Normalize to existing Match shape with other_user for UI
+  const match: Match | null = useMemo(() => {
+    if (!matchData) return null
+    const { match, otherUser } = matchData
+    return {
+      id: match.id,
+      user1_id: match.user1_id,
+      user2_id: match.user2_id,
+      created_at: match.created_at,
+      other_user: otherUser, // Pass the complete otherUser object
+    }
+  }, [matchData])
+
   const { 
     messages, 
     loading: messagesLoading, 
@@ -78,8 +96,10 @@ export default function ChatPage() {
     markMessagesAsRead 
   } = useMessages(matchId)
 
-  // Mark messages as read when chat is viewed/focused
+  // Mark messages as read when chat is viewed/focused - only after match is loaded
   useEffect(() => {
+    if (!match || matchLoading) return
+
     const markAsReadDelayed = () => {
       if (markAsReadTimeoutRef.current) {
         clearTimeout(markAsReadTimeoutRef.current)
@@ -111,19 +131,7 @@ export default function ChatPage() {
         clearTimeout(markAsReadTimeoutRef.current)
       }
     }
-  }, [matchId, markMessagesAsRead])
-
-  // Get match details
-  const { data: match } = useQuery({
-    queryKey: ["match", matchId],
-    queryFn: async () => {
-      const res = await fetch(`/api/profiles/matches`, { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to fetch match")
-      const data = await res.json()
-      return data.matches?.find((m: Match) => m.id === matchId) || null
-    },
-    enabled: !!(isVerified && matchId),
-  })
+  }, [matchId, markMessagesAsRead, match, matchLoading])
 
   useEffect(() => {
     if (loading) return
@@ -141,40 +149,95 @@ export default function ChatPage() {
     }
   }, [loading, user, profile, isVerified, router])
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    // Auto-scroll to bottom when new messages arrive
-    const timer = setTimeout(() => {
-      scrollToBottom()
-    }, 100) // Small delay to ensure DOM has updated
-    
-    return () => clearTimeout(timer)
-  }, [messages])
+  // Show loading state while both match and messages are loading
+  const isInitialLoading = matchLoading || (messagesLoading && messages.length === 0)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+
+
+  // Define scrollToBottom function with instant option
+  const scrollToBottom = useCallback((instant = false) => {
+    // Scroll to bottom - instantly for initial load, smooth for new messages
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: instant ? 'instant' : 'smooth', 
+        block: 'end' 
+      })
+    }
+    // Also try scrolling the container directly as fallback
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [])
+
+  // Auto-scroll to bottom when messages first load or new messages arrive
+  const [hasInitiallyScrolled, setHasInitiallyScrolled] = useState(false)
+  
+  useEffect(() => {
+    if (messages.length > 0) {
+      if (!hasInitiallyScrolled) {
+        // First load - scroll instantly to bottom (no animation)
+        setTimeout(() => {
+          scrollToBottom(true)
+          setHasInitiallyScrolled(true)
+        }, 0)
+      } else {
+        // New message - smooth scroll only if user is near bottom
+        if (scrollContainerRef.current) {
+          const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+          const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+          
+          if (isNearBottom) {
+            scrollToBottom(false)
+          }
+        }
+      }
+    }
+  }, [messages.length, scrollToBottom, hasInitiallyScrolled])
+
+  // Track scroll position for dynamic behaviors
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+      const maxScroll = scrollHeight - clientHeight
+      messagingBridge.updateScrollPosition(scrollTop, maxScroll)
+    }
+  }, [])
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!messageText.trim() || sending) return
 
-    console.log('[Chat] Sending message:', messageText.trim())
-    console.log('[Chat] Match ID:', matchId)
-    console.log('[Chat] User:', user?.id)
+    const messageToSend = messageText.trim()
+    
+    // Clear input immediately for instant feedback
+    setMessageText("")
     
     try {
-      const success = await sendMessage(messageText.trim())
-      console.log('[Chat] Send result:', success)
+      const success = await sendMessage(messageToSend)
       if (success) {
-        setMessageText("")
-        console.log('[Chat] Message sent successfully')
+        // Auto-focus input after successful send (native-like behavior)
+        setTimeout(() => {
+          inputRef.current?.focus()
+          // Keep keyboard visible on mobile
+          if (messagingBridge.isNative) {
+            messagingBridge.toggleKeyboard(true)
+          }
+        }, 50)
+        
+        // Smooth scroll to bottom after sending
+        setTimeout(() => scrollToBottom(false), 50)
       } else {
-        console.error('[Chat] Send failed - success is false')
+        // Restore message on failure
+        setMessageText(messageToSend)
+        messagingBridge.hapticFeedback('error')
+        messagingBridge.playSound('error')
         toast.error("Failed to send message. Please try again.")
       }
     } catch (error) {
-      console.error('[Chat] Send message error:', error)
+      // Restore message on error
+      setMessageText(messageToSend)
+      messagingBridge.hapticFeedback('error')
+      messagingBridge.playSound('error')
       toast.error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
@@ -316,10 +379,44 @@ export default function ChatPage() {
     return "Active now"
   }
 
-  if (loading || messagesLoading) {
+  if (loading || isInitialLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b0000]"></div>
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-rose-50/50">
+        <div className="text-center">
+          {/* Elegant lotus-inspired loader */}
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            {/* Breathing circle background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#8b0000]/10 to-orange-300/10 rounded-full animate-pulse"></div>
+            
+            {/* Rotating lotus petals */}
+            <div className="absolute inset-2 animate-spin">
+              {[...Array(8)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-2 h-2 bg-gradient-to-br from-[#8b0000] to-orange-500 rounded-full"
+                  style={{
+                    top: '50%',
+                    left: '50%',
+                    transform: `rotate(${i * 45}deg) translateX(24px) translateY(-50%)`,
+                    opacity: 0.4 + (i * 0.075)
+                  }}
+                />
+              ))}
+            </div>
+            
+            {/* Center dot */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-3 h-3 bg-gradient-to-br from-[#8b0000] to-orange-500 rounded-full"></div>
+            </div>
+          </div>
+          
+          <h3 className="text-lg font-medium text-gray-800 mb-1">Opening conversation</h3>
+          <p className="text-sm text-gray-500">
+            Connecting with {match?.other_user?.first_name || 'your match'}...
+          </p>
+          
+
+        </div>
       </div>
     )
   }
@@ -368,17 +465,17 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 fixed inset-0 z-40"
+    <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 fixed inset-0 z-40 disable-pull-refresh"
          style={{ 
            paddingBottom: 'env(safe-area-inset-bottom)',
            height: '100vh',
            maxHeight: '100vh'
          }}>
       
-      {/* Mobile Chat Header - Fixed */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
+      {/* Premium Chat Header - Fixed */}
+      <div className="flex-shrink-0 bg-white/95 backdrop-blur-xl border-b border-gray-200/50 px-4 py-4 shadow-lg shadow-gray-900/5">
         <div className="flex items-center gap-3">
-          {/* Prominent Back Button */}
+          {/* Premium Back Button */}
           <Button
             variant="ghost"
             size="sm"
@@ -391,18 +488,18 @@ export default function ChatPage() {
                 window.location.href = "/dashboard/messages"
               }
             }}
-            className="p-3 hover:bg-gray-100 rounded-full -ml-2"
+            className="p-2.5 hover:bg-gray-100/80 rounded-full -ml-1 transition-all duration-200 active:scale-95"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
           </Button>
           
-          {/* User Info */}
+          {/* Premium User Info */}
           <div 
-            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover:bg-gray-50/50 rounded-xl p-2 -m-2 transition-all duration-200"
             onClick={() => setProfileModalOpen(true)}
           >
             <div className="relative flex-shrink-0">
-              <Avatar className="h-10 w-10">
+              <Avatar className="h-11 w-11 ring-2 ring-white shadow-lg">
                 <AvatarImage
                   src={
                     match.other_user.profile_photo_url ||
@@ -415,38 +512,40 @@ export default function ChatPage() {
                   {getAvatarInitials(match.other_user.first_name, match.other_user.last_name)}
                 </AvatarFallback>
               </Avatar>
+              {/* Online indicator */}
+              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
             </div>
             
             <div className="flex-1 min-w-0">
               <h2 className="font-semibold text-gray-900 text-base truncate">
                 {match.other_user.first_name} {match.other_user.last_name}
               </h2>
-              <p className={`text-xs truncate ${getActiveStatus() === 'Active now' ? 'text-green-600' : 'text-gray-500'}`}>
-                {getActiveStatus()}
+              <p className="text-xs truncate text-green-600 font-medium">
+                Active now
               </p>
             </div>
           </div>
 
 
           
-                     {/* More Options Menu */}
+                                          {/* Premium Options Menu */}
            <DropdownMenu>
-             <DropdownMenuTrigger asChild>
-               <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100 rounded-full">
-                 <MoreVertical className="w-5 h-5 text-gray-600" />
-               </Button>
-             </DropdownMenuTrigger>
-             <DropdownMenuContent align="end" className="w-48">
-               <DropdownMenuItem onClick={() => setShowReportDialog(true)} className="text-red-600 focus:text-red-600">
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="p-2.5 hover:bg-gray-100/80 rounded-full transition-all duration-200 active:scale-95">
+                <MoreVertical className="w-5 h-5 text-gray-600" />
+              </Button>
+            </DropdownMenuTrigger>
+             <DropdownMenuContent align="end" className="w-48 bg-white/95 backdrop-blur-xl border border-gray-200/50 shadow-xl">
+               <DropdownMenuItem onClick={() => setShowReportDialog(true)} className="text-red-600 focus:text-red-600 hover:bg-red-50/80 rounded-lg m-1">
                  <Flag className="w-4 h-4 mr-2" />
                  Report User
                </DropdownMenuItem>
-               <DropdownMenuItem onClick={() => setShowBlockDialog(true)} className="text-red-600 focus:text-red-600">
+               <DropdownMenuItem onClick={() => setShowBlockDialog(true)} className="text-red-600 focus:text-red-600 hover:bg-red-50/80 rounded-lg m-1">
                  <UserX className="w-4 h-4 mr-2" />
                  Block User
                </DropdownMenuItem>
-               <DropdownMenuSeparator />
-               <DropdownMenuItem onClick={() => setShowUnmatchDialog(true)} className="text-red-600 focus:text-red-600">
+               <DropdownMenuSeparator className="bg-gray-200/50" />
+               <DropdownMenuItem onClick={() => setShowUnmatchDialog(true)} className="text-red-600 focus:text-red-600 hover:bg-red-50/80 rounded-lg m-1">
                  <X className="w-4 h-4 mr-2" />
                  Unmatch
                </DropdownMenuItem>
@@ -455,9 +554,36 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Messages Container - Scrollable with bottom padding for floating input */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
-        {messages.length === 0 ? (
+      {/* Premium Messages Container */}
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4 py-6 space-y-3 pb-32 bg-gradient-to-b from-transparent via-gray-50/30 to-transparent"
+        onScroll={handleScroll}>
+        {messagesLoading && messages.length === 0 ? (
+          <div className="text-center py-12">
+            {/* Elegant spiritual loader */}
+            <div className="relative w-12 h-12 mx-auto mb-4">
+              <div className="absolute inset-0 animate-spin">
+                {[...Array(6)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-1.5 h-1.5 bg-gradient-to-br from-[#8b0000] to-orange-400 rounded-full"
+                    style={{
+                      top: '50%',
+                      left: '50%',
+                      transform: `rotate(${i * 60}deg) translateX(16px) translateY(-50%)`,
+                      opacity: 0.3 + (i * 0.1)
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-[#8b0000] rounded-full"></div>
+              </div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading messages...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-16 h-16 bg-gradient-to-br from-[#8b0000] to-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
               <Send className="w-8 h-8 text-white" />
@@ -476,38 +602,49 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          messages.map((message) => (
+          messages.map((message, index) => {
+            return (
             <div
               key={message.id}
-              className={`flex ${message.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${message.sender_id === user?.id ? 'justify-end' : 'justify-start'} message-animate-in group`}
+              style={{ animationDelay: `${index * 0.02}s` }}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+                className={`max-w-xs lg:max-w-md px-3 py-2.5 rounded-2xl message-bubble message-interactive relative ${
                   message.sender_id === user?.id
-                    ? 'bg-[#8b0000] text-white rounded-br-md'
-                    : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
+                    ? 'bg-gradient-to-br from-purple-50 via-white to-purple-50 text-gray-800 shadow-sm shadow-purple-900/5 border border-purple-200/20'
+                    : 'bg-gradient-to-br from-[#8b0000] via-red-600 to-orange-600 text-white shadow-md shadow-red-900/15'
                 }`}
               >
                 <p className="text-sm leading-relaxed">{message.content}</p>
-                <div className={`flex items-center gap-1 mt-1 ${
+                <div className={`flex items-center gap-1 mt-1.5 ${
                   message.sender_id === user?.id ? 'justify-end' : 'justify-start'
                 }`}>
-                  <span className={`text-xs ${
-                    message.sender_id === user?.id ? 'text-red-100' : 'text-gray-500'
+                  <span className={`text-[10px] ${
+                    message.sender_id === user?.id ? 'text-gray-400' : 'text-white/60'
                   }`}>
                     {formatMessageTime(message.created_at)}
                   </span>
-                  {message.sender_id === user?.id && message.read_at && (
-                    <span className="text-xs text-red-100">✓✓</span>
+                  {message.sender_id === user?.id && (
+                    <span className={`text-[10px] ml-0.5 ${
+                      message.read_at ? 'text-blue-500' : 'text-gray-400'
+                    }`}>
+                      {message.read_at ? '✓✓' : '✓'}
+                    </span>
                   )}
                 </div>
+                
+                {/* Premium message glow effect */}
+                {message.sender_id !== user?.id && (
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-orange-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-bl-lg"></div>
+                )}
               </div>
             </div>
-          ))
+            )
+          })
         )}
-        <div ref={messagesEndRef} className="h-8" />
-        {/* Spacer for floating input */}
-        <div className="h-20" />
+        {/* Scroll anchor point */}
+        <div ref={messagesEndRef} style={{ height: '1px' }} />
       </div>
 
       {/* Error Display */}
@@ -517,22 +654,30 @@ export default function ChatPage() {
         </div>
       )}
 
-            {/* Floating Message Input - Fixed at bottom like nav bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-gray-200/50 px-4 py-3" 
+            {/* Premium Floating Input Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-gray-200/30 px-4 py-4 input-bar-elevated shadow-2xl shadow-gray-900/10" 
            style={{ 
-             paddingBottom: 'max(1rem, env(safe-area-inset-bottom))'
+             paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))'
            }}>
         <div className="max-w-4xl mx-auto">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+          <form onSubmit={handleSendMessage} className="flex items-center gap-4">
             <div className="flex-1 relative">
               <Input
+                ref={inputRef}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Type a message..."
-                className="w-full rounded-full border-gray-300 focus:border-[#8b0000] focus:ring-[#8b0000] h-12 text-base pl-4 pr-4 bg-gray-50 hover:bg-white transition-colors"
+                className="w-full rounded-full border-2 border-gray-200/50 focus:border-[#8b0000] focus:ring-2 focus:ring-[#8b0000]/20 h-14 text-base pl-6 pr-6 bg-gradient-to-r from-gray-50 to-white hover:from-white hover:to-gray-50 transition-all duration-300 ease-out shadow-lg shadow-gray-900/5 placeholder:text-gray-400"
                 disabled={sending}
                 autoComplete="off"
-                autoFocus={false}
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck="true"
+                enterKeyHint="send"
+                onFocus={() => {
+                  // Smooth scroll to bottom when focusing input
+                  setTimeout(() => scrollToBottom(false), 100)
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
@@ -544,12 +689,27 @@ export default function ChatPage() {
             <Button
               type="submit"
               disabled={!messageText.trim() || sending}
-              className="bg-[#8b0000] hover:bg-red-800 text-white rounded-full w-12 h-12 p-0 flex items-center justify-center flex-shrink-0 active:scale-95 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gradient-to-br from-[#8b0000] via-red-600 to-red-700 hover:from-red-700 hover:via-red-800 hover:to-red-900 text-white rounded-full w-14 h-14 p-0 flex items-center justify-center flex-shrink-0 button-press transition-all duration-300 shadow-xl shadow-red-900/30 hover:shadow-2xl hover:shadow-red-900/40 disabled:opacity-50 disabled:cursor-not-allowed send-button-active hover:scale-105 active:scale-95"
             >
               {sending ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="relative w-5 h-5">
+                  {/* Elegant sending animation */}
+                  <div className="absolute inset-0 animate-spin">
+                    {[...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute w-1 h-1 bg-white rounded-full"
+                        style={{
+                          top: '50%',
+                          left: '50%',
+                          transform: `rotate(${i * 120}deg) translateX(8px) translateY(-50%)`
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ) : (
-                <Send className="w-5 h-5" />
+                <Send className="w-5 h-5 ml-0.5" />
               )}
             </Button>
           </form>
