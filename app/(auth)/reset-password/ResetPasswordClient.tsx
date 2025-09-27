@@ -28,7 +28,32 @@ export default function ResetPasswordClient() {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
 
-    // Supabase-recommended flow: listen for PASSWORD_RECOVERY and then show the form
+    // Parse URL params to support both token_hash (implicit) and code (PKCE) formats
+    const urlParams = new URLSearchParams(window.location.search)
+    const code = urlParams.get('code')
+    const tokenHash = urlParams.get('token_hash')
+    const type = urlParams.get('type')
+
+    if (tokenHash && type === 'recovery') {
+      addDebug('Found token_hash & type=recovery - Supabase will trigger PASSWORD_RECOVERY')
+    } else if (code) {
+      addDebug('Found code parameter - attempting exchangeCodeForSession...')
+      ;(async () => {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          addDebug(`exchangeCodeForSession error: ${error.message}`)
+          setError('Invalid or expired reset link. Please request a new one.')
+        } else {
+          addDebug('Session established via code exchange. Ready to reset password.')
+          setShowForm(true)
+        }
+      })()
+    } else {
+      addDebug('No password reset parameters found in URL')
+      setError('Invalid password reset link. Please request a new one.')
+    }
+
+    // Supabase-recommended flow: also listen for PASSWORD_RECOVERY and then show the form
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       if (event === "PASSWORD_RECOVERY") {
