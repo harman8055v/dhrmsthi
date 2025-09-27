@@ -33,13 +33,10 @@ export default function ResetPasswordClient() {
     const hasCode = urlParams.has('code')
     
     if (hasCode) {
-      addDebug('Found code parameter in URL - valid reset link detected, showing form...')
-      // If we have a code, it's a valid reset link, just show the form
-      setShowForm(true)
-      return
+      addDebug('Found code parameter in URL - waiting for Supabase to process...')
     }
     
-    // For other cases, listen for PASSWORD_RECOVERY event
+    // Listen for auth state changes - Supabase will process the code automatically
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
@@ -47,22 +44,36 @@ export default function ResetPasswordClient() {
         addDebug('PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
       }
-    })
-
-    // Check if already has session (in case user refreshed page)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        addDebug(`Found existing session: ${session.user?.email}`)
-        setShowForm(true)
-      } else {
-        addDebug('No existing session')
+      
+      // Handle SIGNED_IN event which fires when code is processed
+      if (event === "SIGNED_IN" && hasCode && !showForm) {
+        addDebug('SIGNED_IN event after code processing - checking for recovery session...')
+        // Give it a moment to ensure session is fully established
+        setTimeout(async () => {
+          const { data: { session: currentSession } } = await supabase.auth.getSession()
+          if (currentSession) {
+            addDebug('Session established after code processing, showing form...')
+            setShowForm(true)
+          }
+        }, 500)
       }
     })
 
-    // Timeout - if no PASSWORD_RECOVERY event after 15 seconds
+    // Check if already has session (for page refresh scenarios)
+    setTimeout(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session && !showForm) {
+        addDebug(`Found existing session: ${session.user?.email}`)
+        setShowForm(true)
+      } else if (!session && !hasCode) {
+        addDebug('No existing session and no code parameter')
+      }
+    }, 1000)
+
+    // Timeout - if no auth event after 15 seconds
     const timeout = setTimeout(() => {
       if (!showForm) {
-        addDebug('Timeout - PASSWORD_RECOVERY event never fired')
+        addDebug('Timeout - auth events never established a session')
         setError('Reset link may be invalid. Please check if you clicked the correct link from your email.')
       }
     }, 15000)
