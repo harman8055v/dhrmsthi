@@ -17,6 +17,33 @@ export default function ResetPasswordClient() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // First, attempt to verify recovery tokens from URL so a session is established
+    (async () => {
+      try {
+        const url = new URL(window.location.href)
+        const params = url.searchParams
+        const tokenHash = params.get('token_hash')
+        const type = params.get('type')
+        const code = params.get('code')
+
+        // Supabase recovery style: /auth/confirm?token_hash=...&type=recovery
+        if (tokenHash && (type === 'recovery' || !type)) {
+          const { error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
+          if (!error) {
+            setReady(true)
+          }
+        }
+
+        // PKCE style: /reset-password?code=...
+        if (!tokenHash && code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (!error) {
+            setReady(true)
+          }
+        }
+      } catch {}
+    })()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setReady(true)
