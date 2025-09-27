@@ -10,7 +10,6 @@ import { Loader2, CheckCircle } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const [showForm, setShowForm] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [updating, setUpdating] = useState(false)
@@ -18,17 +17,10 @@ export default function ResetPasswordClient() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    // EXACTLY as per Supabase docs - just listen for PASSWORD_RECOVERY
+    // Listen for PASSWORD_RECOVERY event
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        setShowForm(true)
-      }
-    })
-
-    // Check if already has session (in case user refreshed page)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setShowForm(true)
+        // Event fired, user can update password
       }
     })
 
@@ -87,19 +79,6 @@ export default function ResetPasswordClient() {
             <CheckCircle className="w-12 h-12 text-green-600" />
             <h2 className="text-xl font-semibold">Password Updated!</h2>
             <p className="text-muted-foreground">Redirecting to home...</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!showForm) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center gap-4 py-10">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading...</p>
           </CardContent>
         </Card>
       </div>
