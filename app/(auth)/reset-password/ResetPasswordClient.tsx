@@ -42,16 +42,72 @@ export default function ResetPasswordClient() {
 
     if (code) {
       addDebug(`Found ?code param: ${code.substring(0, 20)}... - attempting PKCE exchangeCodeForSession`)
+
       // Try to exchange the code for a session
       supabase.auth.exchangeCodeForSession(code)
         .then(({ data, error: exchangeError }) => {
           if (exchangeError) {
             addDebug(`exchangeCodeForSession error: ${exchangeError.message}`)
-            // Provide more specific error messages
-            if (exchangeError.message.includes('invalid request')) {
-              setError('Invalid reset link. The link may have expired or already been used. Please request a new reset link.')
-            } else if (exchangeError.message.includes('code verifier')) {
-              setError('Reset link processing failed. Please request a new reset link.')
+
+            // If PKCE is failing, try alternative approach using admin API
+            if (exchangeError.message.includes('code verifier') || exchangeError.message.includes('invalid request')) {
+              addDebug('PKCE failed, trying admin API approach...')
+
+              // Extract email from URL first
+              const urlParams = new URLSearchParams(window.location.search)
+              let email = urlParams.get('email') || urlParams.get('user_email')
+
+              // If no email in URL, try to decode the code parameter (it's a JWT)
+              if (!email && code) {
+                try {
+                  // The code parameter might be a JWT token that contains user info
+                  const tokenPayload = JSON.parse(atob(code.split('.')[1]))
+                  email = tokenPayload.email || tokenPayload.sub
+                  addDebug(`Decoded email from code: ${email}`)
+                } catch (decodeError) {
+                  addDebug(`Failed to decode code: ${decodeError instanceof Error ? decodeError.message : String(decodeError)}`)
+                }
+              }
+
+              // If we have an email, proceed with API call
+              if (email) {
+                addDebug(`Using email for recovery: ${email}`)
+
+                // Try to create a recovery session via API call
+                fetch('/api/auth/create-session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email, code })
+                })
+                .then(res => res.json())
+                .then(data => {
+                  if (data.error) {
+                    addDebug(`Admin API error: ${data.error}`)
+                    setError('Invalid reset link. Please request a new reset link.')
+                  } else {
+                    addDebug('Admin API session created successfully')
+                    // Set the session tokens
+                    supabase.auth.setSession({
+                      access_token: data.access_token,
+                      refresh_token: data.refresh_token
+                    }).then(() => {
+                      // Manually trigger PASSWORD_RECOVERY event since PKCE failed
+                      addDebug('Manually triggering PASSWORD_RECOVERY event')
+                      setShowForm(true)
+                    }).catch(setSessionError => {
+                      addDebug(`setSession error: ${setSessionError.message}`)
+                      setError('Failed to establish session. Please try again.')
+                    })
+                  }
+                })
+                .catch(err => {
+                  addDebug(`Admin API exception: ${err.message}`)
+                  setError('Failed to process reset link. Please try requesting a new one.')
+                })
+              } else {
+                addDebug('No email found, cannot use admin API')
+                setError('Reset link may be invalid. Please request a new reset link from the login page.')
+              }
             } else {
               setError(`Reset link error: ${exchangeError.message}`)
             }
