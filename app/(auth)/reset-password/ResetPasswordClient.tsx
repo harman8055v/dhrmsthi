@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
@@ -18,7 +18,6 @@ export default function ResetPasswordClient() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([])
-  const attemptedExchangeRef = useRef(false)
 
   const addDebug = (message: string) => {
     logger.log('[Reset Password]', message)
@@ -31,56 +30,30 @@ export default function ResetPasswordClient() {
     
     // Check if URL has code parameter
     const urlParams = new URLSearchParams(window.location.search)
-    const hasCode = urlParams.has('code')
+    const code = urlParams.get('code')
     
-    if (hasCode) {
-      addDebug('Found code parameter in URL - waiting for Supabase to process...')
-      // Explicitly exchange code for a session to ensure recovery flow initializes
-      if (!attemptedExchangeRef.current) {
-        attemptedExchangeRef.current = true
-        ;(async () => {
-          try {
-            addDebug('Attempting code exchange with Supabase...')
-            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href)
-            if (exchangeError) {
-              addDebug(`Code exchange error: ${exchangeError.message}`)
-            } else {
-              addDebug('Code exchange successful. Verifying session...')
-              const { data: { session: afterSession } } = await supabase.auth.getSession()
-              if (afterSession) {
-                addDebug('Session established after code exchange, showing form...')
-                setShowForm(true)
-              } else {
-                addDebug('No session present after code exchange yet.')
-              }
-            }
-          } catch (ex: any) {
-            addDebug(`Code exchange exception: ${ex?.message || 'unknown'}`)
-          }
-        })()
-      }
+    if (code) {
+      addDebug('Found code parameter in URL - exchanging for session...')
+      // Exchange the code for a session
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error) {
+          addDebug(`Code exchange error: ${error.message}`)
+          setError('Reset link may be invalid or expired. Please request a new one.')
+        } else {
+          addDebug('Code exchanged successfully, session established')
+          setShowForm(true)
+        }
+      })
+      return // Don't set up other listeners if we're handling code exchange
     }
     
-    // Listen for auth state changes - Supabase will process the code automatically
+    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
       if (event === "PASSWORD_RECOVERY") {
         addDebug('PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
-      }
-      
-      // Handle SIGNED_IN event which fires when code is processed
-      if (event === "SIGNED_IN" && hasCode && !showForm) {
-        addDebug('SIGNED_IN event after code processing - checking for recovery session...')
-        // Give it a moment to ensure session is fully established
-        setTimeout(async () => {
-          const { data: { session: currentSession } } = await supabase.auth.getSession()
-          if (currentSession) {
-            addDebug('Session established after code processing, showing form...')
-            setShowForm(true)
-          }
-        }, 500)
       }
     })
 
@@ -90,7 +63,7 @@ export default function ResetPasswordClient() {
       if (session && !showForm) {
         addDebug(`Found existing session: ${session.user?.email}`)
         setShowForm(true)
-      } else if (!session && !hasCode) {
+      } else if (!session) {
         addDebug('No existing session and no code parameter')
       }
     }, 1000)
