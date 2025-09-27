@@ -28,6 +28,62 @@ export default function ResetPasswordClient() {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
 
+    // Extract code from URL parameters
+    const urlParams = new URLSearchParams(window.location.search)
+    const code = urlParams.get('code')
+    const error = urlParams.get('error')
+    const errorDescription = urlParams.get('error_description')
+
+    if (error) {
+      addDebug(`URL error: ${error} - ${errorDescription}`)
+      setError(`Reset link error: ${errorDescription || error}`)
+      return
+    }
+
+    if (code) {
+      addDebug(`Found ?code param: ${code.substring(0, 20)}... - attempting PKCE exchangeCodeForSession`)
+      // Try to exchange the code for a session
+      supabase.auth.exchangeCodeForSession(code)
+        .then(({ data, error: exchangeError }) => {
+          if (exchangeError) {
+            addDebug(`exchangeCodeForSession error: ${exchangeError.message}`)
+            // Provide more specific error messages
+            if (exchangeError.message.includes('invalid request')) {
+              setError('Invalid reset link. The link may have expired or already been used. Please request a new reset link.')
+            } else if (exchangeError.message.includes('code verifier')) {
+              setError('Reset link processing failed. Please request a new reset link.')
+            } else {
+              setError(`Reset link error: ${exchangeError.message}`)
+            }
+          } else {
+            addDebug('exchangeCodeForSession successful')
+          }
+        })
+        .catch(err => {
+          addDebug(`exchangeCodeForSession exception: ${err.message}`)
+          setError('Failed to process reset link. Please try requesting a new one.')
+        })
+    } else {
+      addDebug('No code parameter found in URL - this might be a direct navigation')
+      // Check if we have a session already
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          addDebug('Found existing session from direct navigation')
+          setShowForm(true)
+        }
+      })
+    }
+
+    // Check if already has session (in case user refreshed page or direct navigation)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        addDebug(`Found existing session: ${session.user?.email}`)
+        setShowForm(true)
+      } else {
+        addDebug('No existing session')
+      }
+    })
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       if (event === 'PASSWORD_RECOVERY') {
@@ -36,10 +92,19 @@ export default function ResetPasswordClient() {
       }
     })
 
+    // Timeout - if no PASSWORD_RECOVERY event after 15 seconds and no existing session
+    const timeout = setTimeout(() => {
+      if (!showForm) {
+        addDebug('Timeout - PASSWORD_RECOVERY event never fired and no existing session')
+        setError('Reset link may be invalid or expired. Please request a new reset link from the login page.')
+      }
+    }, 15000)
+
     return () => {
       subscription.unsubscribe()
+      clearTimeout(timeout)
     }
-  }, [])
+  }, [showForm])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

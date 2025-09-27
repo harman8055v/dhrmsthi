@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         type: "recovery",
         email: email,
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL}/dashboard`
         }
       });
       

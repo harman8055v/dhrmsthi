@@ -199,7 +199,7 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 try {
                   const { data, error } = await supabase.auth.resetPasswordForEmail(
                     resetEmail,
-                    { redirectTo: 'https://www.dharmasaathi.com/reset-password' }
+                    { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password` }
                   );
                   if (error) throw error;
                   setResetSent(true);
