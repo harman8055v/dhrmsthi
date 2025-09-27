@@ -128,11 +128,8 @@ export default function ResetPasswordClient() {
               addDebug(`Password update error after OTP: ${updateError.message}`)
               setError(updateError.message)
             } else {
-              addDebug('Password updated successfully!')
-              setSuccess(true)
-              setTimeout(() => {
-                window.location.href = '/?reset=success'
-              }, 2000)
+              addDebug('Password updated successfully! Redirecting...')
+              window.location.href = '/?reset=success'
             }
           } else {
             addDebug(`OTP verification failed: ${error?.message}`)
@@ -152,13 +149,8 @@ export default function ResetPasswordClient() {
           addDebug(`Password update error: ${error.message}`)
           setError(error.message)
         } else {
-          addDebug('Password updated successfully!')
-          setSuccess(true)
-          setTimeout(() => {
-            supabase.auth.signOut().then(() => {
-              window.location.href = '/?reset=success'
-            })
-          }, 2000)
+          addDebug('Password updated successfully! Redirecting...')
+          window.location.href = '/?reset=success'
         }
       }
     } catch (err: any) {
