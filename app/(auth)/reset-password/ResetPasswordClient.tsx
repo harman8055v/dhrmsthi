@@ -78,6 +78,15 @@ export default function ResetPasswordClient() {
 
     setUpdating(true)
     addDebug('Updating password...')
+    
+    // Fallback timer in case state gets stuck
+    const fallbackTimer = setTimeout(() => {
+      if (updating) {
+        addDebug('Fallback: Force clearing updating state after 10 seconds')
+        setUpdating(false)
+        setError('Password update took too long. Please try again or refresh the page.')
+      }
+    }, 10000)
 
     try {
       // EXACTLY as per Supabase docs
@@ -87,24 +96,58 @@ export default function ResetPasswordClient() {
 
       if (error) {
         addDebug(`Password update error: ${error.message}`)
+        clearTimeout(fallbackTimer)
         setError(error.message)
+        setUpdating(false)
       } else {
         addDebug('Password updated successfully!')
+        addDebug(`Response data: ${JSON.stringify(data?.user?.email || 'no user data')}`)
+        
+        // Clear the fallback timer
+        clearTimeout(fallbackTimer)
+        
+        // Set updating to false before setting success to ensure proper state transition
+        addDebug('Setting updating to false and success to true...')
+        setUpdating(false)
         setSuccess(true)
+        
+        // Force a re-render by using a callback
+        setTimeout(() => {
+          addDebug('Success state should be visible now')
+        }, 100)
+        
+        // Small delay before signing out and redirecting
         setTimeout(async () => {
-          await supabase.auth.signOut()
-          router.push('/?reset=success')
+          addDebug('Starting redirect process...')
+          try {
+            await supabase.auth.signOut()
+            addDebug('Signed out, redirecting...')
+            router.push('/?reset=success')
+            // Fallback navigation in case router.push doesn't work
+            setTimeout(() => {
+              window.location.href = '/?reset=success'
+            }, 500)
+          } catch (signOutError) {
+            // If signout fails, still redirect
+            addDebug(`Sign out error: ${signOutError}, redirecting anyway...`)
+            router.push('/?reset=success')
+            // Fallback navigation
+            setTimeout(() => {
+              window.location.href = '/?reset=success'
+            }, 500)
+          }
         }, 2000)
       }
     } catch (err: any) {
       addDebug(`Password update exception: ${err.message}`)
+      clearTimeout(fallbackTimer)
       setError('An unexpected error occurred')
-    } finally {
       setUpdating(false)
     }
   }
 
   if (success) {
+    addDebug('Rendering success UI')
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
@@ -112,6 +155,12 @@ export default function ResetPasswordClient() {
             <CheckCircle className="w-12 h-12 text-green-600" />
             <h2 className="text-xl font-semibold">Password Updated!</h2>
             <p className="text-muted-foreground">Redirecting to home...</p>
+            <div className="text-xs text-gray-400 mt-4 text-left w-full">
+              <div className="font-mono">Debug Log:</div>
+              {debugLog.map((log, i) => (
+                <div key={i} className="font-mono text-xs">{log}</div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -216,6 +265,15 @@ export default function ResetPasswordClient() {
               )}
             </Button>
           </form>
+          
+          {/* Debug info */}
+          <div className="mt-4 text-xs text-gray-400 space-y-1">
+            <div className="font-mono">State: updating={String(updating)}, success={String(success)}</div>
+            <div className="font-mono">Debug Log:</div>
+            {debugLog.map((log, i) => (
+              <div key={i} className="font-mono text-xs">{log}</div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
