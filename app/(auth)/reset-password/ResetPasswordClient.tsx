@@ -28,6 +28,30 @@ export default function ResetPasswordClient() {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
     
+    // Check URL parameters first
+    const urlParams = new URLSearchParams(window.location.search)
+    const code = urlParams.get('code')
+    const token_hash = urlParams.get('token_hash')
+    const type = urlParams.get('type')
+    
+    if (code || (token_hash && type === 'recovery')) {
+      addDebug(`Found reset token in URL: ${code ? 'code' : 'token_hash'}`)
+      
+      // For code parameter, we need to exchange it
+      if (code) {
+        addDebug('Exchanging code for session...')
+        supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+          if (error) {
+            addDebug(`Code exchange error: ${error.message}`)
+            setError('Reset link may be invalid or expired.')
+          } else {
+            addDebug('Code exchanged successfully, showing form...')
+            setShowForm(true)
+          }
+        })
+      }
+    }
+    
     // EXACTLY as per Supabase docs - just listen for PASSWORD_RECOVERY
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
