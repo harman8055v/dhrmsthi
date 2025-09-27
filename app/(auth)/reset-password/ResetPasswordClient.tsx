@@ -27,56 +27,17 @@ export default function ResetPasswordClient() {
   useEffect(() => {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
-    
-    // Check URL parameters
-    const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
-    const tokenHash = urlParams.get('token_hash')
-    const type = urlParams.get('type')
-    
-    // If we have the expected token_hash and type=recovery, let Supabase handle it
-    if (tokenHash && type === 'recovery') {
-      addDebug('Found token_hash and type=recovery - standard password reset flow')
-      
-      // Listen for PASSWORD_RECOVERY event
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
-        
-        if (event === "PASSWORD_RECOVERY") {
-          addDebug('PASSWORD_RECOVERY event received! Showing form...')
-          setShowForm(true)
-        }
-      })
-      
-      return () => subscription.unsubscribe()
-    }
-    
-    // If we have a code parameter (non-standard format), handle it differently
-    if (code) {
-      addDebug('Found code parameter - non-standard format, checking for email link type...')
-      
-      // Try to verify this is a valid reset link by calling verifyOtp
-      supabase.auth.verifyOtp({
-        token_hash: code,
-        type: 'recovery'
-      }).then(({ data, error }) => {
-        if (error) {
-          addDebug(`OTP verification error: ${error.message}`)
-          // If verification fails, still show the form as a fallback
-          addDebug('Showing form as fallback...')
-          setShowForm(true)
-        } else {
-          addDebug('OTP verified successfully, session should be established')
-          setShowForm(true)
-        }
-      })
-      
-      return
-    }
-    
-    // No recognized parameters
-    addDebug('No password reset parameters found in URL')
-    setError('Invalid password reset link. Please request a new one.')
+
+    // Supabase-recommended flow: listen for PASSWORD_RECOVERY and then show the form
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
+      if (event === "PASSWORD_RECOVERY") {
+        addDebug('PASSWORD_RECOVERY event received! Showing form...')
+        setShowForm(true)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,61 +58,17 @@ export default function ResetPasswordClient() {
     addDebug('Updating password...')
 
     try {
-      // First check if we have a session
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        addDebug('No session found - attempting direct password reset...')
-        
-        // Get the code from URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const code = urlParams.get('code')
-        
-        if (code) {
-          // Try using the code directly with a different approach
-          const { data, error } = await supabase.auth.verifyOtp({
-            token_hash: code,
-            type: 'recovery',
-            options: {
-              redirectTo: window.location.origin
-            }
-          })
-          
-          if (!error && data.session) {
-            addDebug('Session established via OTP verification, now updating password...')
-            // Now try to update password with the new session
-            const { error: updateError } = await supabase.auth.updateUser({
-              password: password
-            })
-            
-            if (updateError) {
-              addDebug(`Password update error after OTP: ${updateError.message}`)
-              setError(updateError.message)
-            } else {
-              addDebug('Password updated successfully! Redirecting...')
-              window.location.href = '/?reset=success'
-            }
-          } else {
-            addDebug(`OTP verification failed: ${error?.message}`)
-            setError('Invalid or expired reset link. Please request a new one.')
-          }
-        } else {
-          setError('No reset code found. Please use the link from your email.')
-        }
-      } else {
-        // We have a session, proceed normally
-        addDebug('Session exists, updating password...')
-        const { data, error } = await supabase.auth.updateUser({
-          password: password
-        })
+      // Supabase-recommended: simply update the password after PASSWORD_RECOVERY
+      const { data, error } = await supabase.auth.updateUser({
+        password: password
+      })
 
-        if (error) {
-          addDebug(`Password update error: ${error.message}`)
-          setError(error.message)
-        } else {
-          addDebug('Password updated successfully! Redirecting...')
-          window.location.href = '/?reset=success'
-        }
+      if (error) {
+        addDebug(`Password update error: ${error.message}`)
+        setError(error.message)
+      } else {
+        addDebug('Password updated successfully! Redirecting...')
+        window.location.href = '/?reset=success'
       }
     } catch (err: any) {
       addDebug(`Password update exception: ${err.message}`)
