@@ -25,72 +25,58 @@ export default function ResetPasswordClient() {
   }
 
   useEffect(() => {
-    let mounted = true
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
     
-    // Check if URL has code parameter - if yes, Supabase will process it automatically
+    // Check URL parameters
     const urlParams = new URLSearchParams(window.location.search)
-    const hasCode = urlParams.has('code')
+    const code = urlParams.get('code')
+    const tokenHash = urlParams.get('token_hash')
+    const type = urlParams.get('type')
     
-    if (hasCode) {
-      addDebug('Found code parameter - Supabase will process it automatically')
-    }
-    
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
+    // If we have the expected token_hash and type=recovery, let Supabase handle it
+    if (tokenHash && type === 'recovery') {
+      addDebug('Found token_hash and type=recovery - standard password reset flow')
       
-      addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
-      
-      if (event === "PASSWORD_RECOVERY") {
-        addDebug('PASSWORD_RECOVERY event received! Showing form...')
-        setShowForm(true)
-      }
-      
-      // Check if we got a signed in event after initial page load with code
-      if (event === "SIGNED_IN" && hasCode) {
-        addDebug('SIGNED_IN event detected with code parameter')
-        // For password reset, just show the form
-        setShowForm(true)
-      }
-    })
-
-    // Give Supabase a moment to process the code, then check session
-    setTimeout(async () => {
-      if (!mounted) return
-      
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        addDebug(`Session found: ${session.user?.email}`)
-        // If we have a session and a code parameter, it's likely a password reset
-        if (hasCode) {
-          addDebug('Session + code parameter detected, showing password reset form')
+      // Listen for PASSWORD_RECOVERY event
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
+        
+        if (event === "PASSWORD_RECOVERY") {
+          addDebug('PASSWORD_RECOVERY event received! Showing form...')
           setShowForm(true)
         }
-      } else {
-        addDebug('No session found after initial check')
-      }
-    }, 2000)
-
-    // Timeout - if nothing happens after 10 seconds
-    const timeout = setTimeout(() => {
-      if (!mounted) return
+      })
       
-      if (!showForm && hasCode) {
-        addDebug('Timeout reached - showing form anyway since we have a code')
-        // If we have a code but no auth events fired, just show the form
-        setShowForm(true)
-      } else if (!showForm) {
-        setError('Reset link may be invalid. Please check if you clicked the correct link from your email.')
-      }
-    }, 10000)
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+      return () => subscription.unsubscribe()
     }
+    
+    // If we have a code parameter (non-standard format), handle it differently
+    if (code) {
+      addDebug('Found code parameter - non-standard format, checking for email link type...')
+      
+      // Try to verify this is a valid reset link by calling verifyOtp
+      supabase.auth.verifyOtp({
+        token_hash: code,
+        type: 'recovery'
+      }).then(({ data, error }) => {
+        if (error) {
+          addDebug(`OTP verification error: ${error.message}`)
+          // If verification fails, still show the form as a fallback
+          addDebug('Showing form as fallback...')
+          setShowForm(true)
+        } else {
+          addDebug('OTP verified successfully, session should be established')
+          setShowForm(true)
+        }
+      })
+      
+      return
+    }
+    
+    // No recognized parameters
+    addDebug('No password reset parameters found in URL')
+    setError('Invalid password reset link. Please request a new one.')
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,22 +97,69 @@ export default function ResetPasswordClient() {
     addDebug('Updating password...')
 
     try {
-      // EXACTLY as per Supabase docs
-      const { data, error } = await supabase.auth.updateUser({
-        password: password
-      })
-
-      if (error) {
-        addDebug(`Password update error: ${error.message}`)
-        setError(error.message)
-      } else {
-        addDebug('Password updated successfully!')
-        setSuccess(true)
-        setTimeout(() => {
-          supabase.auth.signOut().then(() => {
-            window.location.href = '/?reset=success'
+      // First check if we have a session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        addDebug('No session found - attempting direct password reset...')
+        
+        // Get the code from URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const code = urlParams.get('code')
+        
+        if (code) {
+          // Try using the code directly with a different approach
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: code,
+            type: 'recovery',
+            options: {
+              redirectTo: window.location.origin
+            }
           })
-        }, 2000)
+          
+          if (!error && data.session) {
+            addDebug('Session established via OTP verification, now updating password...')
+            // Now try to update password with the new session
+            const { error: updateError } = await supabase.auth.updateUser({
+              password: password
+            })
+            
+            if (updateError) {
+              addDebug(`Password update error after OTP: ${updateError.message}`)
+              setError(updateError.message)
+            } else {
+              addDebug('Password updated successfully!')
+              setSuccess(true)
+              setTimeout(() => {
+                window.location.href = '/?reset=success'
+              }, 2000)
+            }
+          } else {
+            addDebug(`OTP verification failed: ${error?.message}`)
+            setError('Invalid or expired reset link. Please request a new one.')
+          }
+        } else {
+          setError('No reset code found. Please use the link from your email.')
+        }
+      } else {
+        // We have a session, proceed normally
+        addDebug('Session exists, updating password...')
+        const { data, error } = await supabase.auth.updateUser({
+          password: password
+        })
+
+        if (error) {
+          addDebug(`Password update error: ${error.message}`)
+          setError(error.message)
+        } else {
+          addDebug('Password updated successfully!')
+          setSuccess(true)
+          setTimeout(() => {
+            supabase.auth.signOut().then(() => {
+              window.location.href = '/?reset=success'
+            })
+          }, 2000)
+        }
       }
     } catch (err: any) {
       addDebug(`Password update exception: ${err.message}`)
