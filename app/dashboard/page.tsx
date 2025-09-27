@@ -1,4 +1,5 @@
 "use client"
+// cspell:words headerless superlike
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
