@@ -78,7 +78,9 @@ export default function Home() {
     <>
       <JsonLd />
       <main className="min-h-screen bg-gradient-to-b from-background to-background/80">
-        <Header />
+        <Suspense fallback={null}>
+          <Header />
+        </Suspense>
         <Hero />
         <Suspense fallback={null}>
           <SignupSection />
