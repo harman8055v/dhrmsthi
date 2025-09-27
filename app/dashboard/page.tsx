@@ -10,7 +10,10 @@ import { Heart, User } from "lucide-react"
 import SettingsCard from "@/components/dashboard/settings-card"
 import dynamic from "next/dynamic"
 
-const SwipeStack = dynamic(() => import("@/components/dashboard/swipe-stack"), { ssr: false })
+const SwipeStack = dynamic(() => import("@/components/dashboard/swipe-stack"), { 
+  ssr: false,
+  loading: () => <>{require("./loading").default()}</>,
+})
 import WelcomeSection from "@/components/dashboard/welcome-section"
 import NewUserWelcome from "@/components/dashboard/new-user-welcome"
 import { isUserVerified, getVerificationStatusText } from "@/lib/utils"
@@ -20,6 +23,7 @@ export default function DashboardPage() {
   const { user, profile, loading: isLoading, error, isVerified, refreshProfile, isMobileLogin } = useAuthContext()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
 
   const {
     data: profiles = [],
@@ -67,6 +71,7 @@ export default function DashboardPage() {
 
   // Redirect unauthenticated users and handle onboarding status
   useEffect(() => {
+    debugLog('[Dashboard] Auth check - isLoading:', isLoading, 'user:', !!user, 'profile:', !!profile);
     if (isLoading) return;
     
     // For mobile login users, only check profile
@@ -120,6 +125,20 @@ export default function DashboardPage() {
       refreshProfile()
     }
   }, [isLoading, user, profile, refreshProfile])
+
+  // Add a timeout to prevent infinite loading on mobile
+  useEffect(() => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    if (isLoading && isMobile) {
+      const timeout = setTimeout(() => {
+        debugLog('[Dashboard] Loading timeout on mobile - forcing refresh')
+        setLoadingTimeout(true)
+        refreshProfile()
+      }, 15000) // 15 second timeout for mobile
+
+      return () => clearTimeout(timeout)
+    }
+  }, [isLoading, refreshProfile])
 
   // Refetch profiles when user returns to the dashboard tab (tab visibility change)
   useEffect(() => {
@@ -222,7 +241,7 @@ export default function DashboardPage() {
     // when user returns to the tab via the visibility change listeners.
   }
 
-  if (isLoading) {
+  if (isLoading && !loadingTimeout) {
     return <>{require("./loading").default()}</>;
   }
 

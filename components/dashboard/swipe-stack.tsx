@@ -173,15 +173,36 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     setLoading(true)
     setError(null)
     try {
-      await Promise.all([fetchSwipeStats(), fetchProfiles()])
+      // On mobile, fetch sequentially to reduce load and improve reliability
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      
+      if (isMobile) {
+        // Sequential fetching for mobile to be more reliable
+        try {
+          await fetchSwipeStats()
+        } catch (statsError) {
+          console.warn("SwipeStack: Stats fetch failed on mobile, continuing with profiles", statsError)
+          // Don't fail completely if stats fail on mobile
+        }
+        await fetchProfiles()
+      } else {
+        // Parallel fetching for desktop
+        await Promise.all([fetchSwipeStats(), fetchProfiles()])
+      }
     } catch (err) {
       console.error(`SwipeStack: Error in fetchData (attempt ${retryCount + 1}):`, err)
       
-      // Retry once for network-related errors
-      if (retryCount === 0 && err instanceof Error && 
-          (err.message.includes('Network error') || err.message.includes('timed out'))) {
-        console.log("SwipeStack: Retrying after network error...")
-        setTimeout(() => fetchData(1), 2000) // Retry after 2 seconds
+      // More aggressive retry for mobile with longer delays
+      const checkIsMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      const maxRetries = checkIsMobile ? 5 : 2
+      const baseDelay = checkIsMobile ? 3000 : 2000
+      
+      if (retryCount < maxRetries && err instanceof Error && 
+          (err.message.includes('Network error') || err.message.includes('timed out') || 
+           err.message.includes('Failed to fetch'))) {
+        const delay = baseDelay * (retryCount + 1)
+        console.log(`SwipeStack: Retrying after network error in ${delay}ms...`)
+        setTimeout(() => fetchData(retryCount + 1), delay)
         return
       }
       
@@ -195,11 +216,17 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   const fetchSwipeStats = async () => {
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      const timeout = isMobile ? 20000 : 10000 // 20 seconds for mobile, 10 for desktop
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
       
       const response = await fetch("/api/swipe/stats", {
         credentials: "include",
         signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       })
       
       clearTimeout(timeoutId)
@@ -239,11 +266,17 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     setFetchingProfiles(true)
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30000) // Increased to 30 seconds for complex age queries
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      const timeout = isMobile ? 45000 : 30000 // 45 seconds for mobile, 30 for desktop
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
       
       const response = await fetch("/api/profiles/discover", {
         credentials: "include",
         signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       })
       
       clearTimeout(timeoutId)
