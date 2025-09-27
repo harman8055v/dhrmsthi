@@ -28,6 +28,35 @@ export default function ResetPasswordClient() {
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
 
+    // If arriving with a PKCE auth code (from ConfirmationURL), try to exchange it for a session
+    try {
+      const url = new URL(window.location.href)
+      const code = url.searchParams.get('code')
+      if (code) {
+        addDebug('Found ?code param - attempting PKCE exchangeCodeForSession')
+        supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+          if (error) {
+            addDebug(`exchangeCodeForSession error: ${error.message}`)
+            // If code_verifier is missing due to www/apex domain mismatch, try alternate host once
+            if (/code verifier/i.test(error.message || '') && typeof window !== 'undefined') {
+              const tried = sessionStorage.getItem('reset_pkce_alt_redirect')
+              if (!tried) {
+                sessionStorage.setItem('reset_pkce_alt_redirect', '1')
+                const isWww = window.location.hostname.startsWith('www.')
+                const altHost = isWww ? window.location.hostname.replace('www.', '') : `www.${window.location.hostname}`
+                const altUrl = `${window.location.protocol}//${altHost}${window.location.pathname}${window.location.search}${window.location.hash}`
+                addDebug(`Trying alternate domain for PKCE storage: ${altUrl}`)
+                window.location.replace(altUrl)
+              }
+            }
+          } else {
+            addDebug('PKCE code exchange succeeded; showing form')
+            setShowForm(true)
+          }
+        })
+      }
+    } catch {}
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       if (event === 'PASSWORD_RECOVERY') {
