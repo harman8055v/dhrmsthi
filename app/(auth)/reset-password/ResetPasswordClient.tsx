@@ -17,42 +17,47 @@ export default function ResetPasswordClient() {
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [debugLog, setDebugLog] = useState<string[]>([])
-
-  const addDebug = (message: string) => {
-    logger.log('[Reset Password]', message)
-    setDebugLog(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${message}`])
-  }
 
   useEffect(() => {
-    addDebug('Component mounted, setting up auth listener...')
-    addDebug(`Full URL: ${window.location.href}`)
+    logger.log('[Reset Password] Component mounted, setting up auth listener...')
+    logger.log(`[Reset Password] Full URL: ${window.location.href}`)
     
     // EXACTLY as per Supabase docs - just listen for PASSWORD_RECOVERY
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
+      logger.log(`[Reset Password] Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
       if (event === "PASSWORD_RECOVERY") {
-        addDebug('PASSWORD_RECOVERY event received! Showing form...')
+        logger.log('[Reset Password] PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
+      }
+      
+      // If we see USER_UPDATED while updating, it means password was changed
+      if (event === "USER_UPDATED" && updating) {
+        logger.log('[Reset Password] USER_UPDATED event detected during password update - marking as success')
+        setUpdating(false)
+        setSuccess(true)
+        
+        setTimeout(() => {
+          window.location.href = '/?reset=success'
+        }, 2000)
       }
     })
 
     // Check if already has session (in case user refreshed page)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        addDebug(`Found existing session: ${session.user?.email}`)
+        logger.log(`[Reset Password] Found existing session: ${session.user?.email}`)
         setShowForm(true)
       } else {
-        addDebug('No existing session')
+        logger.log('[Reset Password] No existing session')
       }
     })
 
     // Timeout - if no PASSWORD_RECOVERY event after 15 seconds
     const timeout = setTimeout(() => {
       if (!showForm) {
-        addDebug('Timeout - PASSWORD_RECOVERY event never fired')
-        setError('Reset link may be invalid. Please check if you clicked the correct link from your email.')
+        logger.log('[Reset Password] Timeout - PASSWORD_RECOVERY event never fired')
+        setError('This reset link appears to be invalid or expired. Please request a new password reset.')
       }
     }, 15000)
 
@@ -60,7 +65,7 @@ export default function ResetPasswordClient() {
       subscription.unsubscribe()
       clearTimeout(timeout)
     }
-  }, [showForm])
+  }, [showForm, updating])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,12 +82,12 @@ export default function ResetPasswordClient() {
     }
 
     setUpdating(true)
-    addDebug('Updating password...')
+    logger.log('[Reset Password] Updating password...')
     
     // Fallback timer in case state gets stuck
     const fallbackTimer = setTimeout(() => {
       if (updating) {
-        addDebug('Fallback: Force clearing updating state after 10 seconds')
+        logger.log('[Reset Password] Fallback: Force clearing updating state after 10 seconds')
         setUpdating(false)
         setError('Password update took too long. Please try again or refresh the page.')
       }
@@ -94,60 +99,38 @@ export default function ResetPasswordClient() {
         password: password
       })
 
+      clearTimeout(fallbackTimer)
+
       if (error) {
-        addDebug(`Password update error: ${error.message}`)
-        clearTimeout(fallbackTimer)
+        logger.log(`[Reset Password] Password update error: ${error.message}`)
         setError(error.message)
         setUpdating(false)
-      } else {
-        addDebug('Password updated successfully!')
-        addDebug(`Response data: ${JSON.stringify(data?.user?.email || 'no user data')}`)
-        
-        // Clear the fallback timer
-        clearTimeout(fallbackTimer)
-        
-        // Set updating to false before setting success to ensure proper state transition
-        addDebug('Setting updating to false and success to true...')
-        setUpdating(false)
-        setSuccess(true)
-        
-        // Force a re-render by using a callback
-        setTimeout(() => {
-          addDebug('Success state should be visible now')
-        }, 100)
-        
-        // Small delay before signing out and redirecting
-        setTimeout(async () => {
-          addDebug('Starting redirect process...')
-          try {
-            await supabase.auth.signOut()
-            addDebug('Signed out, redirecting...')
-            router.push('/?reset=success')
-            // Fallback navigation in case router.push doesn't work
-            setTimeout(() => {
-              window.location.href = '/?reset=success'
-            }, 500)
-          } catch (signOutError) {
-            // If signout fails, still redirect
-            addDebug(`Sign out error: ${signOutError}, redirecting anyway...`)
-            router.push('/?reset=success')
-            // Fallback navigation
-            setTimeout(() => {
-              window.location.href = '/?reset=success'
-            }, 500)
-          }
-        }, 2000)
+        return
       }
+
+      // If we get here, password was updated successfully
+      logger.log('[Reset Password] Password updated successfully!')
+      
+      // Immediately show success state
+      setUpdating(false)
+      setSuccess(true)
+      
+      // Sign out and redirect after a short delay
+      setTimeout(() => {
+        supabase.auth.signOut().finally(() => {
+          window.location.href = '/?reset=success'
+        })
+      }, 2000)
+      
     } catch (err: any) {
-      addDebug(`Password update exception: ${err.message}`)
+      logger.log(`[Reset Password] Password update exception: ${err.message}`)
       clearTimeout(fallbackTimer)
-      setError('An unexpected error occurred')
+      setError('Unable to update password. Please try again.')
       setUpdating(false)
     }
   }
 
   if (success) {
-    addDebug('Rendering success UI')
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
@@ -155,19 +138,13 @@ export default function ResetPasswordClient() {
             <CheckCircle className="w-12 h-12 text-green-600" />
             <h2 className="text-xl font-semibold">Password Updated!</h2>
             <p className="text-muted-foreground">Redirecting to home...</p>
-            <div className="text-xs text-gray-400 mt-4 text-left w-full">
-              <div className="font-mono">Debug Log:</div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="font-mono text-xs">{log}</div>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  if (error) {
+  if (error && !showForm) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
@@ -175,7 +152,7 @@ export default function ResetPasswordClient() {
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
               <span className="text-red-600 text-xl">✕</span>
             </div>
-            <h2 className="text-xl font-semibold text-red-600">Reset Link Issue</h2>
+            <h2 className="text-xl font-semibold">Reset Link Issue</h2>
             <p className="text-muted-foreground">{error}</p>
             <Button 
               onClick={() => router.push('/')}
@@ -183,12 +160,6 @@ export default function ResetPasswordClient() {
             >
               Request New Reset Link
             </Button>
-            <div className="text-xs text-gray-400 mt-4 text-left">
-              <div className="font-mono">Debug Log:</div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="font-mono">{log}</div>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -202,12 +173,6 @@ export default function ResetPasswordClient() {
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <p className="text-muted-foreground">Waiting for password reset verification...</p>
-            <div className="text-xs text-gray-400 mt-4 text-left">
-              <div className="font-mono">Debug Log:</div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="font-mono">{log}</div>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -264,16 +229,24 @@ export default function ResetPasswordClient() {
                 'Update Password'
               )}
             </Button>
+            
+            {/* Manual success option if stuck */}
+            {updating && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Taking too long? You may have already updated your password. 
+                <Button 
+                  variant="link" 
+                  className="p-0 h-auto font-normal underline"
+                  onClick={() => {
+                    window.location.href = '/?reset=success'
+                  }}
+                >
+                  Click here to continue
+                </Button>
+              </p>
+            )}
           </form>
           
-          {/* Debug info */}
-          <div className="mt-4 text-xs text-gray-400 space-y-1">
-            <div className="font-mono">State: updating={String(updating)}, success={String(success)}</div>
-            <div className="font-mono">Debug Log:</div>
-            {debugLog.map((log, i) => (
-              <div key={i} className="font-mono text-xs">{log}</div>
-            ))}
-          </div>
         </CardContent>
       </Card>
     </div>
