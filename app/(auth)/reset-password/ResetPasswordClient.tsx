@@ -25,62 +25,73 @@ export default function ResetPasswordClient() {
   }
 
   useEffect(() => {
+    let mounted = true
     addDebug('Component mounted, setting up auth listener...')
     addDebug(`Full URL: ${window.location.href}`)
     
-    // Check if URL has code parameter
+    // Check if URL has code parameter - if yes, Supabase will process it automatically
     const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
+    const hasCode = urlParams.has('code')
     
-    if (code) {
-      addDebug('Found code parameter in URL - exchanging for session...')
-      // Exchange the code for a session
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
-        if (error) {
-          addDebug(`Code exchange error: ${error.message}`)
-          setError('Reset link may be invalid or expired. Please request a new one.')
-        } else {
-          addDebug('Code exchanged successfully, session established')
-          setShowForm(true)
-        }
-      })
-      return // Don't set up other listeners if we're handling code exchange
+    if (hasCode) {
+      addDebug('Found code parameter - Supabase will process it automatically')
     }
     
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+      
       addDebug(`Auth event: ${event}, Session: ${session ? 'present' : 'null'}`)
       
       if (event === "PASSWORD_RECOVERY") {
         addDebug('PASSWORD_RECOVERY event received! Showing form...')
         setShowForm(true)
       }
+      
+      // Check if we got a signed in event after initial page load with code
+      if (event === "SIGNED_IN" && hasCode) {
+        addDebug('SIGNED_IN event detected with code parameter')
+        // For password reset, just show the form
+        setShowForm(true)
+      }
     })
 
-    // Check if already has session (for page refresh scenarios)
+    // Give Supabase a moment to process the code, then check session
     setTimeout(async () => {
+      if (!mounted) return
+      
       const { data: { session } } = await supabase.auth.getSession()
-      if (session && !showForm) {
-        addDebug(`Found existing session: ${session.user?.email}`)
-        setShowForm(true)
-      } else if (!session) {
-        addDebug('No existing session and no code parameter')
+      if (session) {
+        addDebug(`Session found: ${session.user?.email}`)
+        // If we have a session and a code parameter, it's likely a password reset
+        if (hasCode) {
+          addDebug('Session + code parameter detected, showing password reset form')
+          setShowForm(true)
+        }
+      } else {
+        addDebug('No session found after initial check')
       }
-    }, 1000)
+    }, 2000)
 
-    // Timeout - if no auth event after 15 seconds
+    // Timeout - if nothing happens after 10 seconds
     const timeout = setTimeout(() => {
-      if (!showForm) {
-        addDebug('Timeout - auth events never established a session')
+      if (!mounted) return
+      
+      if (!showForm && hasCode) {
+        addDebug('Timeout reached - showing form anyway since we have a code')
+        // If we have a code but no auth events fired, just show the form
+        setShowForm(true)
+      } else if (!showForm) {
         setError('Reset link may be invalid. Please check if you clicked the correct link from your email.')
       }
-    }, 15000)
+    }, 10000)
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
       clearTimeout(timeout)
     }
-  }, [showForm])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
