@@ -31,8 +31,7 @@ import { ArrowLeft, Send, MoreVertical, Flag, UserX, X, MessageCircle } from "lu
 import { getAvatarInitials } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import dynamic from "next/dynamic"
-const ProfileModal = dynamic(() => import("@/components/profile-modal"), { ssr: false })
+import ProfileModal from "@/components/profile-modal"
 import "@/styles/native-messaging.css"
 import { matchService } from "@/lib/data-service"
 
@@ -41,18 +40,7 @@ interface Match {
   user1_id: string
   user2_id: string
   created_at: string
-  other_user: {
-    id: string
-    first_name?: string
-    last_name?: string
-    profile_photo_url?: string
-    user_photos?: string[]
-    city?: { name: string }
-    state?: { name: string }
-    birthdate?: string
-    gender?: string
-    verification_status?: string
-  }
+  other_user: any // Using any to match the full profile structure from matchService
 }
 
 export default function ChatPage() {
@@ -95,18 +83,7 @@ export default function ChatPage() {
       user1_id: match.user1_id,
       user2_id: match.user2_id,
       created_at: match.created_at,
-      other_user: {
-        id: otherUser.id,
-        first_name: otherUser.first_name,
-        last_name: otherUser.last_name,
-        profile_photo_url: otherUser.profile_photo_url,
-        user_photos: otherUser.user_photos as any,
-        city: (otherUser as any).city,
-        state: (otherUser as any).state,
-        birthdate: otherUser.birthdate,
-        gender: otherUser.gender,
-        verification_status: otherUser.verification_status,
-      },
+      other_user: otherUser, // Pass the complete otherUser object
     }
   }, [matchData])
 
