@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ export default function ResetPasswordClient() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([])
+  const attemptedExchangeRef = useRef(false)
 
   const addDebug = (message: string) => {
     logger.log('[Reset Password]', message)
@@ -34,6 +35,30 @@ export default function ResetPasswordClient() {
     
     if (hasCode) {
       addDebug('Found code parameter in URL - waiting for Supabase to process...')
+      // Explicitly exchange code for a session to ensure recovery flow initializes
+      if (!attemptedExchangeRef.current) {
+        attemptedExchangeRef.current = true
+        ;(async () => {
+          try {
+            addDebug('Attempting code exchange with Supabase...')
+            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href)
+            if (exchangeError) {
+              addDebug(`Code exchange error: ${exchangeError.message}`)
+            } else {
+              addDebug('Code exchange successful. Verifying session...')
+              const { data: { session: afterSession } } = await supabase.auth.getSession()
+              if (afterSession) {
+                addDebug('Session established after code exchange, showing form...')
+                setShowForm(true)
+              } else {
+                addDebug('No session present after code exchange yet.')
+              }
+            }
+          } catch (ex: any) {
+            addDebug(`Code exchange exception: ${ex?.message || 'unknown'}`)
+          }
+        })()
+      }
     }
     
     // Listen for auth state changes - Supabase will process the code automatically
