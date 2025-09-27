@@ -25,12 +25,37 @@ export default function ResetPasswordClient() {
         const tokenHash = params.get('token_hash')
         const type = params.get('type')
         const code = params.get('code')
+        const urlError = params.get('error')
+        const urlErrorDesc = params.get('error_description')
+
+        if (urlError) {
+          setError(urlErrorDesc || urlError)
+          return
+        }
+
+        // Hash token style (magic link style): #access_token=...&refresh_token=...
+        if (window.location.hash && window.location.hash.length > 1) {
+          const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+          const accessToken = hashParams.get('access_token')
+          const refreshToken = hashParams.get('refresh_token')
+          if (accessToken && refreshToken) {
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            })
+            if (!error) {
+              setReady(true)
+              return
+            }
+          }
+        }
 
         // Supabase recovery style: /auth/confirm?token_hash=...&type=recovery
         if (tokenHash && (type === 'recovery' || !type)) {
           const { error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
           if (!error) {
             setReady(true)
+            return
           }
         }
 
@@ -39,13 +64,16 @@ export default function ResetPasswordClient() {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (!error) {
             setReady(true)
+            return
+          } else {
+            setError('Reset link is invalid or expired. Please request a new one.')
           }
         }
       } catch {}
     })()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         setReady(true)
       }
     })
