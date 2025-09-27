@@ -1,0 +1,231 @@
+/* Premium Native-like messaging styles for WebView experience */
+
+/* Enhanced Message animations */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes messageGlow {
+  0%, 100% {
+    box-shadow: 0 4px 15px rgba(251, 146, 60, 0.3);
+  }
+  50% {
+    box-shadow: 0 8px 25px rgba(251, 146, 60, 0.5);
+  }
+}
+
+@keyframes messagePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Apply enhanced animations to new messages */
+.message-animate-in {
+  animation: messageSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.message-sending {
+  opacity: 0.8;
+  animation: messagePulse 0.8s ease-in-out infinite;
+}
+
+/* Premium message bubble effects */
+.message-bubble.sent {
+  position: relative;
+  overflow: hidden;
+}
+
+.message-bubble.sent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.message-bubble:hover {
+  transform: translateY(-1px);
+  transition: transform 0.2s ease-out;
+}
+
+/* Premium glow effects for received messages */
+.message-bubble.received:hover {
+  animation: messageGlow 2s ease-in-out infinite;
+}
+
+/* Smooth scrolling for iOS */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Input focus styles for mobile */
+input:focus {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+/* Prevent text selection on message tap */
+.message-bubble {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Allow text selection on long press */
+.message-bubble.selectable {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Native-like button press effect */
+.button-press:active {
+  transform: scale(0.95);
+  opacity: 0.9;
+}
+
+/* Elastic scroll bounce for iOS */
+.elastic-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: scroll;
+}
+
+.elastic-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Message bubble hover/press states */
+.message-interactive {
+  transition: all 0.1s ease-out;
+  cursor: pointer;
+}
+
+.message-interactive:active {
+  transform: scale(0.98);
+  opacity: 0.95;
+}
+
+/* Premium input bar styling */
+.input-bar-elevated {
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.08), 0 -2px 8px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.98));
+}
+
+/* Premium send button effects */
+@keyframes sendButtonPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(139, 0, 0, 0.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
+  }
+}
+
+.send-button-active:not(:disabled):hover {
+  animation: sendButtonPulse 0.6s ease-in-out;
+}
+
+/* Premium input focus effects */
+input:focus {
+  box-shadow: 0 0 0 3px rgba(139, 0, 0, 0.1), 0 4px 20px rgba(139, 0, 0, 0.15) !important;
+}
+
+/* Typing indicator animation */
+@keyframes typingDot {
+  0%, 60%, 100% {
+    opacity: 0.3;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: typingDot 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Send button animation */
+.send-button-active {
+  animation: messagePulse 0.3s ease-out;
+}
+
+/* Message tails removed for cleaner look */
+
+/* Prevent zoom on input focus (mobile) */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Native-like loading spinner */
+.loading-spinner {
+  border: 2px solid rgba(139, 0, 0, 0.1);
+  border-top-color: #8b0000;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Message timestamp fade */
+.message-timestamp {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.message-bubble:hover .message-timestamp {
+  opacity: 1;
+}
+
+/* Smooth transitions for all interactive elements */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, .clickable {
+  transition: all 0.2s ease-out;
+}
+
+/* Disable pull-to-refresh on chat */
+.disable-pull-refresh {
+  overscroll-behavior-y: contain;
+}
