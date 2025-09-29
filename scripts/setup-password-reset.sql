@@ -15,8 +15,11 @@ Subject: Reset your DharmaSaathi password
 <h2>Reset your password</h2>
 <p>Hi there,</p>
 <p>Someone requested a password reset for your DharmaSaathi account.</p>
-<p>If this was you, click the link below to reset your password:</p>
-<p><a href="{{ .SiteURL }}/reset-password?token={{ .Token }}">Reset Password</a></p>
+<p>If this was you, click the button below to reset your password:</p>
+<p>
+  <a href="{{ .ConfirmationURL }}">Reset Password</a>
+  <!-- For local testing ensure Redirect URLs include http://localhost:3000/reset-password -->
+</p>
 <p>If you didn't request this, you can safely ignore this email.</p>
 <p>This link will expire in 1 hour.</p>
 <br>
