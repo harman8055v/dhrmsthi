@@ -62,8 +62,10 @@ export default function ResetPasswordClient() {
     
     // If we have a session but no code, user is just logged in normally
     if (session && !code) {
-      console.log('[ResetPassword] User is logged in but no reset code')
-      setError('No password reset requested. If you want to change your password, please log out and request a password reset.')
+      console.log('[ResetPassword] User is logged in but no reset code - redirecting to login')
+      // Sign out and redirect to login page
+      await supabase.auth.signOut()
+      router.push('/login')
       return
     }
   }
