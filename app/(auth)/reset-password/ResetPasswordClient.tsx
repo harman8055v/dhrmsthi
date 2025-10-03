@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,6 @@ import { Loader2 } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const supabase = createClient()
   const [ready, setReady] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -58,7 +57,7 @@ export default function ResetPasswordClient() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase, ready])
+  }, [ready])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
