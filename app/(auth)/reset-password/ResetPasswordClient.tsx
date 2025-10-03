@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
@@ -10,105 +10,61 @@ import { Loader2 } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const [showForm, setShowForm] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [processingAuth, setProcessingAuth] = useState(true)
+  const [isReady, setIsReady] = useState(false)
+  const hasProcessedCode = useRef(false)
 
   useEffect(() => {
-    handlePasswordReset()
+    checkPasswordResetCode()
   }, [])
 
-  const handlePasswordReset = async () => {
-    console.log('[ResetPassword] Starting password reset handler...')
-    console.log('[ResetPassword] Current URL:', window.location.href)
+  const checkPasswordResetCode = async () => {
+    console.log('[ResetPassword] Checking for password reset code...')
     
-    // Check URL parameters (both query and hash)
+    // Check for code parameter in URL
     const url = new URL(window.location.href)
-    const hashParams = new URLSearchParams(window.location.hash.substring(1))
+    const code = url.searchParams.get('code')
+    const errorDesc = url.searchParams.get('error_description')
     
-    // Recovery parameters can be in query OR hash
-    const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token')
-    const type = url.searchParams.get('type') || hashParams.get('type')
-    const errorDesc = url.searchParams.get('error_description') || hashParams.get('error_description')
-    const errorCode = url.searchParams.get('error_code') || hashParams.get('error_code')
+    console.log('[ResetPassword] URL params:', { code: !!code, errorDesc })
     
-    console.log('[ResetPassword] Recovery params:', {
-      hasAccessToken: !!accessToken,
-      type,
-      errorDesc,
-      errorCode,
-      inQuery: !!url.searchParams.get('access_token'),
-      inHash: !!hashParams.get('access_token')
-    })
-    
-    // Check for errors first
-    if (errorDesc || errorCode) {
-      console.log('[ResetPassword] Error found in URL')
-      setError(errorDesc || 'Invalid or expired password reset link. Please request a new one.')
-      setProcessingAuth(false)
+    // Handle errors
+    if (errorDesc) {
+      setError(errorDesc)
       return
     }
     
-    // If we have recovery parameters, we need to handle them
-    if (type === 'recovery' && accessToken) {
-      console.log('[ResetPassword] Recovery link detected, checking current session...')
+    // If we have a code and haven't processed it yet, we're in password reset mode
+    if (code && !hasProcessedCode.current) {
+      console.log('[ResetPassword] Password reset code detected!')
+      hasProcessedCode.current = true
       
-      // Check if user is already logged in
-      const { data: { session } } = await supabase.auth.getSession()
-      console.log('[ResetPassword] Current session:', {
-        hasSession: !!session,
-        userId: session?.user?.id
-      })
+      // The code has already been exchanged for a session by Supabase
+      // We just need to show the password reset form
+      setIsReady(true)
       
-      if (session) {
-        console.log('[ResetPassword] User is logged in, signing out first...')
-        await supabase.auth.signOut()
-        // Small delay to ensure sign out completes
-        await new Promise(resolve => setTimeout(resolve, 500))
-      }
-      
-      console.log('[ResetPassword] Processing recovery link...')
-      // Let Supabase process the recovery link by refreshing the page
-      // This will trigger the PASSWORD_RECOVERY event
-      window.location.reload()
+      // Clean up the URL
+      window.history.replaceState({}, document.title, '/reset-password')
       return
     }
     
-    // Set up listener for PASSWORD_RECOVERY event
-    console.log('[ResetPassword] Setting up auth state listener...')
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[ResetPassword] Auth event:', event, 'Session:', !!session)
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('[ResetPassword] PASSWORD_RECOVERY event received!')
-        setShowForm(true)
-        setProcessingAuth(false)
-      } else if (event === 'INITIAL_SESSION') {
-        // Check session state after a delay
-        setTimeout(async () => {
-          const { data: { session: currentSession } } = await supabase.auth.getSession()
-          if (!showForm && processingAuth) {
-            if (currentSession && !type) {
-              console.log('[ResetPassword] User logged in without recovery params')
-              setError('You are already logged in. To reset your password, please log out first and request a new password reset link.')
-            } else if (!currentSession && !type) {
-              console.log('[ResetPassword] No session and no recovery params')
-              setError('Invalid or expired password reset link. Please request a new one.')
-            }
-            setProcessingAuth(false)
-          }
-        }, 2000)
-      }
-    })
+    // If no code, check if this is a direct visit
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!code && !session) {
+      console.log('[ResetPassword] No code and no session - invalid access')
+      setError('Invalid or expired password reset link. Please request a new one.')
+      return
+    }
     
-    // Cleanup
-    return () => {
-      console.log('[ResetPassword] Cleaning up...')
-      subscription.unsubscribe()
+    // If we have a session but no code, user is just logged in normally
+    if (session && !code) {
+      console.log('[ResetPassword] User is logged in but no reset code')
+      setError('No password reset requested. If you want to change your password, please log out and request a password reset.')
+      return
     }
   }
 
@@ -129,69 +85,57 @@ export default function ResetPasswordClient() {
     console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
     
-    const { error } = await supabase.auth.updateUser({ password })
-    
-    setSubmitting(false)
+    try {
+      // Update the user's password
+      const { error: updateError } = await supabase.auth.updateUser({ 
+        password: password 
+      })
+      
+      if (updateError) {
+        throw updateError
+      }
 
-    if (error) {
-      console.error('[ResetPassword] Update error:', error)
-      setError(error.message)
-      return
+      console.log('[ResetPassword] Password updated successfully!')
+      setMessage('Your password has been reset successfully!')
+      
+      // Sign out after password reset
+      await supabase.auth.signOut()
+      
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        router.push('/?reset=success&login=1')
+      }, 2000)
+      
+    } catch (err: any) {
+      console.error('[ResetPassword] Error:', err)
+      setError(err.message || 'Failed to update password. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
-
-    console.log('[ResetPassword] Password updated successfully!')
-    setMessage('Your password has been reset successfully!')
-    
-    // Sign out to ensure clean state
-    try { 
-      await supabase.auth.signOut() 
-    } catch (e) {
-      console.error('[ResetPassword] Signout error:', e)
-    }
-    
-    // Redirect after a short delay
-    setTimeout(() => {
-      router.push('/?reset=success&login=1')
-    }, 2000)
   }
 
   // Show error state
-  if (error && !showForm && !processingAuth) {
+  if (error && !isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <p className="text-red-600 text-center">{error}</p>
-            <div className="flex gap-2">
-              <Button onClick={() => router.push('/')}>Go to Homepage</Button>
-              {error.includes('already logged in') && (
-                <Button 
-                  variant="outline" 
-                  onClick={async () => {
-                    await supabase.auth.signOut()
-                    router.push('/')
-                  }}
-                >
-                  Log Out
-                </Button>
-              )}
-            </div>
+            <Button onClick={() => router.push('/')}>Go to Homepage</Button>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  // Show loading state
-  if (!showForm || processingAuth) {
+  // Show loading if not ready
+  if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">
-              {processingAuth ? 'Processing password reset link...' : 'Verifying password reset link...'}
-            </p>
+            <p className="text-muted-foreground">Verifying password reset link...</p>
           </CardContent>
         </Card>
       </div>
@@ -222,6 +166,7 @@ export default function ResetPasswordClient() {
                 disabled={submitting}
                 required
                 minLength={8}
+                autoFocus
               />
             </div>
             <div>
