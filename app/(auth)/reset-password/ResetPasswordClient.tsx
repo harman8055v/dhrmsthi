@@ -17,6 +17,7 @@ export default function ResetPasswordClient() {
   const [message, setMessage] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
   const hasProcessedCode = useRef(false)
+  const sessionRef = useRef<any>(null)
 
   useEffect(() => {
     checkPasswordResetCode()
@@ -43,11 +44,11 @@ export default function ResetPasswordClient() {
       console.log('[ResetPassword] Password reset code detected!')
       hasProcessedCode.current = true
       
-      // Wait a bit for Supabase to fully establish the session
-      console.log('[ResetPassword] Waiting for session to stabilize...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Wait for Supabase to process the code
+      console.log('[ResetPassword] Waiting for session...')
+      await new Promise(resolve => setTimeout(resolve, 2000))
       
-      // Check if we have a valid session
+      // Get the session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       console.log('[ResetPassword] Session check:', { 
         hasSession: !!session, 
@@ -60,7 +61,8 @@ export default function ResetPasswordClient() {
         return
       }
       
-      // We have a valid session, show the form
+      // Store session reference
+      sessionRef.current = session
       setIsReady(true)
       
       // Clean up the URL
@@ -68,20 +70,8 @@ export default function ResetPasswordClient() {
       return
     }
     
-    // If no code, check if this is a direct visit
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!code && !session) {
-      console.log('[ResetPassword] No code and no session - invalid access')
-      setError('Invalid or expired password reset link. Please request a new one.')
-      return
-    }
-    
-    // If we have a session but no code, user is just logged in normally
-    if (session && !code) {
-      console.log('[ResetPassword] User is logged in but no reset code')
-      setError('No password reset requested. If you want to change your password, please log out and request a password reset.')
-      return
-    }
+    // If no code, invalid access
+    setError('Invalid or expired password reset link. Please request a new one.')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,66 +92,68 @@ export default function ResetPasswordClient() {
     setSubmitting(true)
     
     try {
-      // Double-check we have a session before updating
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session) {
-        console.error('[ResetPassword] No session found:', sessionError)
-        setError('Session expired. Please request a new password reset link.')
-        setSubmitting(false)
-        return
-      }
-      
-      console.log('[ResetPassword] Session valid, updating password...')
-      
-      // Update the password with a timeout to prevent hanging
-      const updatePromise = supabase.auth.updateUser({ password: password })
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Password update timed out')), 10000)
-      )
-      
-      const { error: updateError } = await Promise.race([
-        updatePromise,
-        timeoutPromise
-      ]) as any
-      
-      console.log('[ResetPassword] Update response:', { error: updateError })
-      
-      if (updateError) {
-        console.error('[ResetPassword] Update error:', updateError)
+      // Try direct API call as a last resort
+      if (sessionRef.current?.access_token) {
+        console.log('[ResetPassword] Attempting direct API call...')
         
-        // Check for specific error types
-        if (updateError.message?.includes('session missing') || 
-            updateError.message?.includes('expired') ||
-            updateError.message?.includes('timed out')) {
-          setError('Password reset link has expired or already been used. Please request a new one.')
-        } else {
-          setError(updateError.message || 'Failed to update password')
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionRef.current.access_token}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          },
+          body: JSON.stringify({ password })
+        })
+        
+        const data = await response.json()
+        console.log('[ResetPassword] API response:', { status: response.status, data })
+        
+        if (!response.ok) {
+          throw new Error(data.msg || data.error || 'Failed to update password')
         }
+        
+        console.log('[ResetPassword] Password updated successfully via API!')
+        setMessage('Your password has been reset successfully!')
         setSubmitting(false)
-        return
+        
+        // Sign out and redirect
+        supabase.auth.signOut().catch(e => {
+          console.log('[ResetPassword] Signout error (ignored):', e)
+        })
+        
+        setTimeout(() => {
+          router.push('/?reset=success&login=1')
+        }, 1500)
+      } else {
+        // Fallback to SDK method
+        console.log('[ResetPassword] No access token, trying SDK method...')
+        
+        const { error: updateError } = await supabase.auth.updateUser({ 
+          password: password 
+        })
+        
+        if (updateError) {
+          throw updateError
+        }
+        
+        console.log('[ResetPassword] Password updated successfully via SDK!')
+        setMessage('Your password has been reset successfully!')
+        setSubmitting(false)
+        
+        setTimeout(() => {
+          router.push('/?reset=success&login=1')
+        }, 1500)
       }
-      
-      console.log('[ResetPassword] Password updated successfully!')
-      setMessage('Your password has been reset successfully!')
-      setSubmitting(false)
-      
-      // Sign out and redirect
-      supabase.auth.signOut().catch(e => {
-        console.log('[ResetPassword] Signout error (ignored):', e)
-      })
-      
-      setTimeout(() => {
-        router.push('/?reset=success&login=1')
-      }, 1500)
       
     } catch (err: any) {
       console.error('[ResetPassword] Error:', err)
       
-      if (err.message === 'Password update timed out') {
-        setError('Password update is taking too long. Please try again or request a new reset link.')
+      const errorMessage = err.message || 'Failed to update password'
+      if (errorMessage.includes('session missing') || errorMessage.includes('expired')) {
+        setError('Password reset link has expired or already been used. Please request a new one.')
       } else {
-        setError(err.message || 'Failed to update password. Please try again.')
+        setError(errorMessage)
       }
       setSubmitting(false)
     }
@@ -188,7 +180,7 @@ export default function ResetPasswordClient() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center gap-4 py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Verifying password reset link...</p>
+            <p className="text-muted-foreground">Processing password reset link...</p>
           </CardContent>
         </Card>
       </div>

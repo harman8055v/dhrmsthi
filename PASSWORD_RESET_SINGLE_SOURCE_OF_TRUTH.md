@@ -368,6 +368,8 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 - **Key Learning**: PASSWORD_RECOVERY event doesn't fire with code flow
 - **Critical Fix (Dec 2024)**: Changed from "fire-and-forget" to properly waiting for update response and showing real errors
 - **Hanging Fix (Dec 2024)**: Added session stabilization delay, timeout wrapper (10s), and session validation to prevent updateUser from hanging
+- **Alternative Flow (Dec 2024)**: Added support for hash fragment tokens (#access_token=xxx&refresh_token=xxx) and manual setSession
+- **Direct API Fallback (Dec 2024)**: Added direct REST API call to Supabase auth endpoint as workaround for SDK hanging
 
 ---
 
