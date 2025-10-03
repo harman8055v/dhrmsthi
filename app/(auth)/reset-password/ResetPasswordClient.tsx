@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
@@ -16,55 +16,24 @@ export default function ResetPasswordClient() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const hasProcessedCode = useRef(false)
 
   useEffect(() => {
     checkPasswordResetCode()
   }, [])
 
   const checkPasswordResetCode = async () => {
-    console.log('[ResetPassword] Checking for password reset code...')
-    
     // Check for code parameter in URL
     const url = new URL(window.location.href)
     const code = url.searchParams.get('code')
-    const errorDesc = url.searchParams.get('error_description')
     
-    console.log('[ResetPassword] URL params:', { code: !!code, errorDesc })
-    
-    // Handle errors
-    if (errorDesc) {
-      setError(errorDesc)
-      return
-    }
-    
-    // If we have a code and haven't processed it yet, we're in password reset mode
-    if (code && !hasProcessedCode.current) {
-      console.log('[ResetPassword] Password reset code detected!')
-      hasProcessedCode.current = true
-      
-      // The code has already been exchanged for a session by Supabase
-      // We just need to show the password reset form
+    if (code) {
+      // We have a code, show the password reset form
       setIsReady(true)
-      
       // Clean up the URL
       window.history.replaceState({}, document.title, '/reset-password')
-      return
-    }
-    
-    // If no code, check if this is a direct visit
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!code && !session) {
-      console.log('[ResetPassword] No code and no session - invalid access')
+    } else {
+      // No code, show error
       setError('Invalid or expired password reset link. Please request a new one.')
-      return
-    }
-    
-    // If we have a session but no code, user is just logged in normally
-    if (session && !code) {
-      console.log('[ResetPassword] User is logged in but no reset code')
-      setError('No password reset requested. If you want to change your password, please log out and request a password reset.')
-      return
     }
   }
 
@@ -82,17 +51,10 @@ export default function ResetPasswordClient() {
       return
     }
 
-    console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
     
     // Fire the update request
-    supabase.auth.updateUser({ password: password }).then(({ error }) => {
-      if (error) {
-        console.error('[ResetPassword] Update error:', error)
-      } else {
-        console.log('[ResetPassword] Password update request sent')
-      }
-    })
+    supabase.auth.updateUser({ password: password })
     
     // Show success message and redirect immediately
     setTimeout(() => {
