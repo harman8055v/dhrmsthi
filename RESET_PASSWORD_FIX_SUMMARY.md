@@ -2,13 +2,17 @@
 
 ## 🔧 Changes Made
 
-### 1. **Simplified ResetPasswordClient.tsx**
-- Removed overcomplicated auth checking logic
-- Now follows the simple pattern from Supabase documentation
-- Only listens for `PASSWORD_RECOVERY` event
-- Added console logging for debugging
+### 1. **Fixed "Already Logged In" Issue**
+- Added logic to detect when user is already logged in
+- If recovery parameters are in URL and user is logged in, signs them out first
+- Then reloads page to let Supabase process the recovery link properly
 
-### 2. **Fixed Redirect URL in auth-dialog.tsx**
+### 2. **Enhanced URL Parameter Checking**
+- Checks both query parameters and hash fragments (Supabase uses both)
+- Detects recovery tokens in either location
+- Provides detailed logging for debugging
+
+### 3. **Fixed Redirect URL in auth-dialog.tsx**
 - Changed from `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
 - To hardcoded: `https://dharmasaathi.com/reset-password`
 - This ensures consistency with Supabase configuration
@@ -43,9 +47,16 @@
 ## 🐛 Debugging
 
 If still experiencing issues, check browser console for logs:
-- `[ResetPassword] Component mounted...`
-- `[ResetPassword] Auth event: PASSWORD_RECOVERY`
-- `[ResetPassword] PASSWORD_RECOVERY event received!`
+- `[ResetPassword] Starting password reset handler...`
+- `[ResetPassword] Recovery params:` - Shows if recovery token is detected
+- `[ResetPassword] User is logged in, signing out first...` - If already authenticated
+- `[ResetPassword] Auth event: PASSWORD_RECOVERY` - When event is received
+- `[ResetPassword] PASSWORD_RECOVERY event received!` - Confirms event processing
+
+Key logs to watch for:
+1. **Recovery params detection**: Check if `hasAccessToken: true` and `type: 'recovery'`
+2. **Location of params**: `inQuery` vs `inHash` tells you where Supabase put the token
+3. **Session state**: Shows if user is already logged in
 
 ## 📝 Important Notes
 
