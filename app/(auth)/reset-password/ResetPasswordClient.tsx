@@ -102,7 +102,7 @@ export default function ResetPasswordClient() {
     
     // Redirect after showing message
     setTimeout(() => {
-      router.push('/?reset=success&login=1')
+      router.push('/login')
     }, 2000)
   }
 

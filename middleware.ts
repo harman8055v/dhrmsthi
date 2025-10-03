@@ -5,6 +5,15 @@ import type { NextRequest } from 'next/server'
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   
+  // Skip middleware for auth-related routes to prevent interference
+  const authRoutes = ['/reset-password', '/login', '/auth-loading', '/email-confirmed']
+  const isAuthRoute = authRoutes.some(route => req.nextUrl.pathname.startsWith(route))
+  
+  if (isAuthRoute) {
+    // Don't process auth routes - let them handle their own auth state
+    return res
+  }
+  
   // Create a Supabase client configured to use cookies
   const supabase = createMiddlewareClient({ req, res })
   
@@ -38,11 +47,15 @@ export const config = {
     /*
      * Match all request paths except for the ones starting with:
      * - api/auth (auth endpoints)
+     * - reset-password (password reset flow)
+     * - login (login page)
+     * - auth-loading (auth loading page)
+     * - email-confirmed (email confirmation page)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/auth|reset-password|login|auth-loading|email-confirmed|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
