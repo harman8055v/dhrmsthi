@@ -1,44 +1,10 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  
-  // Skip middleware for auth-related routes to prevent interference
-  const authRoutes = ['/reset-password', '/login', '/auth-loading', '/email-confirmed']
-  const isAuthRoute = authRoutes.some(route => req.nextUrl.pathname.startsWith(route))
-  
-  if (isAuthRoute) {
-    // Don't process auth routes - let them handle their own auth state
-    return res
-  }
-  
-  // Create a Supabase client configured to use cookies
-  const supabase = createMiddlewareClient({ req, res })
-  
-  // Refresh session if expired - required for Server Components
-  const { data: { session }, error } = await supabase.auth.getSession()
-  
-  // Forward the refreshed session to Server Components
-  if (!error && session) {
-    // Session is valid, continue
-    return res
-  }
-  
-  // Check if we're on a protected route
-  const protectedRoutes = ['/dashboard', '/onboarding']
-  const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route))
-  
-  // If on a protected route without a session, redirect to home
-  if (isProtectedRoute && !session) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = '/'
-    redirectUrl.searchParams.set('redirect', req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-  
-  return res
+  // Skip middleware for now to avoid any interference with auth
+  // This is temporary until we properly fix the auth flow
+  return NextResponse.next()
 }
 
 // Specify which routes to run middleware on

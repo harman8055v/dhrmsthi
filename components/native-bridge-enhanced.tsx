@@ -6,8 +6,19 @@ import { supabase } from "@/lib/supabase";
 export default function NativeBridgeEnhanced() {
 
   useEffect(() => {
+    // Skip auth monitoring during password reset to avoid interference
+    const isPasswordReset = window.location.pathname === '/reset-password';
+    if (isPasswordReset) {
+      return;
+    }
+
     // Monitor auth state and notify native app
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Skip PASSWORD_RECOVERY events
+      if (event === 'PASSWORD_RECOVERY') {
+        return;
+      }
+      
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('🔐 User signed in, notifying native app');
         
