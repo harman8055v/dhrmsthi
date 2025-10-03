@@ -100,8 +100,12 @@ export default function ResetPasswordClient() {
       setSubmitting(false)
     }, 500)
     
-    // Redirect after showing message
-    setTimeout(() => {
+    // Sign out and redirect after showing message
+    setTimeout(async () => {
+      // Sign out the session created by password reset
+      await supabase.auth.signOut()
+      // Set flag for login page to know we're coming from password reset
+      sessionStorage.setItem('password-reset-success', 'true')
       router.push('/login')
     }, 2000)
   }

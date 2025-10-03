@@ -64,6 +64,17 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
+    // Skip auth initialization on password reset page
+    const isPasswordResetPage = typeof window !== 'undefined' && window.location.pathname === '/reset-password';
+    if (isPasswordResetPage) {
+      logger.log('[useAuth] Skipping auth init on password reset page')
+      setAuthState(prev => ({
+        ...prev,
+        loading: false
+      }))
+      return;
+    }
+
     // Initialize auth state
     const initializeAuth = async () => {
       try {
@@ -120,6 +131,13 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        
+        // Skip all auth processing on password reset page
+        const isPasswordResetPage = typeof window !== 'undefined' && window.location.pathname === '/reset-password';
+        if (isPasswordResetPage) {
+          logger.log('[useAuth] Skipping auth event on password reset page:', event)
+          return;
+        }
         
         logger.log('[useAuth] Auth event:', event, session?.user?.id)
         
