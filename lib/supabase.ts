@@ -11,11 +11,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// Create Supabase client with explicit configuration for real-time
+// Create a single Supabase client instance with proper configuration
+// This is the ONLY Supabase client that should be used throughout the app
 export const supabase = createClientComponentClient({
   supabaseUrl,
   supabaseKey: supabaseAnonKey,
   options: {
+    auth: {
+      // Enable auto-refresh for better session management
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      // Storage key for auth persistence
+      storageKey: 'dharmasaathi-auth',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
     realtime: {
       params: {
         eventsPerSecond: 10
@@ -23,9 +33,17 @@ export const supabase = createClientComponentClient({
     },
     db: {
       schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-client-info': 'dharmasaathi-web'
+      }
     }
   }
 })
+
+// Export as default for compatibility with existing imports
+export default supabase
 
 // Test real-time connection on client initialization
 if (process.env.NODE_ENV === 'development') {
