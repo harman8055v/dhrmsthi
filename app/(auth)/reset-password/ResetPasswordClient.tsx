@@ -91,25 +91,31 @@ export default function ResetPasswordClient() {
         password: password 
       })
       
+      console.log('[ResetPassword] Update response:', { error: updateError })
+      
       if (updateError) {
         throw updateError
       }
 
       console.log('[ResetPassword] Password updated successfully!')
       setMessage('Your password has been reset successfully!')
+      setSubmitting(false)
       
-      // Sign out after password reset
-      await supabase.auth.signOut()
+      // Don't wait for signout, just redirect
+      // Sign out can happen in the background
+      supabase.auth.signOut().catch(e => {
+        console.log('[ResetPassword] Signout error (ignored):', e)
+      })
       
-      // Redirect to login after a short delay
+      // Redirect immediately
+      console.log('[ResetPassword] Redirecting to login...')
       setTimeout(() => {
         router.push('/?reset=success&login=1')
-      }, 2000)
+      }, 1500)
       
     } catch (err: any) {
       console.error('[ResetPassword] Error:', err)
       setError(err.message || 'Failed to update password. Please try again.')
-    } finally {
       setSubmitting(false)
     }
   }
