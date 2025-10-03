@@ -163,39 +163,43 @@ export default function ResetPasswordClient() {
             {message && (
               <div className="p-3 text-sm text-green-600 bg-green-50 rounded-md">{message}</div>
             )}
-            <div>
-              <Input
-                type="password"
-                placeholder="New password (minimum 8 characters)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={submitting}
-                required
-                minLength={8}
-                autoFocus
-              />
-            </div>
-            <div>
-              <Input
-                type="password"
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={submitting}
-                required
-                minLength={8}
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                'Update Password'
-              )}
-            </Button>
+            {!message && (
+              <>
+                <div>
+                  <Input
+                    type="password"
+                    placeholder="New password (minimum 8 characters)"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={submitting}
+                    required
+                    minLength={8}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <Input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={submitting}
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Password'
+                  )}
+                </Button>
+              </>
+            )}
           </form>
         </CardContent>
       </Card>
