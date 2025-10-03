@@ -34,18 +34,6 @@ export default function LoginPage() {
 	const router = useRouter()
 
 	useEffect(() => {
-		// Check if coming from password reset
-		const isFromPasswordReset = typeof window !== 'undefined' && 
-			(document.referrer.includes('/reset-password') || 
-			 sessionStorage.getItem('password-reset-success') === 'true');
-		
-		if (isFromPasswordReset) {
-			// Clear the flag
-			sessionStorage.removeItem('password-reset-success');
-			// Don't redirect, let them log in
-			return;
-		}
-
 		if (!loading && user) {
 			if (profile?.is_onboarded) {
 				router.replace("/dashboard")

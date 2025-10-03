@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  // Skip middleware for now to avoid any interference with auth
-  // This is temporary until we properly fix the auth flow
+  // Skip auth checks for password reset
+  if (req.nextUrl.pathname.startsWith('/reset-password')) {
+    return NextResponse.next()
+  }
+  
+  // Let everything else through for now
   return NextResponse.next()
 }
 
