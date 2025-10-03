@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { logger } from "./logger"
 
 // Validate environment variables
@@ -11,25 +11,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// Create standard Supabase client - NOT using auth helpers to avoid interference
-export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
+// Create Supabase client with explicit configuration for real-time
+export const supabase = createClientComponentClient({
+  supabaseUrl,
+  supabaseKey: supabaseAnonKey,
+  options: {
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    },
+    db: {
+      schema: 'public'
     }
-  },
-  db: {
-    schema: 'public'
   }
 })
-
-// Export as default for compatibility with existing imports
-export default supabase
 
 // Test real-time connection on client initialization
 if (process.env.NODE_ENV === 'development') {

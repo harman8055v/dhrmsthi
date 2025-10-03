@@ -1,9 +1,10 @@
 "use client";
 import { useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 // Enhanced bridge that sends user ID to native app for direct registration
 export default function NativeBridgeEnhanced() {
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     // Monitor auth state and notify native app
@@ -48,7 +49,7 @@ export default function NativeBridgeEnhanced() {
     return () => {
       sub?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [supabase.auth]);
 
   return null;
 }

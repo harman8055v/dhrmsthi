@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 // Type declaration for ReactNativeWebView
 declare global {
@@ -12,6 +12,7 @@ declare global {
 }
 
 export default function NativeBridge() {
+  const supabase = createClientComponentClient();
   const pendingTokenRef = useRef<{token:string, platform:string}|null>(null);
   const hasSavedRef = useRef(false);
   const hasRequestedTokenRef = useRef(false);

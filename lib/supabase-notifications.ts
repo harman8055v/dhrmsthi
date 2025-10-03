@@ -3,9 +3,21 @@
  * Handles real-time notifications with automatic creation via database triggers
  */
 
-import { supabase } from './supabase'
+import { createClient } from '@supabase/supabase-js'
 import { logger } from './logger'
 import { webViewBridge, NotificationType, NotificationCategory, NotificationPriority } from './webview-bridge'
+
+// Supabase client configuration
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
+  }
+})
 
 // Notification interfaces
 export interface SupabaseNotification {
