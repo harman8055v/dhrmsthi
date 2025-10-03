@@ -25,10 +25,10 @@ The password reset functionality has been fixed multiple times. This document co
    - No waiting for events
    
 4. User submits new password
-   - Password update request is sent
-   - Success message shown after 0.5 seconds
-   - Automatic redirect after 2 seconds
-   - **Does not wait for response** (prevents hanging)
+   - Password update request is sent and awaited
+   - If successful: Success message shown, redirect after 1.5 seconds
+   - If failed: Error message shown (e.g., "session missing")
+   - **Properly handles all error cases**
 
 ---
 
@@ -124,25 +124,38 @@ export default function ResetPasswordClient() {
     console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
     
-    // Fire the update request
-    supabase.auth.updateUser({ password: password }).then(({ error }) => {
-      if (error) {
-        console.error('[ResetPassword] Update error:', error)
-      } else {
-        console.log('[ResetPassword] Password update request sent')
+    try {
+      // Actually wait for the update to complete
+      const { error: updateError } = await supabase.auth.updateUser({ 
+        password: password 
+      })
+      
+      if (updateError) {
+        console.error('[ResetPassword] Update error:', updateError)
+        // Check if it's a session error
+        if (updateError.message.includes('session missing') || updateError.message.includes('expired')) {
+          setError('This password reset link has expired or already been used. Please request a new one.')
+        } else {
+          setError(updateError.message)
+        }
+        setSubmitting(false)
+        return
       }
-    })
-    
-    // Show success message and redirect immediately
-    setTimeout(() => {
+      
+      console.log('[ResetPassword] Password updated successfully!')
       setMessage('Your password has been reset successfully!')
       setSubmitting(false)
-    }, 500)
-    
-    // Redirect after showing message
-    setTimeout(() => {
-      router.push('/?reset=success&login=1')
-    }, 2000)
+      
+      // Redirect after showing success
+      setTimeout(() => {
+        router.push('/?reset=success&login=1')
+      }, 1500)
+      
+    } catch (err: any) {
+      console.error('[ResetPassword] Error:', err)
+      setError(err.message || 'Failed to update password. Please try again.')
+      setSubmitting(false)
+    }
   }
 
   // Show error state
@@ -269,7 +282,7 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 
 ### Issue 3: Button stuck on "Updating..."
 **Cause**: Waiting for async operations to complete  
-**Solution**: IMPLEMENTED - Fire and forget approach with hardcoded timeouts
+**Solution**: UPDATED - Now properly waits for response and shows actual errors
 
 ### Issue 4: User already logged in
 **Cause**: Supabase creates session from reset code  
@@ -297,8 +310,8 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 
 4. **Expected Result**
    - Button shows "Updating..."
-   - After 0.5s: Success message appears, form hidden
-   - After 2s: Redirect to homepage with login prompt
+   - If successful: Success message appears, form hidden, redirect after 1.5s
+   - If failed: Error message shown (e.g., "session missing" or "link expired")
 
 ---
 
@@ -317,10 +330,10 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 ## 🚫 What NOT to Do
 
 1. **DO NOT** wait for PASSWORD_RECOVERY event - it doesn't fire
-2. **DO NOT** use async/await for password update - causes hanging
-3. **DO NOT** check for session validity - single use only
-4. **DO NOT** modify timeouts - they are carefully calibrated
-5. **DO NOT** add complex error handling - keeps it simple
+2. **DO NOT** show fake success - always wait for actual response
+3. **DO NOT** ignore session errors - show clear messages to user
+4. **DO NOT** modify without testing with real password reset links
+5. **DO NOT** assume success - handle all error cases
 
 ---
 
@@ -340,9 +353,10 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 ## 📝 Change History
 
 - **Attempt 1-5**: Various complex implementations with event listeners
-- **Final Solution**: Simple code detection + fire-and-forget update
+- **Final Solution**: Simple code detection + proper error handling
 - **Key Learning**: Supabase uses `code` parameter, not `access_token`
 - **Key Learning**: PASSWORD_RECOVERY event doesn't fire with code flow
+- **Critical Fix (Dec 2024)**: Changed from "fire-and-forget" to properly waiting for update response and showing real errors
 
 ---
 

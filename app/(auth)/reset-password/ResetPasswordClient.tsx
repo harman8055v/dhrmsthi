@@ -85,25 +85,38 @@ export default function ResetPasswordClient() {
     console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
     
-    // Fire the update request
-    supabase.auth.updateUser({ password: password }).then(({ error }) => {
-      if (error) {
-        console.error('[ResetPassword] Update error:', error)
-      } else {
-        console.log('[ResetPassword] Password update request sent')
+    try {
+      // Actually wait for the update to complete
+      const { error: updateError } = await supabase.auth.updateUser({ 
+        password: password 
+      })
+      
+      if (updateError) {
+        console.error('[ResetPassword] Update error:', updateError)
+        // Check if it's a session error
+        if (updateError.message.includes('session missing') || updateError.message.includes('expired')) {
+          setError('This password reset link has expired or already been used. Please request a new one.')
+        } else {
+          setError(updateError.message)
+        }
+        setSubmitting(false)
+        return
       }
-    })
-    
-    // Show success message and redirect immediately
-    setTimeout(() => {
+      
+      console.log('[ResetPassword] Password updated successfully!')
       setMessage('Your password has been reset successfully!')
       setSubmitting(false)
-    }, 500)
-    
-    // Redirect after showing message
-    setTimeout(() => {
-      router.push('/?reset=success&login=1')
-    }, 2000)
+      
+      // Redirect after showing success
+      setTimeout(() => {
+        router.push('/?reset=success&login=1')
+      }, 1500)
+      
+    } catch (err: any) {
+      console.error('[ResetPassword] Error:', err)
+      setError(err.message || 'Failed to update password. Please try again.')
+      setSubmitting(false)
+    }
   }
 
   // Show error state
