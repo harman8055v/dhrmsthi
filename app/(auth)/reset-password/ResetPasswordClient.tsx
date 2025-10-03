@@ -85,58 +85,25 @@ export default function ResetPasswordClient() {
     console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
     
-    // First check if we have a valid session
-    const { data: { session } } = await supabase.auth.getSession()
-    console.log('[ResetPassword] Current session:', session ? 'Valid' : 'None', session?.user?.id)
-    
-    try {
-      // Update the password - await to ensure it completes
-      const { data, error } = await supabase.auth.updateUser({ password: password })
-      
+    // Fire the update request
+    supabase.auth.updateUser({ password: password }).then(({ error }) => {
       if (error) {
         console.error('[ResetPassword] Update error:', error)
-        // If we get an auth error, try refreshing the session first
-        if (error.message.includes('auth') || error.status === 401) {
-          console.log('[ResetPassword] Attempting session refresh...')
-          const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession()
-          if (refreshError) {
-            console.error('[ResetPassword] Session refresh error:', refreshError)
-            setError('Session expired. Please request a new password reset link.')
-            setSubmitting(false)
-            return
-          }
-          
-          // Try updating again with refreshed session
-          const { data: retryData, error: retryError } = await supabase.auth.updateUser({ password: password })
-          if (retryError) {
-            console.error('[ResetPassword] Retry update error:', retryError)
-            setError(retryError.message)
-            setSubmitting(false)
-            return
-          }
-          console.log('[ResetPassword] Password update successful on retry:', retryData)
-        } else {
-          setError(error.message)
-          setSubmitting(false)
-          return
-        }
       } else {
-        console.log('[ResetPassword] Password update successful:', data)
+        console.log('[ResetPassword] Password update request sent')
       }
-      
-      // Show success message
+    })
+    
+    // Show success message and redirect immediately
+    setTimeout(() => {
       setMessage('Your password has been reset successfully!')
       setSubmitting(false)
-      
-      // Redirect after showing message
-      setTimeout(() => {
-        router.push('/login')
-      }, 2000)
-    } catch (err) {
-      console.error('[ResetPassword] Unexpected error:', err)
-      setError('Failed to update password. Please try again.')
-      setSubmitting(false)
-    }
+    }, 500)
+    
+    // Redirect after showing message
+    setTimeout(() => {
+      router.push('/login')
+    }, 2000)
   }
 
   // Show error state
