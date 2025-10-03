@@ -10,7 +10,7 @@ import { Loader2 } from 'lucide-react'
 
 export default function ResetPasswordClient() {
   const router = useRouter()
-  const [ready, setReady] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -18,46 +18,32 @@ export default function ResetPasswordClient() {
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    let recoveryComplete = false
-
+    console.log('[ResetPassword] Component mounted, setting up auth listener...')
+    
+    // Simple listener for PASSWORD_RECOVERY event as per Supabase docs
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'PASSWORD_RECOVERY' && !recoveryComplete) {
-        recoveryComplete = true
-        setReady(true)
-      } else if (event === 'SIGNED_IN') {
-        // This can happen if the user is already logged in in another tab.
-        // We allow them to proceed with password change.
-        setReady(true)
+      console.log('[ResetPassword] Auth event:', event, 'Session:', !!session)
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('[ResetPassword] PASSWORD_RECOVERY event received! Showing form...')
+        setShowForm(true)
       }
     })
 
-    // Also check for existing session on mount, in case the page was reloaded
-    // after the recovery link was clicked.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setReady(true)
-      }
-    }).finally(() => {
-        // If after a short delay there's no session and no recovery event, show an error.
-        // This handles expired/invalid links.
-        setTimeout(() => {
-            if (!recoveryComplete) {
-                const url = new URL(window.location.href)
-                const errorDesc = url.searchParams.get('error_description')
-                if (errorDesc) {
-                    setError(errorDesc)
-                } else if (!ready) {
-                    // Fallback for when no session is found after a timeout
-                    setError("Invalid or expired password reset link. Please request a new one.")
-                }
-            }
-        }, 3000)
-    })
+    // Check for error in URL
+    const url = new URL(window.location.href)
+    const errorDesc = url.searchParams.get('error_description')
+    if (errorDesc) {
+      console.log('[ResetPassword] Error in URL:', errorDesc)
+      setError(errorDesc)
+      setShowForm(false)
+    }
 
     return () => {
+      console.log('[ResetPassword] Cleaning up auth listener')
       subscription.unsubscribe()
     }
-  }, [ready])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,38 +59,51 @@ export default function ResetPasswordClient() {
       return
     }
 
+    console.log('[ResetPassword] Updating password...')
     setSubmitting(true)
+    
     const { error } = await supabase.auth.updateUser({ password })
+    
     setSubmitting(false)
 
     if (error) {
+      console.error('[ResetPassword] Update error:', error)
       setError(error.message)
       return
     }
 
+    console.log('[ResetPassword] Password updated successfully!')
     setMessage('Your password has been reset successfully!')
-    try { await supabase.auth.signOut() } catch {}
     
-    // Redirect after a short delay to allow the user to read the message
+    // Sign out to ensure clean state
+    try { 
+      await supabase.auth.signOut() 
+    } catch (e) {
+      console.error('[ResetPassword] Signout error:', e)
+    }
+    
+    // Redirect after a short delay
     setTimeout(() => {
-        router.push('/?reset=success&login=1')
+      router.push('/?reset=success&login=1')
     }, 2000)
   }
 
-  if (error && !ready) {
+  // Show error state
+  if (error && !showForm) {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-muted p-4">
-            <Card className="w-full max-w-md">
-                <CardContent className="flex flex-col items-center gap-4 py-10">
-                    <p className="text-red-600">{error}</p>
-                    <Button onClick={() => router.push('/')}>Go to Homepage</Button>
-                </CardContent>
-            </Card>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center gap-4 py-10">
+            <p className="text-red-600">{error}</p>
+            <Button onClick={() => router.push('/')}>Go to Homepage</Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
-  if (!ready) {
+  // Show loading state while waiting for PASSWORD_RECOVERY event
+  if (!showForm) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted p-4">
         <Card className="w-full max-w-md">
@@ -117,6 +116,7 @@ export default function ResetPasswordClient() {
     )
   }
 
+  // Show password reset form
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted p-4">
       <Card className="w-full max-w-md">
@@ -129,7 +129,7 @@ export default function ResetPasswordClient() {
               <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">{error}</div>
             )}
             {message && (
-                <div className="p-3 text-sm text-green-600 bg-green-50 rounded-md">{message}</div>
+              <div className="p-3 text-sm text-green-600 bg-green-50 rounded-md">{message}</div>
             )}
             <div>
               <Input
