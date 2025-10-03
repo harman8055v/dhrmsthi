@@ -281,8 +281,12 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 **Solution**: IMPLEMENTED - Hide form after success message
 
 ### Issue 3: Button stuck on "Updating..."
-**Cause**: Waiting for async operations to complete  
-**Solution**: UPDATED - Now properly waits for response and shows actual errors
+**Cause**: `supabase.auth.updateUser()` hanging indefinitely  
+**Solution**: FIXED with multiple approaches:
+- Added 1-second delay after code detection to let session stabilize
+- Added session validation before updating password  
+- Wrapped updateUser in Promise.race with 10-second timeout
+- Double-check session validity right before update
 
 ### Issue 4: User already logged in
 **Cause**: Supabase creates session from reset code  
@@ -321,8 +325,12 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 [ResetPassword] Checking for password reset code...
 [ResetPassword] URL params: { code: true, errorDesc: undefined }
 [ResetPassword] Password reset code detected!
-[ResetPassword] Updating password...
-[ResetPassword] Password update request sent
+[ResetPassword] Waiting for session to stabilize...
+[ResetPassword] Session check: { hasSession: true, userId: "xxx", sessionError: undefined }
+[ResetPassword] Starting password update...
+[ResetPassword] Session valid, updating password...
+[ResetPassword] Update response: { error: undefined }
+[ResetPassword] Password updated successfully!
 ```
 
 ---
@@ -334,6 +342,8 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 3. **DO NOT** ignore session errors - show clear messages to user
 4. **DO NOT** modify without testing with real password reset links
 5. **DO NOT** assume success - handle all error cases
+6. **DO NOT** call updateUser immediately after code detection - wait for session to stabilize
+7. **DO NOT** trust updateUser to always resolve - use timeout wrapper
 
 ---
 
@@ -357,6 +367,7 @@ const { data, error } = await supabase.auth.resetPasswordForEmail(
 - **Key Learning**: Supabase uses `code` parameter, not `access_token`
 - **Key Learning**: PASSWORD_RECOVERY event doesn't fire with code flow
 - **Critical Fix (Dec 2024)**: Changed from "fire-and-forget" to properly waiting for update response and showing real errors
+- **Hanging Fix (Dec 2024)**: Added session stabilization delay, timeout wrapper (10s), and session validation to prevent updateUser from hanging
 
 ---
 

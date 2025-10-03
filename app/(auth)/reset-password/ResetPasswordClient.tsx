@@ -43,8 +43,24 @@ export default function ResetPasswordClient() {
       console.log('[ResetPassword] Password reset code detected!')
       hasProcessedCode.current = true
       
-      // The code has already been exchanged for a session by Supabase
-      // We just need to show the password reset form
+      // Wait a bit for Supabase to fully establish the session
+      console.log('[ResetPassword] Waiting for session to stabilize...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Check if we have a valid session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      console.log('[ResetPassword] Session check:', { 
+        hasSession: !!session, 
+        userId: session?.user?.id,
+        sessionError 
+      })
+      
+      if (sessionError || !session) {
+        setError('Failed to establish session. Please request a new password reset link.')
+        return
+      }
+      
+      // We have a valid session, show the form
       setIsReady(true)
       
       // Clean up the URL
@@ -82,22 +98,45 @@ export default function ResetPasswordClient() {
       return
     }
 
-    console.log('[ResetPassword] Updating password...')
+    console.log('[ResetPassword] Starting password update...')
     setSubmitting(true)
     
     try {
-      // Actually wait for the update to complete
-      const { error: updateError } = await supabase.auth.updateUser({ 
-        password: password 
-      })
+      // Double-check we have a session before updating
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        console.error('[ResetPassword] No session found:', sessionError)
+        setError('Session expired. Please request a new password reset link.')
+        setSubmitting(false)
+        return
+      }
+      
+      console.log('[ResetPassword] Session valid, updating password...')
+      
+      // Update the password with a timeout to prevent hanging
+      const updatePromise = supabase.auth.updateUser({ password: password })
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Password update timed out')), 10000)
+      )
+      
+      const { error: updateError } = await Promise.race([
+        updatePromise,
+        timeoutPromise
+      ]) as any
+      
+      console.log('[ResetPassword] Update response:', { error: updateError })
       
       if (updateError) {
         console.error('[ResetPassword] Update error:', updateError)
-        // Check if it's a session error
-        if (updateError.message.includes('session missing') || updateError.message.includes('expired')) {
-          setError('This password reset link has expired or already been used. Please request a new one.')
+        
+        // Check for specific error types
+        if (updateError.message?.includes('session missing') || 
+            updateError.message?.includes('expired') ||
+            updateError.message?.includes('timed out')) {
+          setError('Password reset link has expired or already been used. Please request a new one.')
         } else {
-          setError(updateError.message)
+          setError(updateError.message || 'Failed to update password')
         }
         setSubmitting(false)
         return
@@ -107,14 +146,23 @@ export default function ResetPasswordClient() {
       setMessage('Your password has been reset successfully!')
       setSubmitting(false)
       
-      // Redirect after showing success
+      // Sign out and redirect
+      supabase.auth.signOut().catch(e => {
+        console.log('[ResetPassword] Signout error (ignored):', e)
+      })
+      
       setTimeout(() => {
         router.push('/?reset=success&login=1')
       }, 1500)
       
     } catch (err: any) {
       console.error('[ResetPassword] Error:', err)
-      setError(err.message || 'Failed to update password. Please try again.')
+      
+      if (err.message === 'Password update timed out') {
+        setError('Password update is taking too long. Please try again or request a new reset link.')
+      } else {
+        setError(err.message || 'Failed to update password. Please try again.')
+      }
       setSubmitting(false)
     }
   }
