@@ -28,6 +28,35 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [pendingDialogOpen, setPendingDialogOpen] = useState(false)
 
+  // Ensure we don't hang forever if the upload promise never settles
+  function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const id = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${ms}ms`))
+      }, ms)
+      promise.then((value) => {
+        clearTimeout(id)
+        resolve(value)
+      }).catch((err) => {
+        clearTimeout(id)
+        reject(err)
+      })
+    })
+  }
+
+  // Make sure session is fresh before sensitive operations like storage upload
+  const ensureFreshSession = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        // Small delay allows helpers to complete any in-flight refresh
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch {
+      // Non-fatal: continue; upload will still error gracefully if unauthenticated
+    }
+  }
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
@@ -80,6 +109,8 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
   const uploadImage = async (file: File) => {
     try {
       setUploading(true)
+      // Refresh session if needed to avoid stale tokens after long browsing
+      await ensureFreshSession()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user?.id) {
         alert("User not authenticated. Please log in again.")
@@ -88,21 +119,29 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
       }
       const fileExt = file.name.split('.').pop() ?? 'jpg'
       const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
-      let { data, error } = await supabase.storage
-        .from("user-photos")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          contentType: file.type,
-          upsert: false,
-        })
-      if ((error as any)?.status === 409) {
-        ;({ data, error } = await supabase.storage
+      let { data, error } = await withTimeout(
+        supabase.storage
           .from("user-photos")
           .upload(filePath, file, {
             cacheControl: "3600",
             contentType: file.type,
-            upsert: true,
-          }))
+            upsert: false,
+          }),
+        30000,
+        "Photo upload"
+      ) as any
+      if ((error as any)?.status === 409) {
+        ;({ data, error } = await withTimeout(
+          supabase.storage
+            .from("user-photos")
+            .upload(filePath, file, {
+              cacheControl: "3600",
+              contentType: file.type,
+              upsert: true,
+            }),
+          30000,
+          "Photo upload (upsert)"
+        ) as any)
       }
       if (error) {
         alert(error.message || "Failed to upload image.")
@@ -111,7 +150,7 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
       }
       return filePath
     } catch (error) {
-      alert("Failed to upload image. Please try again.")
+      alert((error as Error)?.message || "Failed to upload image. Please try again.")
       return null
     } finally {
       setUploading(false)
@@ -140,9 +179,8 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
         })
         const uploadedPath = await uploadImage(compressed)
         if (uploadedPath) {
-          // Use the public CDN URL for preview
-          const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${uploadedPath}`
-          const updated = [...photos, publicUrl]
+          // Persist storage path (not public URL) for consistency across the app
+          const updated = [...photos, uploadedPath]
           onChange(updated)
           setPendingDialogOpen(true)
         }
@@ -158,6 +196,7 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
         if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
         setCropModalOpen(false)
         setSelectedFile(null)
+        if (imageUrl) URL.revokeObjectURL(imageUrl)
         setImageUrl(null)
         setCrop({ x: 0, y: 0 })
         setZoom(1)
