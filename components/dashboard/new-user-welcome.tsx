@@ -180,7 +180,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                         ? "bg-[#8b0000]/10 text-[#8b0000] border border-[#8b0000]/20" 
                         : "bg-orange-100 text-orange-800 border border-orange-200"
                     }`}>
-                      {isProfileComplete ? "4-7 Business Days" : "In Progress"}
+                      {isProfileComplete ? "Usually minutes (max 4 hours)" : "In Progress"}
                     </Badge>
                   </div>
                   
@@ -188,7 +188,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                     {isProfileComplete ? (
                       <>
                         <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                          Due to high volume of applications, our verification team is currently processing profiles within 4-7 business days. Thank you for your patience as we ensure quality and safety for all members.
+                          Most profiles are verified in a few minutes and no later than 4 hours. We'll notify you via WhatsApp and email once you're verified or if we need more information. Completing your profile helps avoid unnecessary delays.
                         </p>
                         
                         <div className="bg-white rounded-2xl p-4 md:p-5 space-y-4 border-2 border-[#8b0000]/10 shadow-lg">
@@ -209,7 +209,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                             </div>
                             <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
                               <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-700">You'll receive an email notification once verified</span>
+                              <span className="text-sm text-gray-700">You'll be notified via WhatsApp and email once verified or if we need more info</span>
                             </div>
                           </div>
                         </div>

@@ -204,7 +204,7 @@ export default function AccountSettingsPage() {
               <AlertDescription>
                 {profile?.verification_status === "verified"
                   ? "Your profile is verified."
-                  : "We’re reviewing your profile. This usually takes 24-48 hours."}
+                  : "Verification usually completes in a few minutes and at most within 4 hours. We will notify you via WhatsApp and email once you are verified or if we need more information. Completing your profile helps avoid unnecessary delays."}
               </AlertDescription>
             </Alert>
 

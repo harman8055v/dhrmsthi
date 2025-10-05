@@ -21,8 +21,8 @@ export default function PendingVerificationDialog({ open, onOpenChange, onAcknow
           </div>
           <DialogTitle className="text-xl">Updates sent for verification</DialogTitle>
           <DialogDescription className="mt-2 text-base">
-            To maintain the highest security, your recent changes will be reviewed. Your profile may show as pending for a short time.
-            Most reviews complete within a few minutes, but it can take up to 2 hours.
+            To maintain the highest security, your recent changes will be reviewed. Your profile may show as pending briefly.
+            Most reviews complete within a few minutes and at most within 4 hours. We will notify you via WhatsApp and email once verified or if we need more information. Completing your profile helps avoid unnecessary delays.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
