@@ -8,6 +8,7 @@ import imageCompression from "browser-image-compression"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Button } from '@/components/ui/button';
+import PendingVerificationDialog from "@/components/pending-verification-dialog"
 
 interface PhotoCropUploaderProps {
   photos: string[]
@@ -25,6 +26,7 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
   const [cropUploadProgress, setCropUploadProgress] = useState<number>(0)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [pendingDialogOpen, setPendingDialogOpen] = useState(false)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -142,6 +144,7 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
           const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${uploadedPath}`
           const updated = [...photos, publicUrl]
           onChange(updated)
+          setPendingDialogOpen(true)
         }
       }
       setCropUploadProgress(100)
@@ -165,6 +168,11 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
 
   return (
     <div className="space-y-2">
+      <PendingVerificationDialog
+        open={pendingDialogOpen}
+        onOpenChange={setPendingDialogOpen}
+        onAcknowledge={() => setPendingDialogOpen(false)}
+      />
       <label className="block text-sm font-medium text-foreground">Upload Photos (Max {maxPhotos})</label>
       <div className="grid grid-cols-3 gap-2 mb-4">
         {photos.map((url, index) => (
@@ -172,7 +180,10 @@ export default function PhotoCropUploader({ photos, onChange, maxPhotos }: Photo
             <Image src={url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${url}`} alt={`User photo ${index + 1}`} fill className="object-cover" />
             <button
               type="button"
-              onClick={() => onChange(photos.filter((img, i) => i !== index))}
+              onClick={() => {
+                onChange(photos.filter((img, i) => i !== index))
+                setPendingDialogOpen(true)
+              }}
               className="absolute top-1 right-1 bg-background/80 p-1 rounded-full"
             >
               <X className="h-4 w-4" />

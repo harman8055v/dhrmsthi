@@ -10,6 +10,7 @@ const WATI_BASE_URL = Deno.env.get("WATI_BASE_URL")!;
 const WATI_TOKEN = Deno.env.get("WATI_TOKEN")!;
 const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY")!;
 const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL")!;
+const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
 
 const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "profile_verified";
 const WATI_TPL_MORE_INFO = Deno.env.get("WATI_TPL_MORE_INFO") || "profile_needs_more_info";
@@ -28,23 +29,27 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function extractObjectPaths(user: any): string[] {
   const paths = new Set<string>();
-  const addFromUrl = (url?: string | null) => {
-    if (!url) return;
-    const marker = "/object/public/user-photos/";
-    const idx = url.indexOf(marker);
-    if (idx >= 0) {
-      const p = url.substring(idx + marker.length);
-      if (p) paths.add(p);
-    }
-  };
-  addFromUrl(user?.profile_photo_url);
   const photos = user?.user_photos;
   if (Array.isArray(photos)) {
     for (const ph of photos) {
-      if (typeof ph === "string") addFromUrl(ph);
+      if (typeof ph === "string") {
+        const marker = "/object/public/user-photos/";
+        const idx = ph.indexOf(marker);
+        if (idx >= 0) {
+          const p = ph.substring(idx + marker.length);
+          if (p) paths.add(p);
+        }
+      }
       else if (ph && typeof ph === "object") {
         // try common keys
-        if (typeof ph.url === "string") addFromUrl(ph.url);
+        if (typeof ph.url === "string") {
+          const marker = "/object/public/user-photos/";
+          const idx = ph.url.indexOf(marker);
+          if (idx >= 0) {
+            const p = ph.url.substring(idx + marker.length);
+            if (p) paths.add(p);
+          }
+        }
         if (typeof ph.path === "string") {
           const p = ph.path.replace(/^\/?user-photos\//, "");
           if (p) paths.add(p);
@@ -69,7 +74,14 @@ async function notifySendGrid(email: string | null | undefined, templateId: stri
   await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${SENDGRID_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: { email: SENDGRID_FROM_EMAIL, name: "DharmaSaathi" }, personalizations: [{ to: [{ email }], dynamic_template_data: { name } }], template_id: templateId }),
+    body: JSON.stringify({
+      from: { email: SENDGRID_FROM_EMAIL, name: "DharmaSaathi" },
+      reply_to: { email: SENDGRID_REPLY_TO_EMAIL, name: "DharmaSaathi Verification" },
+      personalizations: [
+        { to: [{ email }], dynamic_template_data: { name } }
+      ],
+      template_id: templateId
+    }),
   });
 }
 
@@ -80,7 +92,7 @@ serve(async () => {
   for (const job of jobs) {
     await supabase.from("profile_reviews_queue").update({ status: "processing", attempts: 1 }).eq("id", job.id);
 
-    const { data: user } = await supabase.from("users").select("id, email, phone, first_name, last_name, profile_photo_url, user_photos").eq("id", job.user_id).single();
+    const { data: user } = await supabase.from("users").select("id, email, phone, first_name, last_name, user_photos").eq("id", job.user_id).single();
     const { data: rules } = await supabase.from("user_review_rules").select("*").eq("id", job.user_id).single();
     // Ensure photo moderation exists for this user's photos
     const paths = extractObjectPaths(user);

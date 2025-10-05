@@ -11,6 +11,7 @@ import { userService } from "@/lib/data-service"
 import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import PendingVerificationDialog from "@/components/pending-verification-dialog"
 
 interface ProfileImageUploaderProps {
   currentImages: string[]
@@ -36,6 +37,7 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
   const [editIndex, setEditIndex] = useState<number | null>(null)
+  const [pendingDialogOpen, setPendingDialogOpen] = useState(false)
 
   const onCropComplete = (_: any, croppedAreaPixels: any) => {
     setCroppedAreaPixels(croppedAreaPixels)
@@ -85,6 +87,7 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
       await userService.updateProfile({ user_photos: newImages })
       onImagesUpdate(newImages)
       toast.success("Image uploaded successfully!")
+      setPendingDialogOpen(true)
     } catch (error) {
       toast.error("Failed to upload image. Please try again.")
     } finally {
@@ -121,6 +124,7 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
       await userService.updateProfile({ user_photos: newImages })
       onImagesUpdate(newImages)
       toast.success("Image removed successfully!")
+      setPendingDialogOpen(true)
     } catch (error) {
       toast.error("Failed to remove image. Please try again.")
     }
@@ -221,6 +225,7 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
         newImages[editIndex] = filePath
         await userService.updateProfile({ user_photos: newImages })
         onImagesUpdate(newImages)
+        setPendingDialogOpen(true)
       } else {
         await uploadImage(croppedFile)
       }
@@ -237,6 +242,11 @@ export default function ProfileImageUploader({ currentImages, onImagesUpdate }: 
 
   return (
     <div className="space-y-4">
+      <PendingVerificationDialog
+        open={pendingDialogOpen}
+        onOpenChange={setPendingDialogOpen}
+        onAcknowledge={() => setPendingDialogOpen(false)}
+      />
       <Dialog open={cropModalOpen} onOpenChange={setCropModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

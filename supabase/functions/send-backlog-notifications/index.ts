@@ -6,10 +6,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WATI_BASE_URL = Deno.env.get("WATI_BASE_URL")!;
-const WATI_TOKEN = Deno.env.get("WATI_TOKEN")!;
-const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY")!;
-const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL")!;
+const WATI_API_ENDPOINT = Deno.env.get("WATI_API_ENDPOINT") || Deno.env.get("WATI_BASE_URL") || "";
+const WATI_TOKEN = Deno.env.get("WATI_ACCESS_TOKEN") || Deno.env.get("WATI_TOKEN") || "";
+const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY") || "";
+const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL") || "";
+const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
 
 const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "profile_verified";
 const WATI_TPL_MORE_INFO = Deno.env.get("WATI_TPL_MORE_INFO") || "profile_needs_more_info";
@@ -22,63 +23,121 @@ const SG_TPL_REJECTED = Deno.env.get("SG_TPL_REJECTED")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function notifyWATI(phone: string | null | undefined, template: string, name: string) {
-  if (!phone) return;
-  await fetch(`${WATI_BASE_URL}/sendTemplateMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${WATI_TOKEN}` },
-    body: JSON.stringify({ template_name: template, broadcast_name: "profile_verification_backlog", parameters: [{ name: "name", value: name }], recipients: [phone] }),
-  });
+  if (!phone || !WATI_API_ENDPOINT || !WATI_TOKEN) return false;
+  const base = WATI_API_ENDPOINT.replace(/\/$/, "");
+  // Match working OTP pattern: remove leading '+' only, else use digits
+  let clean = String(phone).replace(/^\+/, "");
+  if (!/^\d+$/.test(clean)) clean = clean.replace(/[^\d]/g, "");
+  const url = `${base}/api/v2/sendTemplateMessage?whatsappNumber=${encodeURIComponent(clean)}`;
+  const body = {
+    template_name: template,
+    broadcast_name: template,
+    parameters: [{ name: "name", value: name }]
+  };
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${WATI_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) return false;
+    // optional: attempt to parse and check result/success
+    try {
+      const data = await r.json();
+      if (data && (data.result === true || data.success === true || typeof data.messageId !== "undefined")) return true;
+    } catch {}
+    return true; // WATI often returns 200 without those fields
+  } catch {
+    return false;
+  }
 }
 
 async function notifySendGrid(email: string | null | undefined, templateId: string, name: string) {
-  if (!email) return;
-  await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${SENDGRID_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: { email: SENDGRID_FROM_EMAIL, name: "DharmaSaathi" }, personalizations: [{ to: [{ email }], dynamic_template_data: { name } }], template_id: templateId }),
-  });
+  if (!email || !SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) return false;
+  try {
+    const r = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SENDGRID_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: { email: SENDGRID_FROM_EMAIL, name: "DharmaSaathi" },
+        reply_to: { email: SENDGRID_REPLY_TO_EMAIL, name: "DharmaSaathi Verification" },
+        personalizations: [{ to: [{ email }], dynamic_template_data: { name } }],
+        template_id: templateId
+      }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 serve(async (req) => {
-  const { statuses, limit, dryRun } = await (async () => {
+  const { statuses, limit, dryRun, providers } = await (async () => {
     try { return await req.json(); } catch { return {}; }
   })();
   const allowed = ["verified","pending","rejected"] as const;
   const targetStatuses = Array.isArray(statuses) ? statuses.filter((s: string) => (allowed as readonly string[]).includes(s)) : null;
   const batch = typeof limit === "number" && limit > 0 && limit <= 500 ? limit : 200;
+  const wantSendgrid = Array.isArray(providers) ? providers.includes("sendgrid") : true;
+  const wantWati = Array.isArray(providers) ? providers.includes("wati") : true;
   // Fetch in batches to avoid timeouts
   let q = supabase
     .from("users")
-    .select("id, email, phone, first_name, verification_status")
-    .eq("review_notified", false)
+    .select("id, email, phone, first_name, verification_status, email_notified_at, wati_notified_at, review_notified")
     .not("verification_status", "is", null)
     .limit(batch);
   if (targetStatuses && targetStatuses.length > 0) {
     q = q.in("verification_status", targetStatuses);
   }
+  // Provider-specific pending filter: need at least one pending channel
+  // Apply post-filter in memory to keep SQL simple across providers
   const { data: users } = await q;
-  if (!users?.length) return new Response(JSON.stringify({ notified: 0 }), { status: 200 });
+  const filtered = (users || []).filter(u => {
+    const emailPending = wantSendgrid ? (!u.email_notified_at && !!u.email) : false;
+    const watiPending = wantWati ? (!u.wati_notified_at && !!u.phone) : false;
+    // If both providers requested, accept if either is pending
+    // If only one requested, require that one pending
+    if (wantSendgrid && wantWati) return emailPending || watiPending;
+    if (wantSendgrid) return emailPending;
+    if (wantWati) return watiPending;
+    return false;
+  }).slice(0, batch);
+  if (!filtered.length) return new Response(JSON.stringify({ notified: 0 }), { status: 200 });
 
   let count = 0;
-  for (const u of users) {
+  let watiCount = 0;
+  let sgCount = 0;
+  for (const u of filtered) {
     const name = (u.first_name || "there") as string;
     if (!dryRun) {
+      let emailSent = false;
+      let watiSent = false;
       if (u.verification_status === "verified") {
-        await notifyWATI(u.phone, WATI_TPL_VERIFIED, name);
-        await notifySendGrid(u.email, SG_TPL_VERIFIED, name);
+        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_VERIFIED, name) || false;
+        if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_VERIFIED, name) || false;
       } else if (u.verification_status === "pending") {
-        await notifyWATI(u.phone, WATI_TPL_MORE_INFO, name);
-        await notifySendGrid(u.email, SG_TPL_MORE_INFO, name);
-      } else {
-        await notifyWATI(u.phone, WATI_TPL_REJECTED, name);
-        await notifySendGrid(u.email, SG_TPL_REJECTED, name);
+        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_MORE_INFO, name) || false;
+        if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_MORE_INFO, name) || false;
+      } else { // rejected
+        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_REJECTED, name) || false;
+        if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_REJECTED, name) || false;
       }
-      await supabase.from("users").update({ review_notified: true }).eq("id", u.id);
+      if (emailSent) sgCount++;
+      if (watiSent) watiCount++;
+      // Update per-provider timestamps
+      const upd: Record<string, unknown> = {};
+      if (emailSent) upd.email_notified_at = new Date().toISOString();
+      if (watiSent) upd.wati_notified_at = new Date().toISOString();
+      // Mark review_notified only if both providers have been sent (either in this run or previously)
+      const finalEmail = emailSent || !!u.email_notified_at || !wantSendgrid;
+      const finalWati = watiSent || !!u.wati_notified_at || !wantWati;
+      if (finalEmail && finalWati) upd.review_notified = true;
+      if (Object.keys(upd).length > 0) await supabase.from("users").update(upd).eq("id", u.id);
     }
     count++;
   }
 
-  return new Response(JSON.stringify({ notified: count, filtered: targetStatuses || "all", limit: batch, dryRun: !!dryRun }), { status: 200 });
+  return new Response(JSON.stringify({ notified: count, watiSent: watiCount, sendgridSent: sgCount, filtered: targetStatuses || "all", providers: providers || "both", limit: batch, dryRun: !!dryRun, providersConfigured: { wati: !!(WATI_API_ENDPOINT && WATI_TOKEN), sendgrid: !!(SENDGRID_API_KEY && SENDGRID_FROM_EMAIL) } }), { status: 200 });
 });
 
 

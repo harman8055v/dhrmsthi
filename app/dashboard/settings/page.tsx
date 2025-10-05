@@ -19,6 +19,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 
 import { userService } from "@/lib/data-service"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import PendingVerificationDialog from "@/components/pending-verification-dialog"
 import { supabase } from "@/lib/supabase"
 import Image from "next/image"
 import Cropper from 'react-easy-crop';
@@ -136,6 +137,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [showSuccessAlert, setShowSuccessAlert] = useState(false)
+  const [pendingDialogOpen, setPendingDialogOpen] = useState(false)
   // Local editable state
   const [editable, setEditable] = useState<any>(profile)
   const [locationModalOpen, setLocationModalOpen] = useState(false)
@@ -210,7 +212,7 @@ export default function SettingsPage() {
       })
       setShowSuccessAlert(true)
       setTimeout(() => setShowSuccessAlert(false), 4000)
-      router.push("/dashboard/profile")
+      setPendingDialogOpen(true)
     } catch (error) {
       toast({
         title: "❌ Error",
@@ -240,6 +242,7 @@ export default function SettingsPage() {
       setShowSuccessAlert(true)
       setTimeout(() => setShowSuccessAlert(false), 4000)
       setLocationModalOpen(false)
+      setPendingDialogOpen(true)
     } catch (error) {
       toast({
         title: "❌ Error",
@@ -683,6 +686,15 @@ export default function SettingsPage() {
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
+        <PendingVerificationDialog
+          open={pendingDialogOpen}
+          onOpenChange={setPendingDialogOpen}
+          onAcknowledge={() => {
+            setPendingDialogOpen(false)
+            // Preserve existing navigation after acknowledgement
+            router.push("/dashboard/profile")
+          }}
+        />
         {/* Location Modal */}
         <Dialog open={locationModalOpen} onOpenChange={setLocationModalOpen}>
           <DialogContent>
