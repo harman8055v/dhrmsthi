@@ -36,7 +36,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/profiles/discover?limit=5", { credentials: "include" })
       if (!res.ok) throw new Error("Failed to fetch profiles")
       const data = await res.json()
-      return (data.profiles || []).slice(0, 5)
+      return (data.profiles || [])
     },
     enabled: isVerified && !isLoading,
   })
@@ -251,7 +251,13 @@ export default function DashboardPage() {
       {isVerified ? (
         // VERIFIED USER - Full Swipe Interface
         <main className="fixed inset-0 pb-20">
-          <SwipeStack profiles={profiles} onSwipe={handleSwipe} userProfile={profile} headerless={false} />
+          <SwipeStack
+            key={profiles.map((p: any) => p.id).join(",")}
+            profiles={profiles}
+            onSwipe={handleSwipe}
+            userProfile={profile}
+            headerless={false}
+          />
         </main>
       ) : (
         // UNVERIFIED USER - Verification Dashboard

@@ -60,22 +60,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch user profiles' }, { status: 500 });
     }
 
-    // Process photo URLs to get signed URLs
+    // Build public URL for photos (bucket is public)
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
       if (!photoPath) return null;
-      
       try {
-        // Handle both direct URLs and storage paths
         if (photoPath.startsWith('http')) {
           return photoPath;
         }
-        
-        // Generate signed URL for storage path
-        const { data } = await supabaseAdmin.storage
-          .from('user-photos')
-          .createSignedUrl(photoPath, 3600); // 1 hour expiry
-        
-        return data?.signedUrl || null;
+        const cleanPath = photoPath.replace(/^\/+/, '');
+        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`;
       } catch (error) {
         console.error(`Error processing photo URL ${photoPath} for user ${userId}:`, error);
         return null;

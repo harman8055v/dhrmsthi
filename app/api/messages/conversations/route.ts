@@ -5,7 +5,8 @@ import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    // Use async cookies to avoid Next.js warning
+    const cookieStore = await cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -43,78 +44,31 @@ export async function GET(request: NextRequest) {
     // Get URL parameters
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    // Offset is currently ignored by RPC; UI does not paginate beyond first page
+    // const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Fetch user's matches (these become conversations when there are messages)
-    const { data: matches, error: matchesError } = await supabaseAdmin
-      .from('matches')
-      .select('*')
-      .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-      .order('last_message_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit - 1);
+    // Use optimized RPC that reads from conversation_summaries with DISTINCT ON for last message
+    const { data: convRows, error: convError } = await supabaseAdmin.rpc(
+      'get_user_conversations',
+      { user_id: user.id, limit_count: limit }
+    );
 
-    if (matchesError) {
-      console.error('Error fetching matches:', matchesError);
+    if (convError) {
+      console.error('Error fetching user conversations (RPC):', convError);
       return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 });
     }
 
-    if (!matches || matches.length === 0) {
-      return NextResponse.json({ conversations: [] });
+    if (!convRows || convRows.length === 0) {
+      return NextResponse.json({ conversations: [], total: 0, hasMore: false });
     }
 
-    // Get other user IDs from matches
-    const matchIds = matches.map(m => m.id);
-    const otherUserIds = matches.map(match => 
-      match.user1_id === user.id ? match.user2_id : match.user1_id
-    );
-
-    // Batch fetch: Get ALL last messages for ALL matches in ONE query
-    const { data: allLastMessages, error: messagesError } = await supabaseAdmin
-      .from('messages')
-      .select('match_id, content, created_at, sender_id')
-      .in('match_id', matchIds)
-      .order('created_at', { ascending: false });
-
-    if (messagesError) {
-      console.error('Error fetching messages:', messagesError);
-    }
-
-    // Group last messages by match_id (take first message per match since ordered by created_at DESC)
-    const lastMessagesByMatch = new Map();
-    allLastMessages?.forEach(msg => {
-      if (!lastMessagesByMatch.has(msg.match_id)) {
-        lastMessagesByMatch.set(msg.match_id, msg);
-      }
-    });
-
-    // Batch fetch: Get ALL unread messages for ALL matches in ONE query
-    const { data: allUnreadMessages, error: unreadError } = await supabaseAdmin
-      .from('messages')
-      .select('match_id, id')
-      .in('match_id', matchIds)
-      .neq('sender_id', user.id)
-      .is('read_at', null);
-
-    if (unreadError) {
-      console.error('Error fetching unread messages:', unreadError);
-    }
-
-    // Count unread messages per match
-    const unreadCountsByMatch = new Map();
-    allUnreadMessages?.forEach(msg => {
-      const count = unreadCountsByMatch.get(msg.match_id) || 0;
-      unreadCountsByMatch.set(msg.match_id, count + 1);
-    });
+    const matchIds = convRows.map((r: any) => r.match_id);
+    const otherUserIds = convRows.map((r: any) => r.other_user_id);
 
     // Batch fetch: Get ALL other users' profiles in ONE query
     const { data: otherUsers, error: usersError } = await supabaseAdmin
       .from('users')
-      .select(`
-        *,
-        city:cities(name),
-        state:states(name),
-        country:countries(name)
-      `)
+      .select('id, first_name, last_name, profile_photo_url, user_photos')
       .in('id', otherUserIds);
 
     if (usersError) {
@@ -128,22 +82,15 @@ export async function GET(request: NextRequest) {
       userMap.set(userProfile.id, userProfile);
     });
 
-    // Process all photo URLs in parallel
+    // Build public URL for photos (bucket is public)
     const processPhotoUrl = async (photoPath: string, userId: string): Promise<string | null> => {
       if (!photoPath) return null;
-      
       try {
-        // Handle both direct URLs and storage paths
         if (photoPath.startsWith('http')) {
           return photoPath;
         }
-        
-        // Generate signed URL for storage path with longer expiry for conversations
-        const { data } = await supabaseAdmin.storage
-          .from('user-photos')
-          .createSignedUrl(photoPath, 7200); // 2 hour expiry for better caching
-        
-        return data?.signedUrl || null;
+        const cleanPath = photoPath.replace(/^\/+/, '');
+        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/user-photos/${cleanPath}`;
       } catch (error) {
         console.error(`Error processing photo URL ${photoPath} for user ${userId}:`, error);
         return null;
@@ -169,37 +116,30 @@ export async function GET(request: NextRequest) {
     });
 
     // Build conversations array efficiently (no async operations in map)
-    const conversations = matches.map(match => {
-      const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
-      const otherUser = userMap.get(otherUserId);
+    const conversations = convRows.map((row: any) => {
+      const otherUser = userMap.get(row.other_user_id);
+      if (!otherUser) return null;
 
-      if (!otherUser) {
-        return null; // Skip if we couldn't load the other user
-      }
-
-      // Get pre-fetched data from our maps
-      const lastMessage = lastMessagesByMatch.get(match.id);
-      const unreadCount = unreadCountsByMatch.get(match.id) || 0;
-      const profilePhotoUrl = photoUrlMap.get(otherUserId);
+      const profilePhotoUrl = photoUrlMap.get(row.other_user_id);
 
       return {
-        id: match.id,
-        user1_id: match.user1_id,
-        user2_id: match.user2_id,
-        created_at: match.created_at,
-        last_message_at: match.last_message_at,
-        last_message_text: lastMessage?.content || null,
-        unread_count: unreadCount,
+        id: row.match_id,
+        // user1_id/user2_id are not required by UI here and omitted for lighter payload
+        created_at: row.created_at,
+        // Prefer precise last message time from RPC; fall back to created_at
+        last_message_at: row.last_message_time || row.last_message_at || row.created_at,
+        last_message_text: row.last_message_text || null,
+        unread_count: Number(row.unread_count || 0),
         other_user: {
           ...otherUser,
           profile_photo_url: profilePhotoUrl,
-          user_photos: otherUser.user_photos || [] // Keep original array but don't process for signed URLs
+          user_photos: otherUser.user_photos || []
         }
       };
     });
 
     // Filter out null results and they're already sorted by the original query
-    const validConversations = conversations.filter(conv => conv !== null);
+    const validConversations = conversations.filter((conv: any) => conv !== null);
 
     return NextResponse.json({ 
       conversations: validConversations,

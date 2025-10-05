@@ -1,139 +1,88 @@
-Database Schema on Supabase - 
+Database Schema on Supabase -
 
 create table public.users (
-  id uuid not null default auth.uid (),
-  phone text null,
-  email text null,
-  email_verified boolean null default false,
-  mobile_verified boolean null default false,
-  full_name text null,
-  first_name text null,
-  last_name text null,
-  gender text null,
-  birthdate date null,
-  city_id bigint null,
-  state_id bigint null,
-  country_id bigint null,
-  profile_photo_url text null,
-  user_photos jsonb null,
-  diet text null,
-  temple_visit_freq text null,
-  artha_vs_moksha text null,
-  vanaprastha_interest text null,
-  favorite_spiritual_quote text null,
-  education text null,
-  profession text null,
-  annual_income text null,
-  marital_status text null,
-  super_likes_count integer null default 0,
-  swipe_count integer null default 0,
-  message_highlights_count integer null default 0,
-  is_verified boolean null default false,
-  account_status text null default 'drishti'::text,
-  created_at timestamp with time zone null default now(),
-  updated_at timestamp with time zone null default now(),
-  daily_swipe_count integer null default 0,
-  daily_superlike_count integer null default 0,
-  last_swipe_date date null,
-  is_banned boolean null default false,
-  is_kyc_verified boolean null default false,
-  flagged_reason text null,
-  role text null default 'user'::text,
-  mother_tongue text null,
-  about_me text null,
-  ideal_partner_notes text null,
-  verification_status text null default 'unverified'::text,
-  height_ft integer null,
-  height_in integer null,
-  is_active boolean null default true,
-  referral_code character varying(10) null,
-  referral_count integer null default 0,
-  fast_track_verification boolean null default false,
-  total_referrals integer null default 0,
-  is_onboarded boolean null default false,
-  privacy_settings jsonb null default '{"show_distance": true, "show_last_active": true, "profile_visibility": true, "show_online_status": true, "allow_search_by_phone": false, "show_verification_badge": true, "allow_profile_screenshots": false, "allow_messages_from_matches_only": false}'::jsonb,
+  id uuid not null default auth.uid(),
+  phone text,
+  email text,
+  email_verified boolean default false,
+  mobile_verified boolean default false,
+  full_name text,
+  first_name text,
+  last_name text,
+  gender text,
+  birthdate date,
+  city_id bigint,
+  state_id bigint,
+  country_id bigint,
+  profile_photo_url text,
+  user_photos jsonb,
+  diet text,
+  temple_visit_freq text,
+  artha_vs_moksha text,
+  vanaprastha_interest text,
+  favorite_spiritual_quote text,
+  education text,
+  profession text,
+  annual_income text,
+  marital_status text,
+  super_likes_count integer default 0,
+  swipe_count integer default 0,
+  message_highlights_count integer default 0,
+  is_verified boolean default false,
+  account_status text default 'active'::text,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  daily_swipe_count integer default 0,
+  daily_superlike_count integer default 0,
+  last_swipe_date date,
+  is_banned boolean default false,
+  is_kyc_verified boolean default false,
+  flagged_reason text,
+  role text default 'user'::text,
+  mother_tongue text,
+  about_me text,
+  ideal_partner_notes text,
+  verification_status text default 'unverified'::text,
+  height_ft integer,
+  height_in integer,
+  is_active boolean default true,
+  referral_code character varying(10),
+  referral_count integer default 0,
+  fast_track_verification boolean default false,
+  total_referrals integer default 0,
+  is_onboarded boolean default false,
+  privacy_settings jsonb default '{"show_distance": true, "show_last_active": true, "profile_visibility": true, "show_online_status": true, "allow_search_by_phone": false, "show_verification_badge": true, "allow_profile_screenshots": false, "allow_messages_from_matches_only": false}'::jsonb,
   profile_boosts_count integer not null default 0,
   welcome_sent boolean not null default false,
-  referred_by character varying null,
-  spiritual_org_backup text null,
-  daily_practices_backup text null,
-  spiritual_org text[] null default array[]::text[],
-  daily_practices text[] null default array[]::text[],
-  profile_score numeric(3, 1) null,
-  constraint users_v2_pkey primary key (id),
-  constraint users_referral_code_key unique (referral_code),
-  constraint users_v2_email_key unique (email),
-  constraint users_v2_state_id_fkey foreign KEY (state_id) references states (id),
-  constraint users_v2_city_id_fkey foreign KEY (city_id) references cities (id),
-  constraint users_v2_country_id_fkey foreign KEY (country_id) references countries (id),
-  constraint users_height_ft_check check (
-    (
-      (height_ft >= 4)
-      and (height_ft <= 7)
-    )
-  ),
-  constraint users_profile_score_range check (
-    (
-      (profile_score is null)
-      or (
-        (profile_score >= (0)::numeric)
-        and (profile_score <= (10)::numeric)
-      )
-    )
-  ),
-  constraint users_v2_gender_check check (
-    (
-      gender = any (
-        array['Male'::text, 'Female'::text, 'Other'::text]
-      )
-    )
-  ),
-  constraint users_role_check1 check (
-    (
-      role = any (
-        array[
-          'user'::text,
-          'admin'::text,
-          'super_admin'::text,
-          'superadmin'::text
-        ]
-      )
-    )
-  ),
-  constraint users_height_in_check check (
-    (
-      (height_in >= 0)
-      and (height_in <= 11)
-    )
-  )
+  referred_by character varying,
+  spiritual_org_backup text,
+  daily_practices_backup text,
+  spiritual_org text[] default array[]::text[],
+  daily_practices text[] default array[]::text[],
+  profile_score numeric(3, 1),
+  constraint users_height_ft_check check ((height_ft >= 4 and height_ft <= 7)),
+  constraint users_height_in_check check ((height_in >= 0 and height_in <= 11)),
+  constraint users_profile_score_range check ((profile_score is null or (profile_score >= (0)::numeric and profile_score <= (10)::numeric))),
+  constraint users_role_check1 check ((role = any (array['user'::text, 'admin'::text, 'super_admin'::text, 'superadmin'::text]))),
+  constraint users_v2_gender_check check ((gender = any (array['Male'::text, 'Female'::text, 'Other'::text])))
 ) TABLESPACE pg_default;
 
-create index IF not exists idx_users_phone on public.users using btree (phone) TABLESPACE pg_default;
+-- Indexes
+create index if not exists idx_users_phone on public.users using btree (phone) TABLESPACE pg_default;
+create index if not exists idx_users_created_at on public.users using btree (created_at) TABLESPACE pg_default;
+create index if not exists idx_users_country_state_city on public.users using btree (country_id, state_id, city_id) TABLESPACE pg_default;
+create index if not exists idx_users_gender on public.users using btree (gender) TABLESPACE pg_default;
+create index if not exists idx_users_profile_score on public.users using btree (profile_score) TABLESPACE pg_default where (profile_score is not null);
+create index if not exists idx_users_height_ft on public.users using btree (height_ft) TABLESPACE pg_default;
+create index if not exists idx_users_height_in on public.users using btree (height_in) TABLESPACE pg_default;
+create index if not exists idx_users_height_composite on public.users using btree (height_ft, height_in) TABLESPACE pg_default;
+create index if not exists idx_users_referral_code on public.users using btree (referral_code) TABLESPACE pg_default;
+create index if not exists idx_users_verification_status on public.users using btree (verification_status) TABLESPACE pg_default;
 
-create index IF not exists idx_users_created_at on public.users using btree (created_at) TABLESPACE pg_default;
-
-create index IF not exists idx_users_country_state_city on public.users using btree (country_id, state_id, city_id) TABLESPACE pg_default;
-
-create index IF not exists idx_users_gender on public.users using btree (gender) TABLESPACE pg_default;
-
-create index IF not exists idx_users_profile_score on public.users using btree (profile_score) TABLESPACE pg_default
-where
-  (profile_score is not null);
-
-create index IF not exists idx_users_height_ft on public.users using btree (height_ft) TABLESPACE pg_default;
-
-create index IF not exists idx_users_height_in on public.users using btree (height_in) TABLESPACE pg_default;
-
-create index IF not exists idx_users_height_composite on public.users using btree (height_ft, height_in) TABLESPACE pg_default;
-
-create index IF not exists idx_users_referral_code on public.users using btree (referral_code) TABLESPACE pg_default;
-
-create index IF not exists idx_users_verification_status on public.users using btree (verification_status) TABLESPACE pg_default;
-
+-- Triggers
 create trigger referral_completion_trigger
-after
-update OF verification_status on users for EACH row
-execute FUNCTION process_referral_completion ();
+after update of verification_status on users for each row
+execute function process_referral_completion ();
 
 -------
 

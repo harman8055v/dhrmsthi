@@ -79,8 +79,8 @@ export function useProfile() {
       // Upload image to storage
       const imagePath = await fileService.uploadImage(file, 'user-photos')
       
-      // Get signed URL for immediate use
-      const signedUrl = await fileService.getSignedUrl(imagePath, 'user-photos')
+      // Get public URL for immediate use
+      const publicUrl = await fileService.processPhotoUrl(imagePath)
       
       // Update profile with new image
       const currentPhotos = profile?.user_photos || []
@@ -99,7 +99,7 @@ export function useProfile() {
         success: true
       })
 
-      return signedUrl
+      return publicUrl
 
     } catch (error: any) {
       console.error('Image upload error:', error)
@@ -164,9 +164,9 @@ export function useProfile() {
 
   const getProfileImageUrl = async (imagePath: string): Promise<string | null> => {
     try {
-      return await fileService.getSignedUrl(imagePath, 'user-photos')
+      return await fileService.processPhotoUrl(imagePath)
     } catch (error) {
-      console.error('Error getting signed URL:', error)
+      console.error('Error getting public image URL:', error)
       return null
     }
   }

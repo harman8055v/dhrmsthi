@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Heart, X, Star, RotateCcw, Sparkles, ChevronLeft, ChevronRight } from "lucide-react"
+import { Heart, X, Star, RotateCcw, Sparkles, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { isUserVerified } from "@/lib/utils"
 import Image from "next/image"
@@ -591,10 +591,26 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         <div className="flex items-center justify-center px-4 h-full">
           <div className="text-center">
             <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No More Profiles</h3>
-            <p className="text-gray-600 mb-4">Check back later for new matches!</p>
+            <h3 className="text-xl font-semibold mb-2">You're all caught up</h3>
+            <p className="text-gray-600 mb-4">
+              We carefully verify new profiles every day to keep DharmaSaathi safe and high-quality.
+              Please check back in a few hours—fresh matches are on the way.
+            </p>
             <div className="flex gap-3 justify-center">
-              <Button onClick={() => fetchProfiles().catch(error => console.error("Failed to refresh profiles:", error.message))} className="bg-[#8b0000] hover:bg-[#6b0000]">Refresh</Button>
+              <Button
+                onClick={() => fetchProfiles().catch(error => console.error("Failed to refresh profiles:", error.message))}
+                className="bg-[#8b0000] hover:bg-[#6b0000]"
+                disabled={fetchingProfiles}
+              >
+                {fetchingProfiles ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Refreshing…
+                  </span>
+                ) : (
+                  "Refresh Profiles"
+                )}
+              </Button>
               {undoStack.length > 0 && (
                 <Button onClick={handleUndo} variant="outline" className="border-[#8b0000] text-[#8b0000] hover:bg-[#8b0000]/10">
                   <RotateCcw className="w-4 h-4 mr-2" />
@@ -1048,7 +1064,7 @@ function SwipeCard({
           )}
 
           {/* Profile Info - With better visibility */}
-          <div className="absolute bottom-0 left-0 right-0 p-6 pb-8 text-white z-10">
+          <div className="absolute bottom-0 left-0 right-0 p-6 pb-6 text-white z-20">
             {/* Extra gradient for text readability */}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent -z-10" />
             
@@ -1102,19 +1118,17 @@ function SwipeCard({
               )}
             </div>
 
-            {/* View Profile Button - Bottom */}
-            {isTop && onViewProfile && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onViewProfile(profile)
-                }}
-                className="mt-3 w-full py-2 px-4 bg-gradient-to-r from-[#8b0000] to-[#6b0000] rounded-lg flex items-center justify-center text-white font-medium text-sm shadow-md backdrop-blur-sm border border-white/20 hover:from-[#6b0000] hover:to-[#5a0000] hover:scale-[1.02] transition-all duration-200 active:scale-95"
-              >
-                <Sparkles className="w-5 h-5 mr-2" />
-                View Full Profile
-              </button>
-            )}
+            {/* View Profile Button - render like other info elements */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                if (onViewProfile) onViewProfile(profile)
+              }}
+              className="mt-3 w-full py-2 px-4 bg-gradient-to-r from-[#8b0000] to-[#6b0000] rounded-lg flex items-center justify-center text-white font-medium text-sm shadow-md backdrop-blur-sm border border-white/20 hover:from-[#6b0000] hover:to-[#5a0000] hover:scale-[1.02] transition-all duration-200 active:scale-95 z-30"
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              View Full Profile
+            </button>
           </div>
 
 

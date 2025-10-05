@@ -37,9 +37,9 @@ export interface UserProfile {
   // About and partner expectations
   about_me?: string
   ideal_partner_notes?: string // Only free-text partner preferences field
-  // Profile images
+  // Profile images (DB stores storage paths; UI builds public URLs)
   profile_photo_url?: string
-  user_photos?: string[] // JSONB array of signed URLs
+  user_photos?: string[] // JSONB array of storage paths
   // Status and verification
   is_onboarded: boolean
   verification_status?: 'pending' | 'verified' | 'rejected'
@@ -250,7 +250,7 @@ export const userService = {
   }
 }
 
-// Image/File Operations with Signed URLs
+// Image/File Operations (public bucket)
 export const fileService = {
   // Helper function to validate and process photo URLs
   async processPhotoUrl(photoPath: string): Promise<string | null> {
@@ -427,9 +427,10 @@ export const swipeService = {
         .eq('is_onboarded', true)
         .neq('id', user.id)
 
-      // Exclude already swiped profiles
+      // Exclude already swiped profiles (quote UUIDs for SQL NOT IN)
       if (swipedIds.length > 0) {
-        query = query.not('id', 'in', `(${swipedIds.join(',')})`)
+        const inList = `(${swipedIds.join(',')})`
+        query = query.not('id', 'in', inList)
       }
 
       const { data, error } = await query.limit(limit)
@@ -509,6 +510,55 @@ export const matchService = {
       return { match, otherUser }
     } catch (error) {
       return handleSupabaseError(error, 'get match with profile')
+    }
+  },
+
+  // Lightweight match + peer fetch for chat header (faster than full profile)
+  async getMatchWithProfileLight(matchId: string): Promise<{ match: Match; otherUser: Pick<UserProfile, 'id' | 'first_name' | 'last_name' | 'profile_photo_url' | 'user_photos'> } | null> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new DataServiceError('User not authenticated', 'AUTH_REQUIRED')
+
+      const { data: match, error: matchError } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('id', matchId)
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+        .single()
+
+      if (matchError || !match) return null
+
+      const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id
+
+      // Fetch only minimal fields needed by chat header
+      const { data: other, error: userErr } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, profile_photo_url, user_photos')
+        .eq('id', otherUserId)
+        .single()
+
+      if (userErr || !other) return null
+
+      const processed: Pick<UserProfile, 'id' | 'first_name' | 'last_name' | 'profile_photo_url' | 'user_photos'> = {
+        id: other.id,
+        first_name: other.first_name,
+        last_name: other.last_name,
+        profile_photo_url: other.profile_photo_url,
+        user_photos: other.user_photos || []
+      }
+
+      // Process photo URLs for immediate display
+      if (processed.profile_photo_url) {
+        const url = await fileService.processPhotoUrl(processed.profile_photo_url)
+        processed.profile_photo_url = url || undefined
+      } else if (processed.user_photos && processed.user_photos.length > 0) {
+        const firstUrl = await fileService.processPhotoUrl(processed.user_photos[0] as unknown as string)
+        processed.user_photos = firstUrl ? [firstUrl] as unknown as string[] : []
+      }
+
+      return { match, otherUser: processed }
+    } catch (error) {
+      return handleSupabaseError(error, 'get lightweight match with profile')
     }
   }
 }

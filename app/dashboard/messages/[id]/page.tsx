@@ -68,7 +68,7 @@ export default function ChatPage() {
   const { data: matchData, isLoading: matchLoading } = useQuery({
     queryKey: ["match", matchId],
     queryFn: async () => {
-      return await matchService.getMatchWithProfile(matchId)
+      return await matchService.getMatchWithProfileLight(matchId)
     },
     enabled: !!(isVerified && matchId),
     staleTime: 5 * 60 * 1000,
@@ -149,8 +149,8 @@ export default function ChatPage() {
     }
   }, [loading, user, profile, isVerified, router])
 
-  // Show loading state while both match and messages are loading
-  const isInitialLoading = matchLoading || (messagesLoading && messages.length === 0)
+  // Show loading state based only on messages (do not block on match header)
+  const isInitialLoading = (messagesLoading && messages.length === 0)
 
 
 
@@ -243,17 +243,18 @@ export default function ChatPage() {
   }
 
   const handleReport = async () => {
-    if (!match?.other_user.id) return
+    const otherId = match?.other_user?.id
+    if (!otherId) return
     
     setActionLoading(true)
     try {
-      console.log('[Chat] Reporting user:', match.other_user.id)
+      console.log('[Chat] Reporting user:', otherId)
       const response = await fetch('/api/messages/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          reported_user_id: match.other_user.id,
+          reported_user_id: otherId,
           reason: 'Inappropriate behavior - reported from chat conversation'
         })
       })
@@ -278,17 +279,18 @@ export default function ChatPage() {
   }
 
   const handleBlock = async () => {
-    if (!match?.other_user.id) return
+    const otherId = match?.other_user?.id
+    if (!otherId) return
     
     setActionLoading(true)
     try {
-      console.log('[Chat] Blocking user:', match.other_user.id)
+      console.log('[Chat] Blocking user:', otherId)
       const response = await fetch('/api/messages/block', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          blocked_user_id: match.other_user.id
+          blocked_user_id: otherId
         })
       })
 
@@ -421,7 +423,7 @@ export default function ChatPage() {
     )
   }
 
-  if (!match) {
+  if (!match && !matchLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <h1 className="text-xl font-bold text-gray-900 mb-2">Conversation not found</h1>
@@ -502,27 +504,23 @@ export default function ChatPage() {
               <Avatar className="h-11 w-11 ring-2 ring-white shadow-lg">
                 <AvatarImage
                   src={
-                    match.other_user.profile_photo_url ||
-                    match.other_user.user_photos?.[0] ||
+                    match?.other_user?.profile_photo_url ||
+                    match?.other_user?.user_photos?.[0] ||
                     "/placeholder-user.jpg"
                   }
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-gradient-to-br from-[#8b0000] to-red-700 text-white font-semibold text-sm">
-                  {getAvatarInitials(match.other_user.first_name, match.other_user.last_name)}
+                  {getAvatarInitials(match?.other_user?.first_name, match?.other_user?.last_name)}
                 </AvatarFallback>
               </Avatar>
-              {/* Online indicator */}
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
             </div>
             
             <div className="flex-1 min-w-0">
               <h2 className="font-semibold text-gray-900 text-base truncate">
-                {match.other_user.first_name} {match.other_user.last_name}
+                {match?.other_user?.first_name || '...'} {match?.other_user?.last_name || ''}
               </h2>
-              <p className="text-xs truncate text-green-600 font-medium">
-                Active now
-              </p>
+              {/* Presence text intentionally removed to avoid implying real-time online status */}
             </div>
           </div>
 
@@ -590,7 +588,7 @@ export default function ChatPage() {
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Start the conversation</h3>
             <p className="text-gray-600 mb-4 px-4">
-              You matched with {match.other_user.first_name}! Send a message to begin your spiritual journey together.
+              You matched with {match?.other_user?.first_name || 'your match'}! Send a message to begin your spiritual journey together.
             </p>
             <div 
               className="bg-gradient-to-r from-[#8b0000]/5 to-red-50 rounded-lg p-4 max-w-sm mx-auto cursor-pointer hover:bg-red-50 transition-colors"

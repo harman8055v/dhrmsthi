@@ -1,3 +1,8 @@
+// ⚠️ CRITICAL: DO NOT MODIFY WITHOUT PERMISSION
+// This implementation is confirmed working as of October 2025
+// See PASSWORD_RESET_SINGLE_SOURCE_OF_TRUTH.md for documentation
+// Any changes may break the carefully tested password reset flow
+
 'use client'
 
 import { useEffect, useState, useRef } from 'react'

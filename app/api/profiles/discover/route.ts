@@ -74,9 +74,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Get profiles user has already swiped on
-    const { data: swipedProfiles } = await supabaseAdmin.from("swipes").select("swiped_id").eq("swiper_id", userId)
+    const { data: swipedProfiles } = await supabaseAdmin
+      .from("swipes")
+      .select("swiped_id")
+      .eq("swiper_id", userId)
 
-    const swipedIds = swipedProfiles?.map((s) => s.swiped_id) || []
+    const swipedIds: string[] = swipedProfiles?.map((s) => s.swiped_id) || []
+
+    // Get users already matched with current user to exclude them from discovery
+    const { data: myMatches } = await supabaseAdmin
+      .from("matches")
+      .select("user1_id, user2_id")
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+
+    const matchedIds: string[] = myMatches?.map((m: any) => (m.user1_id === userId ? m.user2_id : m.user1_id)) || []
 
     // Get users who have super-liked the current user
     const { data: superLikedByProfiles } = await supabaseAdmin
@@ -154,9 +165,11 @@ export async function GET(request: NextRequest) {
       // Exclude null birthdates
       .not("birthdate", "is", null)
 
-    // Exclude already swiped profiles
-    if (swipedIds.length > 0) {
-      query = query.not("id", "in", `(${swipedIds.join(",")})`)
+    // Exclude already swiped and already matched profiles (quote UUIDs for SQL list)
+    const excludeIds = Array.from(new Set<string>([...swipedIds, ...matchedIds]))
+    if (excludeIds.length > 0) {
+      const inList = `(${excludeIds.join(",")})`
+      query = query.not("id", "in", inList)
     }
 
     // Gender preference with flexibility for 'Other'
