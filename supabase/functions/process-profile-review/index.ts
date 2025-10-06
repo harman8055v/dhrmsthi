@@ -6,8 +6,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WATI_BASE_URL = Deno.env.get("WATI_BASE_URL")!;
-const WATI_TOKEN = Deno.env.get("WATI_TOKEN")!;
+// Support both legacy and working WATI env vars; prefer working OTP pattern
+const WATI_API_ENDPOINT = Deno.env.get("WATI_API_ENDPOINT") || Deno.env.get("WATI_BASE_URL") || "";
+const WATI_ACCESS_TOKEN = Deno.env.get("WATI_ACCESS_TOKEN") || Deno.env.get("WATI_TOKEN") || "";
 const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY")!;
 const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL")!;
 const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
@@ -60,12 +61,24 @@ function extractObjectPaths(user: any): string[] {
   return Array.from(paths).slice(0, 6); // cap per user
 }
 
+function normalizePhone(p?: string | null) {
+  if (!p) return null;
+  return p.replace(/^\+/, "");
+}
+
 async function notifyWATI(phone: string | null | undefined, template: string, name: string) {
-  if (!phone) return;
-  await fetch(`${WATI_BASE_URL}/sendTemplateMessage`, {
+  const normalized = normalizePhone(phone);
+  if (!normalized || !WATI_API_ENDPOINT || !WATI_ACCESS_TOKEN) return;
+  const url = `${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${normalized}`;
+  const body = {
+    template_name: template,
+    broadcast_name: template,
+    parameters: [{ name: "name", value: name }],
+  };
+  await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${WATI_TOKEN}` },
-    body: JSON.stringify({ template_name: template, broadcast_name: "profile_verification", parameters: [{ name: "name", value: name }], recipients: [phone] }),
+    headers: { Authorization: `Bearer ${WATI_ACCESS_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -85,7 +98,52 @@ async function notifySendGrid(email: string | null | undefined, templateId: stri
   });
 }
 
+async function enqueueResubmitted(limit = 100) {
+  // Find users who need review due to resubmission or explicit flag
+  const { data: candidates } = await supabase
+    .from("users")
+    .select("id, resubmitted_at, last_reviewed_at, needs_review")
+    .or("needs_review.eq.true,resubmitted_at.not.is.null")
+    .limit(limit);
+  if (!candidates?.length) return 0;
+
+  let enqueued = 0;
+  for (const u of candidates) {
+    const resubmitted = !!u.resubmitted_at && (!u.last_reviewed_at || new Date(u.last_reviewed_at) < new Date(u.resubmitted_at));
+    if (!resubmitted && !u.needs_review) continue;
+    // Skip if already queued
+    const { data: existing } = await supabase
+      .from("profile_reviews_queue")
+      .select("id,status")
+      .eq("user_id", u.id)
+      .in("status", ["pending", "processing"])
+      .maybeSingle();
+    if (existing) continue;
+    await supabase.from("profile_reviews_queue").insert({ user_id: u.id, event: "resubmit", status: "pending" });
+    enqueued++;
+  }
+  return enqueued;
+}
+
+async function markProviderNotification(userId: string, provider: "wati" | "email") {
+  const now = new Date().toISOString();
+  if (provider === "wati") {
+    await supabase.from("users").update({ wati_notified_at: now }).eq("id", userId);
+  } else {
+    await supabase.from("users").update({ email_notified_at: now }).eq("id", userId);
+  }
+  const { data } = await supabase
+    .from("users")
+    .select("email_notified_at, wati_notified_at")
+    .eq("id", userId)
+    .single();
+  if (data?.email_notified_at && data?.wati_notified_at) {
+    await supabase.from("users").update({ review_notified: true }).eq("id", userId);
+  }
+}
+
 serve(async () => {
+  await enqueueResubmitted(100);
   const { data: jobs } = await supabase.from("profile_reviews_queue").select("id,user_id,event").eq("status", "pending").order("created_at", { ascending: true }).limit(25);
   if (!jobs?.length) return new Response(JSON.stringify({ processed: 0 }), { status: 200 });
 
@@ -133,25 +191,24 @@ serve(async () => {
     }
     await supabase.from("users").update(update).eq("id", job.user_id);
 
-    // Notifications (respect pause/backfill) & mark review_notified
+    // Notifications (respect pause/backfill) & mark provider-specific timestamps
     const name = (user?.first_name || "there") as string;
     const isBackfill = job.event === "backfill";
     const shouldNotify = !PAUSE_NOTIFICATIONS && (NOTIFY_ON_BACKFILL || !isBackfill);
     if (shouldNotify) {
       if (hasRejectedPhoto) {
-        await notifyWATI(user?.phone, WATI_TPL_PHOTOS_ISSUE, name);
-        await notifySendGrid(user?.email, SG_TPL_PHOTOS_ISSUE, name);
+        await notifyWATI(user?.phone, WATI_TPL_PHOTOS_ISSUE, name); await markProviderNotification(job.user_id, "wati");
+        await notifySendGrid(user?.email, SG_TPL_PHOTOS_ISSUE, name); await markProviderNotification(job.user_id, "email");
       } else if (category === "exceptional" || category === "eligible") {
-        await notifyWATI(user?.phone, WATI_TPL_VERIFIED, name);
-        await notifySendGrid(user?.email, SG_TPL_VERIFIED, name);
+        await notifyWATI(user?.phone, WATI_TPL_VERIFIED, name); await markProviderNotification(job.user_id, "wati");
+        await notifySendGrid(user?.email, SG_TPL_VERIFIED, name); await markProviderNotification(job.user_id, "email");
       } else if (category === "needs_more_details") {
-        await notifyWATI(user?.phone, WATI_TPL_MORE_INFO, name);
-        await notifySendGrid(user?.email, SG_TPL_MORE_INFO, name);
+        await notifyWATI(user?.phone, WATI_TPL_MORE_INFO, name); await markProviderNotification(job.user_id, "wati");
+        await notifySendGrid(user?.email, SG_TPL_MORE_INFO, name); await markProviderNotification(job.user_id, "email");
       } else {
-        await notifyWATI(user?.phone, WATI_TPL_REJECTED, name);
-        await notifySendGrid(user?.email, SG_TPL_REJECTED, name);
+        await notifyWATI(user?.phone, WATI_TPL_REJECTED, name); await markProviderNotification(job.user_id, "wati");
+        await notifySendGrid(user?.email, SG_TPL_REJECTED, name); await markProviderNotification(job.user_id, "email");
       }
-      await supabase.from("users").update({ review_notified: true }).eq("id", job.user_id);
     }
 
     await supabase.from("profile_reviews_queue").update({ status: "done" }).eq("id", job.id);

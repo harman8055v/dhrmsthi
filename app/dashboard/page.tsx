@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Heart, User } from "lucide-react"
 import SettingsCard from "@/components/dashboard/settings-card"
 import dynamic from "next/dynamic"
+// Removed inline assistant UI from this page (now embedded in NewUserWelcome)
 
 const SwipeStack = dynamic(() => import("@/components/dashboard/swipe-stack"), { 
   ssr: false,
@@ -242,6 +243,9 @@ export default function DashboardPage() {
     // when user returns to the tab via the visibility change listeners.
   }
 
+  // Inline assistant moved into NewUserWelcome
+
+  // Early return AFTER hooks to preserve hook order
   if (isLoading && !loadingTimeout) {
     return <>{require("./loading").default()}</>;
   }
@@ -267,6 +271,8 @@ export default function DashboardPage() {
             <div>
               <NewUserWelcome profile={profile} />
             </div>
+
+            {/* Inline assistant removed here; it now lives in NewUserWelcome */}
 
             {/* Settings Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

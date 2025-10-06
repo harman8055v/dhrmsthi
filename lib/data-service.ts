@@ -43,6 +43,17 @@ export interface UserProfile {
   // Status and verification
   is_onboarded: boolean
   verification_status?: 'pending' | 'verified' | 'rejected'
+  // AI review fields (optional)
+  review_category?: 'eligible' | 'needs_more_details' | 'red_flags' | 'exceptional'
+  review_reason?: string
+  suspicious_score?: number
+  missing_fields?: string[]
+  needs_review?: boolean
+  last_reviewed_at?: string
+  review_version?: number
+  email_notified_at?: string
+  wati_notified_at?: string
+  resubmitted_at?: string
   account_status?: 'drishti' | 'sparsh' | 'sangam' | 'samarpan' | 'suspended' | 'deleted'
   premium_expires_at?: string
   // Counters

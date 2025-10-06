@@ -23,6 +23,12 @@ import {
   UserPlus
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useMemo, useState } from "react"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { userService, fileService } from "@/lib/data-service"
+import { useAuthContext } from "@/components/auth-provider"
+import LocationSelector, { LocationFormState, validateLocation } from "@/components/location-selector"
 
 interface NewUserWelcomeProps {
   profile: any
@@ -30,6 +36,7 @@ interface NewUserWelcomeProps {
 
 export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
   const router = useRouter()
+  const { refreshProfile } = useAuthContext()
 
   const calculateProfileCompleteness = () => {
     if (!profile) return 0
@@ -72,6 +79,126 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
   const profileCompleteness = calculateProfileCompleteness()
   const isProfileComplete = profileCompleteness === 100
 
+  // Verification assistant state
+  const userVerificationStatus = profile?.verification_status as string | undefined
+  const reviewReason: string | undefined = profile?.review_reason
+  const serverMissing: string[] = useMemo(() => (Array.isArray(profile?.missing_fields) ? profile.missing_fields : []), [profile])
+  // Determine problematic fields from both backend hints and current profile
+  const missingSet = new Set<string>(serverMissing)
+  const needAbout = (!profile?.about_me || String(profile?.about_me || '').trim().length < 100)
+  if (needAbout) missingSet.add('about_me')
+  const needBasics = (!profile?.education || !profile?.profession || !profile?.first_name || !profile?.last_name || !profile?.gender || !profile?.birthdate || !profile?.diet)
+  if (needBasics) missingSet.add('basic_profile')
+  const needLocation = !(profile?.country_id && profile?.state_id && profile?.city_id)
+  if (needLocation) missingSet.add('basic_profile')
+  const needPhoto = (!Array.isArray(profile?.user_photos) || profile.user_photos.length === 0) || (reviewReason && /photo|image|picture/i.test(reviewReason))
+  if (needPhoto) missingSet.add('profile_photo')
+  const missingFields = Array.from(missingSet)
+  const needsAssistant = userVerificationStatus === 'pending' || userVerificationStatus === 'rejected'
+  const [resubmitted, setResubmitted] = useState<boolean>(false)
+  const showThankYou = resubmitted || Boolean(profile?.resubmitted_at)
+
+  // Form state for fields
+  const [firstName, setFirstName] = useState<string>(profile?.first_name || "")
+  const [lastName, setLastName] = useState<string>(profile?.last_name || "")
+  const [gender, setGender] = useState<string>(profile?.gender || "")
+  const [birthdate, setBirthdate] = useState<string>(profile?.birthdate || "")
+  const [diet, setDiet] = useState<string>(profile?.diet || "")
+  const [aboutMe, setAboutMe] = useState<string>(profile?.about_me || "")
+  const [education, setEducation] = useState<string>(profile?.education || "")
+  const [profession, setProfession] = useState<string>(profile?.profession || "")
+  const [idealPartnerNotes, setIdealPartnerNotes] = useState<string>(profile?.ideal_partner_notes || "")
+  const [location, setLocation] = useState<LocationFormState>({
+    country_id: profile?.country_id || null,
+    state_id: profile?.state_id || null,
+    city_id: profile?.city_id || null,
+  })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitMsg, setSubmitMsg] = useState<string | null>(null)
+
+  const handleResubmit = async () => {
+    try {
+      setSubmitting(true)
+      setSubmitMsg(null)
+      let uploadedPath: string | null = null
+      if (photoFile) uploadedPath = await fileService.uploadImage(photoFile)
+
+      const updates: any = {
+        verification_status: 'pending',
+        needs_review: true,
+        resubmitted_at: new Date().toISOString(),
+        review_version: ((profile?.review_version as number | undefined) ?? 0) + 1,
+        updated_at: new Date().toISOString(),
+      }
+      const trimmedAbout = aboutMe?.trim() || ''
+      const trimmedEducation = education?.trim() || ''
+      const trimmedProfession = profession?.trim() || ''
+      const trimmedFirst = firstName?.trim() || ''
+      const trimmedLast = lastName?.trim() || ''
+      const trimmedIdeal = idealPartnerNotes?.trim() || ''
+
+      // Treat like Settings: include any changed fields
+      const aboutChanged = trimmedAbout !== (profile?.about_me || '')
+      const firstChanged = trimmedFirst !== (profile?.first_name || '')
+      const lastChanged = trimmedLast !== (profile?.last_name || '')
+      const genderChanged = (gender || '') !== (profile?.gender || '')
+      const birthdateChanged = (birthdate || '') !== (profile?.birthdate || '')
+      const dietChanged = (diet || '') !== (profile?.diet || '')
+      const eduChanged = trimmedEducation !== (profile?.education || '')
+      const profChanged = trimmedProfession !== (profile?.profession || '')
+      const idealChanged = trimmedIdeal !== (profile?.ideal_partner_notes || '')
+
+      if (aboutChanged) updates.about_me = trimmedAbout
+      if (firstChanged) updates.first_name = trimmedFirst
+      if (lastChanged) updates.last_name = trimmedLast
+      if (genderChanged) updates.gender = gender
+      if (birthdateChanged) updates.birthdate = birthdate
+      if (dietChanged) updates.diet = diet
+      if (eduChanged) updates.education = trimmedEducation
+      if (profChanged) updates.profession = trimmedProfession
+      if (idealChanged) updates.ideal_partner_notes = trimmedIdeal
+
+      const locValid = validateLocation(location, true)
+      const locChanged = locValid && (
+        location.country_id !== (profile?.country_id || null) ||
+        location.state_id !== (profile?.state_id || null) ||
+        location.city_id !== (profile?.city_id || null)
+      )
+      if (locChanged) {
+        updates.country_id = location.country_id
+        updates.state_id = location.state_id
+        updates.city_id = location.city_id
+      }
+
+      if (uploadedPath) {
+        const current = Array.isArray(profile?.user_photos) ? ([...(profile.user_photos as string[])]) : []
+        updates.user_photos = [...current, uploadedPath]
+      }
+
+      // Prevent no-op submissions (ignore status-only changes)
+      const changed = Boolean(
+        uploadedPath ||
+        aboutChanged || firstChanged || lastChanged || genderChanged || birthdateChanged ||
+        dietChanged || eduChanged || profChanged || idealChanged || locChanged
+      )
+      if (!changed) {
+        setSubmitMsg('Please update at least one field before resubmitting')
+        setSubmitting(false)
+        return
+      }
+
+      await userService.updateProfile(updates)
+      await refreshProfile()
+      setSubmitMsg("Thanks! Your updates were submitted. We'll review and notify you soon.")
+      setResubmitted(true)
+    } catch (e: any) {
+      setSubmitMsg(e?.message || 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="space-y-6 pt-4">
       {/* Hero Welcome Card */}
@@ -99,7 +226,6 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                   </div>
                 </div>
               </div>
-              
               <div className="space-y-3">
                 <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white drop-shadow-lg">
                   {isProfileComplete ? `Thank you, ${profile?.first_name}!` : `Welcome to DharmaSaathi, ${profile?.first_name}!`}
@@ -107,25 +233,21 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                 <p className="text-sm md:text-lg text-white/90 max-w-2xl mx-auto leading-relaxed drop-shadow">
                   {isProfileComplete 
                     ? "Your profile is complete and ready for verification. We appreciate the time you've taken to provide detailed information about yourself."
-                    : "Your journey to finding a meaningful life partner begins here. We're delighted to have you join our community of values-driven individuals."
-                  }
+                    : "Your journey to finding a meaningful life partner begins here. We're delighted to have you join our community of values-driven individuals."}
                 </p>
               </div>
-
               {/* Achievement Badges */}
               <div className="flex flex-wrap justify-center gap-2">
                 <div className="inline-flex items-center gap-1.5 bg-green-500/80 backdrop-blur-sm border border-green-400/40 rounded-full px-2.5 py-1.5 text-xs font-semibold text-white shadow-lg">
                   <CheckCircle className="w-3.5 h-3.5" />
                   Profile Created
                 </div>
-                
                 {isProfileComplete && (
                   <div className="inline-flex items-center gap-1.5 bg-green-500/80 backdrop-blur-sm border border-green-400/40 rounded-full px-2.5 py-1.5 text-xs font-semibold text-white shadow-lg">
                     <ThumbsUp className="w-3.5 h-3.5" />
                     Profile Complete
                   </div>
                 )}
-                
                 <div className="inline-flex items-center gap-1.5 bg-orange-500/80 backdrop-blur-sm border border-orange-400/40 rounded-full px-2.5 py-1.5 text-xs font-semibold text-white shadow-lg">
                   <Clock className="w-3.5 h-3.5" />
                   Verification Under Process
@@ -149,8 +271,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
             <p className="text-gray-600 text-sm md:text-base">
               {isProfileComplete 
                 ? "Here's what happens next and how to make the most of our platform"
-                : "Follow these steps to connect with compatible life partners"
-              }
+                : "Follow these steps to connect with compatible life partners"}
             </p>
           </div>
 
@@ -183,117 +304,125 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
                       {isProfileComplete ? "Usually minutes (max 4 hours)" : "In Progress"}
                     </Badge>
                   </div>
-                  
                   <div className="space-y-5">
                     {isProfileComplete ? (
                       <>
                         <p className="text-sm md:text-base text-gray-700 leading-relaxed">
                           Most profiles are verified in a few minutes and no later than 4 hours. We'll notify you via WhatsApp and email once you're verified or if we need more information. Completing your profile helps avoid unnecessary delays.
                         </p>
-                        
-                        <div className="bg-white rounded-2xl p-4 md:p-5 space-y-4 border-2 border-[#8b0000]/10 shadow-lg">
-                          <h4 className="text-sm md:text-base font-semibold text-gray-900 flex items-center gap-2">
-                            <div className="w-6 h-6 bg-[#8b0000]/10 rounded-lg flex items-center justify-center">
-                              <Clock className="w-4 h-4 text-[#8b0000]" />
-                            </div>
-                            What's Happening Now:
-                          </h4>
-                          <div className="grid grid-cols-1 gap-3">
-                            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-200">
-                              <UserCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-700">Your profile is in the verification queue</span>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-[#8b0000]/5 rounded-xl border border-[#8b0000]/20">
-                              <Shield className="w-5 h-5 text-[#8b0000] flex-shrink-0" />
-                              <span className="text-sm text-gray-700">Our team is reviewing your information</span>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
-                              <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-700">You'll be notified via WhatsApp and email once verified or if we need more info</span>
-                            </div>
-                          </div>
-                        </div>
                       </>
                     ) : (
                       <>
                         <p className="text-sm md:text-base text-gray-700 leading-relaxed">
                           Our verification process ensures a secure, authentic community where you can confidently connect with genuine individuals seeking meaningful relationships.
                         </p>
-                        
-                        <div className="bg-white rounded-2xl p-4 md:p-5 space-y-4 border-2 border-[#8b0000]/10 shadow-lg">
-                          <h4 className="text-sm md:text-base font-semibold text-gray-900 flex items-center gap-2">
-                            <div className="w-6 h-6 bg-[#8b0000]/10 rounded-lg flex items-center justify-center">
-                              <Lock className="w-4 h-4 text-[#8b0000]" />
-                            </div>
-                            Why We Verify Every Profile:
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-200">
-                              <UserCheck className="w-4 h-4 text-green-600 flex-shrink-0" />
-                              <span className="text-xs md:text-sm text-gray-700">Safe & secure environment</span>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-[#8b0000]/5 rounded-xl border border-[#8b0000]/20">
-                              <Users className="w-4 h-4 text-[#8b0000] flex-shrink-0" />
-                              <span className="text-xs md:text-sm text-gray-700">Authentic community members</span>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
-                              <Shield className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                              <span className="text-xs md:text-sm text-gray-700">Values-aligned individuals</span>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-200">
-                              <Heart className="w-4 h-4 text-red-500 flex-shrink-0" />
-                              <span className="text-xs md:text-sm text-gray-700">Serious relationship intent</span>
-                            </div>
-                          </div>
-                        </div>
                       </>
                     )}
-
-                    {/* Profile Completeness */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm md:text-base font-semibold text-gray-900">Profile Completeness</span>
-                        <span className="text-lg md:text-xl font-bold text-[#8b0000]">{profileCompleteness}%</span>
-                      </div>
-                      <div className="relative w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
-                        <div
-                          className="bg-gradient-to-r from-[#8b0000] to-red-600 h-full rounded-full transition-all duration-1000 ease-out shadow-lg"
-                          style={{ width: `${profileCompleteness}%` }}
-                        ></div>
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-                      </div>
-                      
-                      {isProfileComplete ? (
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-4 shadow-md">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 bg-green-500 rounded-xl flex items-center justify-center">
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            </div>
-                            <span className="text-sm md:text-base font-bold text-green-800">Profile Complete!</span>
-                          </div>
-                          <p className="text-xs md:text-sm text-green-700">
-                            Excellent! Your detailed profile helps us find the best matches for you.
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-xs md:text-sm text-gray-600">
-                            Complete profiles get verified faster! Add photos, personal details, and preferences.
-                          </p>
-                          <Button
-                            onClick={() => router.push("/dashboard/settings")}
-                            className="bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white w-full sm:w-auto text-sm md:text-base font-semibold shadow-xl hover:shadow-2xl transition-all duration-300 border-0"
-                          >
-                            <Zap className="w-4 h-4 mr-2" />
-                            Complete Profile
-                          </Button>
-                        </>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Verification Assistant (separate section right below Step 1) */}
+            {needsAssistant && (
+              showThankYou ? (
+                <div className="relative bg-white rounded-3xl border-2 border-[#8b0000]/10 p-6 md:p-8 -mt-4 shadow-lg">
+                  <h4 className="text-sm md:text-base font-semibold text-gray-900 mb-2">Thank you! We’ve received your resubmission.</h4>
+                  <p className="text-sm md:text-base text-gray-700">We’ll process it in a few minutes. In rare cases, it can take up to 4 hours. You’ll get a WhatsApp and email update when it’s done.</p>
+                </div>
+              ) : (
+                <div className="relative bg-white rounded-3xl border-2 border-[#8b0000]/10 p-6 md:p-8 -mt-4 shadow-lg">
+                  <h4 className="text-sm md:text-base font-semibold text-gray-900 mb-2">Verification Status: Pending</h4>
+                  {missingFields && missingFields.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-sm font-medium">What we still need:</p>
+                      <ul className="mt-1 list-disc pl-5 text-sm text-gray-600">
+                        {missingFields.map((f) => (
+                          <li key={f}>{f === 'basic_profile' ? 'Basic profile details' : f.replace('_', ' ')}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {needBasics && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">First Name</label>
+                          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Your first name" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Last Name</label>
+                          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Your last name" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Gender</label>
+                          <select className="w-full border rounded-md h-10 px-3" value={gender} onChange={(e) => setGender(e.target.value)}>
+                            <option value="">Select</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Birthdate</label>
+                          <Input type="date" value={birthdate || ''} onChange={(e) => setBirthdate(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Diet</label>
+                          <select className="w-full border rounded-md h-10 px-3" value={diet} onChange={(e) => setDiet(e.target.value)}>
+                            <option value="">Select</option>
+                            <option value="Vegetarian">Vegetarian</option>
+                            <option value="Vegan">Vegan</option>
+                            <option value="Eggetarian">Eggetarian</option>
+                            <option value="Non-Vegetarian">Non-Vegetarian</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium mb-1">Ideal Partner (optional)</label>
+                          <Textarea value={idealPartnerNotes} onChange={(e) => setIdealPartnerNotes(e.target.value)} placeholder="Share what you seek in a partner." rows={3} />
+                        </div>
+                      </>
+                    )}
+                    {needAbout && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-1">About you</label>
+                        <Textarea value={aboutMe} onChange={(e) => setAboutMe(e.target.value)} placeholder="Share a bit about your values, lifestyle and what you seek." rows={4} />
+                      </div>
+                    )}
+                    {needLocation && (
+                      <div className="md:col-span-2">
+                        <LocationSelector value={location} onChange={setLocation} required={true} />
+                      </div>
+                    )}
+                    {needBasics && (
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Education</label>
+                        <Input value={education} onChange={(e) => setEducation(e.target.value)} placeholder="e.g., B.Tech, MBA" />
+                      </div>
+                    )}
+                    {needBasics && (
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Profession</label>
+                        <Input value={profession} onChange={(e) => setProfession(e.target.value)} placeholder="e.g., Software Engineer" />
+                      </div>
+                    )}
+                    {needPhoto && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-1">Add a clear face photo</label>
+                        <Input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] || null)} />
+                        <p className="mt-1 text-xs text-gray-500">Your previous photos didn’t meet our guidelines. Please use a clear, well-lit face photo without sunglasses, watermarks or collages.</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <Button type="button" disabled={submitting} onClick={handleResubmit} className="bg-gradient-to-r from-[#8b0000] to-red-700">
+                      {submitting ? 'Submitting…' : 'Resubmit for verification'}
+                    </Button>
+                    {submitMsg && <span className="text-sm text-gray-600">{submitMsg}</span>}
+                  </div>
+                </div>
+              )
+            )}
 
             {/* Step 2: Find Your Perfect Match */}
             <div className="relative opacity-60">
@@ -467,8 +596,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
               <p className="text-sm md:text-base text-white/90 max-w-2xl mx-auto leading-relaxed drop-shadow">
                 {isProfileComplete 
                   ? "We're working diligently to review your profile. Once verified, you'll join thousands of genuine individuals ready to find meaningful partnerships."
-                  : "Thousands of authentic individuals are waiting to connect with someone like you. Complete your verification to join this meaningful community and begin your journey to finding true partnership."
-                }
+                  : "Thousands of authentic individuals are waiting to connect with someone like you. Complete your verification to join this meaningful community and begin your journey to finding true partnership."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center pt-2">
                 {isProfileComplete ? (
