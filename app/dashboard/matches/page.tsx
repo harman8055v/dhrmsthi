@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, MapPin, Calendar, Clock, Users, User } from "lucide-react"
+import { Heart, MessageCircle, MapPin, Calendar, Clock, Users, User, Sparkles, ShieldCheck, Camera, Pencil } from "lucide-react"
 import dynamic from "next/dynamic"
 import { getAvatarInitials } from "@/lib/utils"
 import ProfileModal from "@/components/profile-modal"
@@ -264,6 +264,7 @@ export default function MatchesPage() {
             <div className="mt-8 mb-6">
               <WhoLikedYou userProfile={profile} />
             </div>
+
           </>
         ) : (
           // UNVERIFIED USER - Show verification required
@@ -290,6 +291,115 @@ export default function MatchesPage() {
             </Card>
           </>
         )}
+
+        {/* Quality Matches Tips – render for all users */}
+        <section className="mt-10">
+          <Card className="border border-rose-100 shadow-sm bg-white/95 backdrop-blur rounded-2xl overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-[#8b0000] via-rose-500 to-orange-400" />
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-gray-900">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                Get higher‑quality matches
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* Photos */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                      <Camera className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Add 3–5 clear photos</div>
+                      <p className="text-sm text-gray-600 mt-0.5">Well‑lit, recent, and smiling photos get 2–3× more likes.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bio & Values */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                      <Pencil className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Share your values</div>
+                      <p className="text-sm text-gray-600 mt-0.5">Write a warm bio. Mention your path, daily practices, and what you’re seeking.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verification */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Get verified</div>
+                      <p className="text-sm text-gray-600 mt-0.5">Verified profiles receive more attention and faster replies.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Location */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Keep location current</div>
+                      <p className="text-sm text-gray-600 mt-0.5">Accurate city/state helps match you with nearby, compatible users.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Messaging */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                      <MessageCircle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Send thoughtful openers</div>
+                      <p className="text-sm text-gray-600 mt-0.5">Refer to something in their profile. Aim to reply within 24 hours.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Patience */}
+                <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-[#8b0000]">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Quality takes time</div>
+                      <p className="text-sm text-gray-600 mt-0.5">We verify new profiles daily. Consistency wins over quantity.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-center">
+                <Button
+                  onClick={() => router.push("/dashboard/profile")}
+                  className="px-6 py-3 rounded-full bg-gradient-to-r from-[#8b0000] to-red-700 hover:from-red-800 hover:to-red-900 text-white font-semibold shadow-sm"
+                >
+                  Improve my profile
+                </Button>
+              </div>
+
+              <div className="mt-3 text-center text-xs text-gray-500">
+                Let your authenticity shine — the right connections will follow <Heart className="inline w-3 h-3 ml-1 text-rose-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       </div>
 
       {/* Profile Modal */}

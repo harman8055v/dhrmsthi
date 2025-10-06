@@ -33,6 +33,7 @@ serve(async (req) => {
     if (!userId || !bucket || !path) return new Response("Missing body fields", { status: 400 });
 
     const cleanPath = path.replace(/^\/+/, '');
+    // Use raw public URL (bucket is public), no signing/encoding
     const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${cleanPath}`;
 
     let provider = "none";
@@ -61,7 +62,7 @@ serve(async (req) => {
 
     await supabase.from("photo_moderation").insert({
       user_id: userId,
-      object_path: `${bucket}/${path}`,
+      object_path: `${bucket}/${cleanPath}`,
       status,
       provider,
       labels,

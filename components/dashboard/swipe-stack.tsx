@@ -134,7 +134,7 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   // REMOVED: triggerSwipe state - we'll handle swipes directly
   const [exitingCard, setExitingCard] = useState<{ id: string, direction: "left" | "right" | "superlike" } | null>(null)
-  const [processingSwipe, setProcessingSwipe] = useState(false)
+  
   const [fetchingProfiles, setFetchingProfiles] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<any>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
@@ -348,8 +348,8 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
   }
 
   const handleSwipe = async (direction: "left" | "right" | "superlike", profileId: string) => {
-    // Prevent swipe if card is already animating or processing
-    if (exitingCard || processingSwipe) {
+    // Prevent swipe if card is already animating
+    if (exitingCard) {
       return
     }
     
@@ -358,10 +358,16 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       return
     }
 
-    // Check limits
-    if (!swipeStats?.can_swipe) {
+    // Check limits (treat negative values as unlimited)
+    const remaining = swipeStats?.swipes_remaining
+    const outOfSwipes = typeof remaining === "number" && remaining === 0
+    if (!swipeStats?.can_swipe || outOfSwipes) {
+      const used = swipeStats?.swipes_used ?? 0
+      const limit = (typeof swipeStats?.daily_limit === "number" && swipeStats.daily_limit >= 0)
+        ? swipeStats.daily_limit
+        : "∞"
       toast.error("Daily swipe limit reached!", {
-        description: `You've used ${swipeStats?.swipes_used || 0}/${swipeStats?.daily_limit || 5} daily swipes on your ${swipeStats?.plan || 'current'} plan.`,
+        description: `You've used ${used}/${limit} daily swipes on your ${swipeStats?.plan || 'current'} plan.`,
         action: {
           label: "Upgrade Plan",
           onClick: () => router.push("/dashboard/store"),
@@ -371,7 +377,10 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       return
     }
 
-    if (direction === "superlike" && (!swipeStats?.super_likes_available || swipeStats?.super_likes_available <= 0)) {
+    const noSuperLikes = (typeof swipeStats?.super_likes_available === "number")
+      ? swipeStats.super_likes_available === 0 // negative means unlimited
+      : !swipeStats?.super_likes_available
+    if (direction === "superlike" && noSuperLikes) {
       toast.error("No Super Likes available!", {
         description: "Purchase Super Likes to stand out from the crowd",
         action: {
@@ -397,15 +406,21 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
     }, animationDuration)
 
     // Update stats optimistically
-    if (swipeStats) {
-      setSwipeStats({
-        ...swipeStats,
-        swipes_remaining: swipeStats.swipes_remaining - 1,
-        super_likes_available: direction === "superlike" 
-          ? swipeStats.super_likes_available - 1 
-          : swipeStats.super_likes_available,
-      })
-    }
+    setSwipeStats((prev: any) => {
+      if (!prev) return prev
+      const prevRemaining = prev.swipes_remaining
+      const prevSupers = prev.super_likes_available
+      return {
+        ...prev,
+        // Only decrement when finite and positive
+        swipes_remaining: (typeof prevRemaining === "number" && prevRemaining > 0)
+          ? prevRemaining - 1
+          : prevRemaining,
+        super_likes_available: direction === "superlike"
+          ? ((typeof prevSupers === "number" && prevSupers > 0) ? prevSupers - 1 : prevSupers)
+          : prevSupers,
+      }
+    })
 
     // Call parent handler immediately
     onSwipe(direction, profileId)
@@ -522,13 +537,26 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
       }
     }
 
-    // Execute the API request in background
-    setProcessingSwipe(true)
-    sendSwipeRequest().finally(() => setProcessingSwipe(false))
+    // Execute the API request in background (don't block further swipes)
+    sendSwipeRequest()
   }
 
   const handleUndo = async () => {
     if (undoStack.length === 0) return
+
+    const allowedPlans = ["sangam", "samarpan"]
+    const hasUndoAccess = Boolean(userProfile?.account_status && allowedPlans.includes(userProfile.account_status))
+    if (!hasUndoAccess) {
+      toast.error("Undo is a premium feature", {
+        description: "Upgrade to Sangam or Samarpan to undo your last swipe.",
+        action: {
+          label: "Upgrade Plan",
+          onClick: () => router.push("/dashboard/store"),
+        },
+        duration: 7000,
+      })
+      return
+    }
 
     const lastAction = undoStack[undoStack.length - 1]
     
@@ -687,7 +715,22 @@ export default function SwipeStack({ profiles: initialProfiles, onSwipe, headerl
         <div className="h-full flex justify-center items-center gap-3 px-4">
           {/* Undo */}
           <button
-            onClick={handleUndo}
+            onClick={() => {
+              const allowedPlans = ["sangam", "samarpan"]
+              const canUndo = Boolean(userProfile?.account_status && allowedPlans.includes(userProfile.account_status))
+              if (!canUndo) {
+                toast.error("Undo is a premium feature", {
+                  description: "Upgrade to Sangam or Samarpan to undo your last swipe.",
+                  action: {
+                    label: "Upgrade Plan",
+                    onClick: () => router.push("/dashboard/store"),
+                  },
+                  duration: 7000,
+                })
+                return
+              }
+              handleUndo()
+            }}
             disabled={undoStack.length === 0}
             className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-50 transition-none hover:bg-gray-200 active:scale-95"
           >
@@ -968,9 +1011,18 @@ function SwipeCard({
           
           {/* Image Section */}
           <div className="relative w-full h-full">
-          {profile.user_photos && profile.user_photos[currentImageIndex] && (
+          {profile.user_photos && profile.user_photos[currentImageIndex] ? (
             <Image
               src={getImageUrl(profile.user_photos[currentImageIndex])}
+              alt={`${profile.first_name} ${profile.last_name}`}
+              fill
+              className="object-cover"
+              priority={isTop}
+              sizes="(max-width: 768px) 100vw, 400px"
+            />
+          ) : (
+            <Image
+              src="/placeholder-user.jpg"
               alt={`${profile.first_name} ${profile.last_name}`}
               fill
               className="object-cover"

@@ -13,10 +13,9 @@ const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY")!;
 const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL")!;
 const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
 
-const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "profile_verified";
-const WATI_TPL_MORE_INFO = Deno.env.get("WATI_TPL_MORE_INFO") || "profile_needs_more_info";
-const WATI_TPL_REJECTED = Deno.env.get("WATI_TPL_REJECTED") || "profile_rejected";
-const WATI_TPL_PHOTOS_ISSUE = Deno.env.get("WATI_TPL_PHOTOS_ISSUE") || "profile_photos_issue";
+// New template names
+const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "ds_verified";
+const WATI_TPL_UNVERIFIED = Deno.env.get("WATI_TPL_UNVERIFIED") || "ds_unverified";
 
 const SG_TPL_VERIFIED = Deno.env.get("SG_TPL_VERIFIED")!;
 const SG_TPL_MORE_INFO = Deno.env.get("SG_TPL_MORE_INFO")!;
@@ -150,12 +149,14 @@ serve(async () => {
   for (const job of jobs) {
     await supabase.from("profile_reviews_queue").update({ status: "processing", attempts: 1 }).eq("id", job.id);
 
-    const { data: user } = await supabase.from("users").select("id, email, phone, first_name, last_name, user_photos").eq("id", job.user_id).single();
+    const { data: user } = await supabase.from("users").select("id, email, phone, first_name, last_name, user_photos, about_me, profile_score").eq("id", job.user_id).single();
     const { data: rules } = await supabase.from("user_review_rules").select("*").eq("id", job.user_id).single();
+    // Run text moderation in parallel (best-effort)
+    try { await fetch(`${SUPABASE_URL}/functions/v1/moderate-text`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ userId: job.user_id }) }); } catch {}
     // Ensure photo moderation exists for this user's photos
     const paths = extractObjectPaths(user);
     for (const p of paths) {
-      const object_path = `user-photos/${p}`;
+      const object_path = `user-photos/${p.replace(/^\/+/, '')}`;
       const { data: existing } = await supabase
         .from("photo_moderation")
         .select("id,status")
@@ -175,39 +176,76 @@ serve(async () => {
     // Read latest moderation statuses
     const { data: photos } = await supabase.from("photo_moderation").select("status").eq("user_id", job.user_id);
 
-    const hasRejectedPhoto = (photos || []).some((p) => p.status === "rejected");
-    let category = rules?.category_suggested || "needs_more_details";
-    let reason = hasRejectedPhoto ? "Photo policy issues" : "Rules";
-    if (hasRejectedPhoto) category = "red_flags";
+    const statuses = (photos || []).map(p => p.status);
+    const hasRejectedPhoto = statuses.includes("rejected");
+    const hasApprovedPhoto = statuses.includes("approved");
+    const hasAnyPhoto = Array.isArray(user?.user_photos) && user.user_photos.length > 0;
+    const nameOK = Boolean((user?.first_name || '').trim() && (user?.last_name || '').trim());
+    const bio = (user?.about_me || '').trim();
+    const hasBio = bio.length >= 50; // tunable threshold
 
-    // Finalize status
-    let update: Record<string, unknown> = { review_category: category, review_reason: reason, suspicious_score: rules?.suspicious_score ?? 0, missing_fields: rules?.missing_fields ?? [], needs_review: false, last_reviewed_at: new Date().toISOString() };
-    if (category === "exceptional" || category === "eligible") {
-      update = { ...update, verification_status: "verified", is_verified: true };
-    } else if (category === "red_flags") {
-      update = { ...update, verification_status: "rejected", is_verified: false };
+    // New 4-case logic
+    // 4) Little/no details -> keep pending
+    let finalStatus: 'verified' | 'pending' = 'pending';
+    let reviewCategory: string = 'needs_more_details';
+    let reviewReason: string = 'Auto classification';
+    let profileScore: number | null = null;
+
+    if (!nameOK || (!hasAnyPhoto && !hasBio)) {
+      // Case 4: pending
+      finalStatus = 'pending';
+      reviewCategory = 'needs_more_details';
+      reviewReason = 'Incomplete profile (name/photos/bio)';
+    } else if (!hasAnyPhoto && hasBio) {
+      // Case 2: verify without photos, send ds_verified
+      finalStatus = 'verified';
+      reviewCategory = 'eligible';
+      reviewReason = 'Verified with bio; missing photos';
+      profileScore = Math.min(Number(user?.profile_score || 6), 6);
+    } else if (!hasRejectedPhoto && (hasApprovedPhoto || hasAnyPhoto)) {
+      // Case 1 or 3: at least one acceptable photo and no red flags -> verify
+      finalStatus = 'verified';
+      if (hasBio) {
+        // Case 3: all details
+        reviewCategory = 'eligible';
+        reviewReason = 'Verified - complete profile';
+        profileScore = Math.max(Number(user?.profile_score || 8), 8);
+      } else {
+        // Case 1: photo ok, needs more info
+        reviewCategory = 'eligible';
+        reviewReason = 'Verified with minimal details; more info requested';
+        profileScore = Math.min(Number(user?.profile_score || 7), 7);
+      }
     } else {
-      update = { ...update, verification_status: "pending", is_verified: false };
+      // Fallback: pending (e.g., red-flag photo present)
+      finalStatus = 'pending';
+      reviewCategory = 'red_flags';
+      reviewReason = 'Photo policy issues or insufficient info';
     }
+
+    // Build DB update
+    let update: Record<string, unknown> = {
+      review_category: reviewCategory,
+      review_reason: reviewReason,
+      suspicious_score: rules?.suspicious_score ?? 0,
+      missing_fields: rules?.missing_fields ?? [],
+      needs_review: false,
+      last_reviewed_at: new Date().toISOString(),
+      verification_status: finalStatus,
+      is_verified: finalStatus === 'verified',
+    };
+    if (profileScore !== null) update = { ...update, profile_score: profileScore };
     await supabase.from("users").update(update).eq("id", job.user_id);
 
-    // Notifications (respect pause/backfill) & mark provider-specific timestamps
+    // Notifications (WATI-only; respect pause/backfill)
     const name = (user?.first_name || "there") as string;
     const isBackfill = job.event === "backfill";
     const shouldNotify = !PAUSE_NOTIFICATIONS && (NOTIFY_ON_BACKFILL || !isBackfill);
     if (shouldNotify) {
-      if (hasRejectedPhoto) {
-        await notifyWATI(user?.phone, WATI_TPL_PHOTOS_ISSUE, name); await markProviderNotification(job.user_id, "wati");
-        await notifySendGrid(user?.email, SG_TPL_PHOTOS_ISSUE, name); await markProviderNotification(job.user_id, "email");
-      } else if (category === "exceptional" || category === "eligible") {
+      if (finalStatus === 'verified') {
         await notifyWATI(user?.phone, WATI_TPL_VERIFIED, name); await markProviderNotification(job.user_id, "wati");
-        await notifySendGrid(user?.email, SG_TPL_VERIFIED, name); await markProviderNotification(job.user_id, "email");
-      } else if (category === "needs_more_details") {
-        await notifyWATI(user?.phone, WATI_TPL_MORE_INFO, name); await markProviderNotification(job.user_id, "wati");
-        await notifySendGrid(user?.email, SG_TPL_MORE_INFO, name); await markProviderNotification(job.user_id, "email");
       } else {
-        await notifyWATI(user?.phone, WATI_TPL_REJECTED, name); await markProviderNotification(job.user_id, "wati");
-        await notifySendGrid(user?.email, SG_TPL_REJECTED, name); await markProviderNotification(job.user_id, "email");
+        await notifyWATI(user?.phone, WATI_TPL_UNVERIFIED, name); await markProviderNotification(job.user_id, "wati");
       }
     }
 
