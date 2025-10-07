@@ -35,6 +35,55 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
   const router = useRouter()
 
   useEffect(() => {
+    // 1) Try to establish session from magic link code in URL (email sign-in)
+    const tryExchangeEmailLink = async () => {
+      try {
+        const url = new URL(window.location.href)
+        const hasCode = url.searchParams.has('code') || url.searchParams.has('token_hash')
+        const errorDesc = url.searchParams.get('error_description')
+
+        if (errorDesc) {
+          console.error('[AuthLoading] Magic link error:', errorDesc)
+          return
+        }
+
+        if (!hasCode) return
+
+        // First attempt: let Supabase handle it automatically via exchangeCodeForSession
+        const code = url.searchParams.get('code') || url.searchParams.get('token_hash') || ''
+        if (!code) return
+
+        const { data: exData, error: exErr } = await supabase.auth.exchangeCodeForSession(code)
+        if (exErr) {
+          console.error('[AuthLoading] exchangeCodeForSession error:', exErr)
+          // Fallback: verifyOtp for email link flows
+          const { error: verifyErr } = await supabase.auth.verifyOtp({
+            token_hash: code,
+            type: 'email'
+          })
+          if (verifyErr) {
+            console.error('[AuthLoading] verifyOtp fallback error:', verifyErr)
+            return
+          }
+        }
+
+        // Clean URL after processing
+        window.history.replaceState({}, document.title, '/auth-loading')
+
+        // Ensure session exists and derive userId
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          // Route with userId so downstream logic can fetch profile and route appropriately
+          router.replace(`/auth-loading?userId=${session.user.id}&isNew=false`)
+        }
+      } catch (err) {
+        console.error('[AuthLoading] Error processing magic link:', err)
+      }
+    }
+
+    // Kick off code exchange immediately on mount
+    tryExchangeEmailLink()
+
     // Handle mobile login
     if (isMobileLogin && userId) {
       // For mobile login, we need to verify the user and redirect appropriately
@@ -101,7 +150,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
       return;
     }
 
-    // Regular auth flow (non-mobile login)
+    // 2) Regular auth flow (non-mobile login)
     // Progress animation
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
