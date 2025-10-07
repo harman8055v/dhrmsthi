@@ -124,8 +124,12 @@ additional_redirect_urls = [
   "https://dharmasaathi.com",
   "https://www.dharmasaathi.com/reset-password",
   "https://dharmasaathi.com/reset-password",
+  "https://www.dharmasaathi.com/auth-loading",
+  "https://dharmasaathi.com/auth-loading",
   "http://localhost:3000",
-  "https://localhost:3000"
+  "https://localhost:3000",
+  "http://localhost:3000/auth-loading",
+  "https://localhost:3000/auth-loading"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
