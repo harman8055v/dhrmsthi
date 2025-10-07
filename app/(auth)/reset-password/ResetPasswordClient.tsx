@@ -200,6 +200,9 @@ export default function ResetPasswordClient() {
           <CardTitle>Reset your password</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 text-xs text-gray-600">
+            Some users are experiencing password reset issues. We're working on a fix. In the meantime, you can sign in using a magic login link sent to your email. <a href="/password-recovery" className="text-[#8b0000] underline">Use magic login</a>.
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">{error}</div>

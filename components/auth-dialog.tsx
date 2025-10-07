@@ -229,6 +229,9 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                   />
                 </div>
               </div>
+              <p className="-mt-2 text-xs text-gray-600">
+                If password reset isn’t working due to the ongoing issue, you can sign in using a magic login link instead. <a href="/password-recovery" className="text-[#8b0000] underline">Try magic login</a>.
+              </p>
               {resetError && <p className="text-xs text-red-600 mt-1">{resetError}</p>}
               <Button
                 type="submit"
@@ -385,6 +388,11 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 >
                   Forgot password?
                 </button>
+              )}
+              {mode === "login" && (
+                <p className="mt-2 text-xs text-gray-600">
+                  Some users are experiencing password reset issues. We're working on it. In the meantime, you can use a magic login link to sign in. <a href="/password-recovery" className="text-[#8b0000] underline">Use magic login</a>.
+                </p>
               )}
 
               <Button
