@@ -27,8 +27,8 @@ export const supabase = createClientComponentClient({
   }
 })
 
-// Test real-time connection on client initialization
-if (process.env.NODE_ENV === 'development') {
+// Test real-time connection on client initialization (browser only)
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   // Test real-time status
   setTimeout(() => {
     const testChannel = supabase.channel('test-connection')
@@ -42,7 +42,7 @@ if (process.env.NODE_ENV === 'development') {
   }, 1000)
 }
 
-// Log successful initialization (only in development)
-if (process.env.NODE_ENV === 'development') {
+// Log successful initialization (only in development, browser only)
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   logger.log('Supabase client initialized successfully')
 }

@@ -95,6 +95,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
   if (needPhoto) missingSet.add('profile_photo')
   const missingFields = Array.from(missingSet)
   const needsAssistant = userVerificationStatus === 'pending' || userVerificationStatus === 'rejected'
+  const hasBeenReviewed = Boolean(profile?.last_reviewed_at)
   const [resubmitted, setResubmitted] = useState<boolean>(false)
   const showThankYou = resubmitted || Boolean(profile?.resubmitted_at)
 
@@ -324,7 +325,7 @@ export default function NewUserWelcome({ profile }: NewUserWelcomeProps) {
             </div>
 
             {/* Verification Assistant (separate section right below Step 1) */}
-            {needsAssistant && (
+            {needsAssistant && hasBeenReviewed && (
               showThankYou ? (
                 <div className="relative bg-white rounded-3xl border-2 border-[#8b0000]/10 p-6 md:p-8 -mt-4 shadow-lg">
                   <h4 className="text-sm md:text-base font-semibold text-gray-900 mb-2">Thank you! We’ve received your resubmission.</h4>

@@ -267,7 +267,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       setError(error.message);
       return;
     }
-    // After successful upsert, process referral code if present
+    // After successful upsert, process referral code if present (non-blocking)
     try {
       if (typeof window !== 'undefined') {
         const signupDataRaw = localStorage.getItem('signupData')
@@ -275,12 +275,16 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
           const signupData = JSON.parse(signupDataRaw)
           const referralCode = signupData.referral_code
           if (referralCode && freshUser.id) {
-            // Send referral to backend
-            await fetch('/api/referrals/signup', {
+            // Fire-and-forget with a short timeout; don't block onboarding
+            const controller = new AbortController()
+            const timeout = setTimeout(() => controller.abort(), 3000)
+            void fetch('/api/referrals/signup', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ newUserId: freshUser.id, referralCode }),
-            })
+              signal: controller.signal,
+            }).catch(() => {}).finally(() => clearTimeout(timeout))
+
             // Remove referral code from localStorage to avoid duplicate submissions
             signupData.referral_code = null
             localStorage.setItem('signupData', JSON.stringify(signupData))
