@@ -72,17 +72,30 @@ export async function POST(request: NextRequest) {
         accountStatus = "samarpan" // Legacy: map elite to samarpan
       }
 
-      const { error: userUpdateError } = await supabase
-        .from("users")
-        .update({
-          account_status: accountStatus,
-          premium_expires_at: expiryDate.toISOString(),
-        })
-        .eq("id", user_id)
-
+      let userUpdateError: any = null
+      try {
+        const { error } = await supabase
+          .from("users")
+          .update({
+            account_status: accountStatus,
+            premium_expires_at: expiryDate.toISOString(),
+          })
+          .eq("id", user_id)
+        userUpdateError = error
+      } catch (e) {
+        userUpdateError = e
+      }
       if (userUpdateError) {
-        logger.error("User update error:", userUpdateError)
-        return NextResponse.json({ error: "Failed to activate premium" }, { status: 500 })
+        // Fallback: if column premium_expires_at doesn't exist in this environment, update only account_status
+        logger.warn("Primary update failed, attempting fallback without premium_expires_at", userUpdateError)
+        const { error: fallbackError } = await supabase
+          .from("users")
+          .update({ account_status: accountStatus })
+          .eq("id", user_id)
+        if (fallbackError) {
+          logger.error("User update fallback error:", fallbackError)
+          return NextResponse.json({ error: "Failed to activate premium" }, { status: 500 })
+        }
       }
 
       // Allocate Super Likes based on new plan

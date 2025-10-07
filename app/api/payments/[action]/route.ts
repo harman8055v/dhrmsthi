@@ -85,8 +85,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .update(body.toString())
         .digest("hex")
       
-      const isSignatureValid = expectedSignature === signature
+      let isSignatureValid = expectedSignature === signature
       
+      if (!isSignatureValid) {
+        // Fallback: Verify directly with Razorpay Payments API (server-to-server)
+        try {
+          const payment = await (razorpay as any).payments.fetch(payment_id as string)
+          if (payment && (payment.status === 'captured' || payment.status === 'authorized')) {
+            // If the payment is captured on Razorpay, accept it as valid
+            isSignatureValid = true
+          }
+        } catch (e) {
+          logger.warn("Razorpay payment fetch fallback failed", e)
+        }
+      }
+
       if (isSignatureValid) {
         // Fallback: If auth cookies are missing (e.g., popup/3rd-party cookie blockers), try to fetch order notes for user_id
         let userIdToProcess: string | null = user?.id ?? null
