@@ -10,6 +10,7 @@ const WATI_API_ENDPOINT = (process.env.WATI_API_ENDPOINT || '').replace(/\/$/, '
 const WATI_ACCESS_TOKEN = process.env.WATI_ACCESS_TOKEN || '';
 const WATI_WEBHOOK_SECRET = process.env.WATI_WEBHOOK_SECRET || '';
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://dharmasaathi.com').replace(/\/$/, '');
+const WATI_HELP_TEMPLATE = process.env.WATI_HELP_TEMPLATE || 'otp';
 
 function normalizePhone(raw: string): string {
   const digitsOnly = String(raw || '').replace(/[^\d]/g, '');
@@ -99,27 +100,60 @@ async function generateRecoveryLink(email: string): Promise<string | null> {
   }
 }
 
-type WatiSendAttempt = { ok: boolean; status?: number };
+type WatiSendAttempt = { ok: boolean; status?: number; url?: string; bodyText?: string; bodyJson?: any };
 type WatiSendResult = { ok: boolean; v2?: WatiSendAttempt; v1?: WatiSendAttempt; skipped?: boolean };
 
 async function sendWatiSessionMessage(number: string, messageText: string): Promise<WatiSendResult> {
   if (!WATI_API_ENDPOINT || !WATI_ACCESS_TOKEN) return { ok: false, skipped: true };
   // Prefer v2 endpoint; fall back to v1 if needed
   const v2Url = `${WATI_API_ENDPOINT}/api/v2/sendSessionMessage?whatsappNumber=${encodeURIComponent(number)}`;
-  const headers = { Authorization: `Bearer ${WATI_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } as const;
+  const headers = { Authorization: `Bearer ${WATI_ACCESS_TOKEN}`, 'Content-Type': 'application/json', Accept: 'application/json' } as const;
   try {
-    const r2 = await fetch(v2Url, { method: 'POST', headers, body: JSON.stringify({ messageText }) });
-    if (r2.ok) return { ok: true, v2: { ok: true, status: r2.status } };
-    // not ok, try v1
-  } catch {
-    // ignore and try v1
-  }
+    const r2 = await fetch(v2Url, { method: 'POST', headers, body: JSON.stringify({ messageText, message: messageText }) });
+    const bodyText = await r2.text().catch(() => undefined);
+    let bodyJson: any;
+    try { bodyJson = bodyText ? JSON.parse(bodyText) : undefined; } catch {}
+    if (r2.ok) return { ok: true, v2: { ok: true, status: r2.status, url: v2Url, bodyText, bodyJson } };
+  } catch {}
   try {
     const v1Url = `${WATI_API_ENDPOINT}/api/v1/sendSessionMessage/${encodeURIComponent(number)}`;
-    const r1 = await fetch(v1Url, { method: 'POST', headers, body: JSON.stringify({ messageText }) });
-    return { ok: r1.ok, v2: { ok: false }, v1: { ok: r1.ok, status: r1.status } };
+    const r1 = await fetch(v1Url, { method: 'POST', headers, body: JSON.stringify({ messageText, message: messageText }) });
+    const bodyText = await r1.text().catch(() => undefined);
+    let bodyJson: any;
+    try { bodyJson = bodyText ? JSON.parse(bodyText) : undefined; } catch {}
+    if (r1.ok) return { ok: true, v2: { ok: false }, v1: { ok: true, status: r1.status, url: v1Url, bodyText, bodyJson } };
+  } catch {}
+  try {
+    // Final fallback: v1 with query parameter (?message=...)
+    const v1qUrl = `${WATI_API_ENDPOINT}/api/v1/sendSessionMessage/${encodeURIComponent(number)}?message=${encodeURIComponent(messageText)}`;
+    const r1q = await fetch(v1qUrl, { method: 'POST', headers });
+    const bodyText = await r1q.text().catch(() => undefined);
+    let bodyJson: any;
+    try { bodyJson = bodyText ? JSON.parse(bodyText) : undefined; } catch {}
+    return { ok: r1q.ok, v2: { ok: false }, v1: { ok: r1q.ok, status: r1q.status, url: v1qUrl, bodyText, bodyJson } };
   } catch {
     return { ok: false, v2: { ok: false }, v1: { ok: false } };
+  }
+}
+
+async function sendWatiTemplateMessage(number: string, templateName: string, parameters?: Array<{ name: string; value: string }>): Promise<WatiSendAttempt> {
+  if (!WATI_API_ENDPOINT || !WATI_ACCESS_TOKEN) return { ok: false };
+  const url = `${WATI_API_ENDPOINT}/api/v2/sendTemplateMessage?whatsappNumber=${encodeURIComponent(number)}`;
+  const headers = { Authorization: `Bearer ${WATI_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } as const;
+  const body = {
+    template_name: templateName,
+    broadcast_name: templateName,
+    parameters: parameters || []
+  };
+  try {
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const bodyText = await r.text().catch(() => undefined);
+    let bodyJson: any;
+    try { bodyJson = bodyText ? JSON.parse(bodyText) : undefined; } catch {}
+    const ok = r.ok || (bodyJson && (bodyJson.result === true || bodyJson.success === true || typeof bodyJson.messageId !== 'undefined'));
+    return { ok, status: r.status, url, bodyText, bodyJson };
+  } catch {
+    return { ok: false, url };
   }
 }
 
@@ -129,6 +163,8 @@ export async function POST(req: NextRequest) {
     const provided = req.headers.get('x-wati-signature') || req.nextUrl.searchParams.get('secret') || '';
     const debug = req.nextUrl.searchParams.get('debug') === '1';
     const simple = req.nextUrl.searchParams.get('simple') === '1';
+    const forceTemplate = req.nextUrl.searchParams.get('forceTemplate') === '1';
+    const templateName = req.nextUrl.searchParams.get('template') || WATI_HELP_TEMPLATE;
     if (WATI_WEBHOOK_SECRET && provided !== WATI_WEBHOOK_SECRET) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
@@ -141,14 +177,15 @@ export async function POST(req: NextRequest) {
     if (!matched) return NextResponse.json({ ok: true, ...(debug ? { debug: { reason: 'phrase not matched' } } : {}) });
 
     const number = normalizePhone(from);
-    let messageToSend: string;
+    let messageToSend: string = '';
     let email: string | null = null;
     let magicTried = false;
     let recoveryTried = false;
+    let templateAttempt: WatiSendAttempt | undefined;
 
     if (simple) {
       messageToSend = `Test message: We received your login help request. Reply OK if you got this.`;
-    } else {
+    } else if (!forceTemplate) {
       email = await findUserEmailByPhone(number);
       if (email) {
         const [magic, recovery] = await Promise.all([
@@ -170,8 +207,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let responsePayload: any = { ok: true };
+    if (forceTemplate) {
+      const params: Array<{ name: string; value: string }> = templateName === 'otp' ? [{ name: '1', value: '000000' }] : [];
+      templateAttempt = await sendWatiTemplateMessage(number, templateName, params);
+      if (debug) responsePayload.debug = { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, simple, forceTemplate: true, template: templateName, templateAttempt };
+      return NextResponse.json(responsePayload);
+    }
+
     const sendResult = await sendWatiSessionMessage(number, messageToSend);
-    return NextResponse.json({ ok: true, ...(debug ? { debug: { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, simple, ...(simple ? {} : { emailFound: !!email, magicTried, recoveryTried }), wati: sendResult } } : {}) });
+    if (debug) responsePayload.debug = { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, simple, ...(simple ? {} : { emailFound: !!email, magicTried, recoveryTried }), wati: sendResult };
+    return NextResponse.json(responsePayload);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'error' }, { status: 500 });
   }
