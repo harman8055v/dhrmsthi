@@ -31,6 +31,7 @@ declare global {
 export default function PaymentModal({ isOpen, onClose, item, onSuccess }: PaymentModalProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStep, setPaymentStep] = useState<"details" | "processing" | "success">("details")
+  const [orderInfo, setOrderInfo] = useState<any>(null)
 
   if (!item) return null
 
@@ -88,6 +89,7 @@ export default function PaymentModal({ isOpen, onClose, item, onSuccess }: Payme
       }
 
       const order = await orderResponse.json()
+      setOrderInfo(order)
       console.log("Order created:", order)
 
       // Configure Razorpay options for one-time payment
@@ -136,16 +138,14 @@ export default function PaymentModal({ isOpen, onClose, item, onSuccess }: Payme
 
             const result = await verifyResponse.json()
             if (result.verified) {
+              // Refresh profile immediately so UI reflects the new state
+              try { onSuccess() } catch {}
               setPaymentStep("success")
-              setTimeout(() => {
-                onSuccess()
-                onClose()
-                if (item.type === "plan") {
-                  toast.success("Plan activated! Your premium features are now available.")
-                } else {
-                  toast.success(`${item.name} added to your account successfully!`)
-                }
-              }, 2000)
+              if (item.type === "plan") {
+                toast.success("Plan activated! Your premium features are now available.")
+              } else {
+                toast.success(`${item.name} added to your account successfully!`)
+              }
             } else {
               throw new Error("Payment verification failed")
             }
@@ -188,13 +188,65 @@ export default function PaymentModal({ isOpen, onClose, item, onSuccess }: Payme
         )
 
       case "success":
-        return (
-          <div className="text-center py-12">
-            <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
-            <h3 className="text-xl font-semibold mb-3 text-green-700">Payment Successful!</h3>
-            <p className="text-gray-600">Your purchase has been activated</p>
-          </div>
-        )
+        {
+          // Compute basic summary details for display
+          const itemName = item.name
+          const amountPaid = item.price
+          const isPlan = item.type === "plan"
+          const isSuperLikes = item.type === "super_likes"
+          const purchaseDate = new Date()
+          const computeExpiry = () => {
+            const d = new Date(purchaseDate)
+            if (itemName.toLowerCase().includes("1 year")) { d.setFullYear(d.getFullYear() + 1); return d }
+            if (itemName.toLowerCase().includes("6 months") || itemName.toLowerCase().includes("6 month")) { d.setMonth(d.getMonth() + 6); return d }
+            if (itemName.toLowerCase().includes("3 months") || itemName.toLowerCase().includes("3 month")) { d.setMonth(d.getMonth() + 3); return d }
+            return null
+          }
+          const expiryDate = isPlan ? computeExpiry() : null
+          const orderId = orderInfo?.id as string | undefined
+          return (
+            <div className="py-6">
+              <div className="text-center">
+                <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
+                <h3 className="text-2xl font-semibold mb-1 text-green-700">Thank you!</h3>
+                <p className="text-gray-600 mb-6">Your payment was successful.</p>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-600">Item</span>
+                  <span className="font-medium text-gray-900">{itemName}</span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-600">Amount Paid</span>
+                  <span className="font-semibold text-gray-900">₹{amountPaid.toLocaleString()}</span>
+                </div>
+                {isPlan && expiryDate && (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-600">Plan Valid Until</span>
+                      <span className="font-medium text-gray-900">{expiryDate.toLocaleDateString()}</span>
+                    </div>
+                  </>
+                )}
+                {isSuperLikes && item.count && (
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-600">Super Likes Added</span>
+                    <span className="font-medium text-gray-900">{item.count}</span>
+                  </div>
+                )}
+                {orderId && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Order ID</span>
+                    <span className="font-mono text-gray-800">{orderId}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <Button onClick={onClose} className="flex-1 bg-orange-600 hover:bg-orange-700">Continue</Button>
+              </div>
+            </div>
+          )
+        }
 
       default:
         return (

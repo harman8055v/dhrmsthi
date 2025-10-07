@@ -592,6 +592,7 @@ export default function StorePage() {
                                   "Higher chance of getting matched",
                                   "Stand out from regular likes",
                                 ],
+                                count: pkg.count,
                                 user_id: user?.id || "",
                               })
                             }

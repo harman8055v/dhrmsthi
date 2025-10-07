@@ -74,13 +74,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       const { order_id, payment_id, signature, item_type, item_name, amount, count } = await request.json()
       
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      
-      if (!user) {
-        return NextResponse.json({ error: "User not authenticated" }, { status: 401 })
-      }
+      // Try to resolve the user via cookies first; if unavailable, we'll fallback to Razorpay order notes
+      const { data: { user } } = await supabase.auth.getUser()
       
       // Verify payment signature
       const razorpay = getRazorpayInstance()
@@ -93,6 +88,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const isSignatureValid = expectedSignature === signature
       
       if (isSignatureValid) {
+        // Fallback: If auth cookies are missing (e.g., popup/3rd-party cookie blockers), try to fetch order notes for user_id
+        let userIdToProcess: string | null = user?.id ?? null
+        try {
+          if (!userIdToProcess) {
+            const orderDetails = await razorpay.orders.fetch(order_id as string)
+            const notes = (orderDetails && (orderDetails as any).notes) || {}
+            if (notes && typeof notes.user_id === "string" && notes.user_id.length > 0) {
+              userIdToProcess = notes.user_id
+            }
+          }
+        } catch (fetchErr) {
+          logger.warn("Failed to fetch Razorpay order details for fallback user resolution", fetchErr)
+        }
+        
+        if (!userIdToProcess) {
+          logger.error("Unable to resolve user for verified payment", { order_id, payment_id })
+          return NextResponse.json({ verified: false, error: "User not authenticated" }, { status: 401 })
+        }
+        
         // Process the payment
         const processResponse = await fetch(`${request.nextUrl.origin}/api/payments/process`, {
           method: "POST",
@@ -101,7 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             "Cookie": request.headers.get("Cookie") || "",
           },
           body: JSON.stringify({
-            user_id: user.id,
+            user_id: userIdToProcess,
             item_type,
             item_name,
             amount,
