@@ -99,21 +99,27 @@ async function generateRecoveryLink(email: string): Promise<string | null> {
   }
 }
 
-async function sendWatiSessionMessage(number: string, messageText: string): Promise<boolean> {
-  if (!WATI_API_ENDPOINT || !WATI_ACCESS_TOKEN) return false;
+type WatiSendAttempt = { ok: boolean; status?: number };
+type WatiSendResult = { ok: boolean; v2?: WatiSendAttempt; v1?: WatiSendAttempt; skipped?: boolean };
+
+async function sendWatiSessionMessage(number: string, messageText: string): Promise<WatiSendResult> {
+  if (!WATI_API_ENDPOINT || !WATI_ACCESS_TOKEN) return { ok: false, skipped: true };
   // Prefer v2 endpoint; fall back to v1 if needed
   const v2Url = `${WATI_API_ENDPOINT}/api/v2/sendSessionMessage?whatsappNumber=${encodeURIComponent(number)}`;
   const headers = { Authorization: `Bearer ${WATI_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } as const;
   try {
     const r2 = await fetch(v2Url, { method: 'POST', headers, body: JSON.stringify({ messageText }) });
-    if (r2.ok) return true;
-  } catch {}
+    if (r2.ok) return { ok: true, v2: { ok: true, status: r2.status } };
+    // not ok, try v1
+  } catch {
+    // ignore and try v1
+  }
   try {
     const v1Url = `${WATI_API_ENDPOINT}/api/v1/sendSessionMessage/${encodeURIComponent(number)}`;
     const r1 = await fetch(v1Url, { method: 'POST', headers, body: JSON.stringify({ messageText }) });
-    return r1.ok;
+    return { ok: r1.ok, v2: { ok: false }, v1: { ok: r1.ok, status: r1.status } };
   } catch {
-    return false;
+    return { ok: false, v2: { ok: false }, v1: { ok: false } };
   }
 }
 
@@ -121,6 +127,7 @@ export async function POST(req: NextRequest) {
   try {
     // Basic shared-secret validation (WATI can send custom headers; also allow query param for simple setups)
     const provided = req.headers.get('x-wati-signature') || req.nextUrl.searchParams.get('secret') || '';
+    const debug = req.nextUrl.searchParams.get('debug') === '1';
     if (WATI_WEBHOOK_SECRET && provided !== WATI_WEBHOOK_SECRET) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
@@ -128,8 +135,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const text = extractText(body);
     const from = extractFrom(body);
-    if (!text || !from) return NextResponse.json({ ok: true });
-    if (!isLoginHelp(text)) return NextResponse.json({ ok: true });
+    if (!text || !from) return NextResponse.json({ ok: true, ...(debug ? { debug: { reason: 'missing text/from' } } : {}) });
+    const matched = isLoginHelp(text);
+    if (!matched) return NextResponse.json({ ok: true, ...(debug ? { debug: { reason: 'phrase not matched' } } : {}) });
 
     const number = normalizePhone(from);
     let messageToSend: string;
@@ -154,8 +162,8 @@ export async function POST(req: NextRequest) {
       messageToSend = `We couldn’t match this WhatsApp number to an account.\nYou can reset your password here: ${SITE_URL}/reset-password\n(Use your registered email address.)`;
     }
 
-    await sendWatiSessionMessage(number, messageToSend);
-    return NextResponse.json({ ok: true });
+    const sendResult = await sendWatiSessionMessage(number, messageToSend);
+    return NextResponse.json({ ok: true, ...(debug ? { debug: { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, emailFound: !!email, magicTried: email ? true : false, recoveryTried: email ? true : false, wati: sendResult } } : {}) });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'error' }, { status: 500 });
   }
