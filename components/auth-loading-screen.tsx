@@ -71,6 +71,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
         // If no hash tokens, check for PKCE/OTP code or token_hash in query
         const code = url.searchParams.get('code')
         const tokenHash = url.searchParams.get('token_hash')
+        const linkType = url.searchParams.get('type') || 'magiclink'
         if (code || tokenHash) {
           if (code) {
             const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
@@ -79,7 +80,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
             }
           }
           if (tokenHash) {
-            const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'email' })
+            const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: linkType as any })
             if (verifyErr) {
               console.error('[AuthLoading] verifyOtp error:', verifyErr)
             }

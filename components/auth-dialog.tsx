@@ -378,27 +378,13 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
               </div>
 
               {mode === "login" && (
-                <>
-                  <button
-                    type="button"
-                    className="text-sm underline text-[#8b0000] hover:text-[#a30000] mt-1"
-                    onClick={() => setShowForgot(true)}
-                  >
-                    Forgot password?
-                  </button>
-                  <p className="mt-2 text-xs text-gray-600">
-                    Some users have reported password reset issues. You can
-                    {" "}
-                    <a
-                      href="/login-assistance"
-                      className="text-[#8b0000] hover:text-[#a30000] underline"
-                    >
-                      log in using a magic link
-                    </a>
-                    {" "}
-                    instead.
-                  </p>
-                </>
+                <button
+                  type="button"
+                  className="text-sm underline text-[#8b0000] hover:text-[#a30000] mt-1"
+                  onClick={() => setShowForgot(true)}
+                >
+                  Forgot password?
+                </button>
               )}
 
               <Button
