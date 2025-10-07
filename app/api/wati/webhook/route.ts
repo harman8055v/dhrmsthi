@@ -128,6 +128,7 @@ export async function POST(req: NextRequest) {
     // Basic shared-secret validation (WATI can send custom headers; also allow query param for simple setups)
     const provided = req.headers.get('x-wati-signature') || req.nextUrl.searchParams.get('secret') || '';
     const debug = req.nextUrl.searchParams.get('debug') === '1';
+    const simple = req.nextUrl.searchParams.get('simple') === '1';
     if (WATI_WEBHOOK_SECRET && provided !== WATI_WEBHOOK_SECRET) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
@@ -141,29 +142,36 @@ export async function POST(req: NextRequest) {
 
     const number = normalizePhone(from);
     let messageToSend: string;
+    let email: string | null = null;
+    let magicTried = false;
+    let recoveryTried = false;
 
-    const email = await findUserEmailByPhone(number);
-    if (email) {
-      const [magic, recovery] = await Promise.all([
-        generateMagicLink(email),
-        generateRecoveryLink(email)
-      ]);
-
-      if (magic && recovery) {
-        messageToSend = `Tap to login instantly (one-time):\n${magic}\n\nNeed to change your password? Use this link:\n${recovery}\n\nBoth links expire in about 60 minutes.`;
-      } else if (magic) {
-        messageToSend = `Tap to login instantly (one-time):\n${magic}\n\nIf you still want to reset your password, visit:\n${SITE_URL}/reset-password`;
-      } else if (recovery) {
-        messageToSend = `Reset your password here:\n${recovery}\n\nAfter reset, you will be logged in.`;
-      } else {
-        messageToSend = `Please try again in a moment or use:\n${SITE_URL}/reset-password`;
-      }
+    if (simple) {
+      messageToSend = `Test message: We received your login help request. Reply OK if you got this.`;
     } else {
-      messageToSend = `We couldn’t match this WhatsApp number to an account.\nYou can reset your password here: ${SITE_URL}/reset-password\n(Use your registered email address.)`;
+      email = await findUserEmailByPhone(number);
+      if (email) {
+        const [magic, recovery] = await Promise.all([
+          (async () => { magicTried = true; return await generateMagicLink(email!); })(),
+          (async () => { recoveryTried = true; return await generateRecoveryLink(email!); })(),
+        ]);
+
+        if (magic && recovery) {
+          messageToSend = `Tap to login instantly (one-time):\n${magic}\n\nNeed to change your password? Use this link:\n${recovery}\n\nBoth links expire in about 60 minutes.`;
+        } else if (magic) {
+          messageToSend = `Tap to login instantly (one-time):\n${magic}\n\nIf you still want to reset your password, visit:\n${SITE_URL}/reset-password`;
+        } else if (recovery) {
+          messageToSend = `Reset your password here:\n${recovery}\n\nAfter reset, you will be logged in.`;
+        } else {
+          messageToSend = `Please try again in a moment or use:\n${SITE_URL}/reset-password`;
+        }
+      } else {
+        messageToSend = `We couldn’t match this WhatsApp number to an account.\nYou can reset your password here: ${SITE_URL}/reset-password\n(Use your registered email address.)`;
+      }
     }
 
     const sendResult = await sendWatiSessionMessage(number, messageToSend);
-    return NextResponse.json({ ok: true, ...(debug ? { debug: { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, emailFound: !!email, magicTried: email ? true : false, recoveryTried: email ? true : false, wati: sendResult } } : {}) });
+    return NextResponse.json({ ok: true, ...(debug ? { debug: { matched, normalized: number, hasToken: !!WATI_ACCESS_TOKEN, hasEndpoint: !!WATI_API_ENDPOINT, simple, ...(simple ? {} : { emailFound: !!email, magicTried, recoveryTried }), wati: sendResult } } : {}) });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'error' }, { status: 500 });
   }
