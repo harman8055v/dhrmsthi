@@ -69,16 +69,20 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
         }
 
         // If no hash tokens, check for PKCE/OTP code or token_hash in query
-        const code = url.searchParams.get('code') || url.searchParams.get('token_hash')
-        if (code) {
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
-          if (exErr) {
-            console.error('[AuthLoading] exchangeCodeForSession error:', exErr)
-            // Fallback: verifyOtp for email link flows
-            const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: code, type: 'email' })
+        const code = url.searchParams.get('code')
+        const tokenHash = url.searchParams.get('token_hash')
+        const linkType = url.searchParams.get('type') || 'magiclink'
+        if (code || tokenHash) {
+          if (code) {
+            const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
+            if (exErr) {
+              console.error('[AuthLoading] exchangeCodeForSession error:', exErr)
+            }
+          }
+          if (tokenHash) {
+            const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: linkType as any })
             if (verifyErr) {
-              console.error('[AuthLoading] verifyOtp fallback error:', verifyErr)
-              return
+              console.error('[AuthLoading] verifyOtp error:', verifyErr)
             }
           }
 
