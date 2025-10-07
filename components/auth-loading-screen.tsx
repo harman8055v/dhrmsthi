@@ -35,11 +35,10 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
   const router = useRouter()
 
   useEffect(() => {
-    // 1) Try to establish session from magic link code in URL (email sign-in)
-    const tryExchangeEmailLink = async () => {
+    // 1) Try to establish session from magic link tokens or code in URL (email sign-in)
+    const tryEstablishSessionFromMagicLink = async () => {
       try {
         const url = new URL(window.location.href)
-        const hasCode = url.searchParams.has('code') || url.searchParams.has('token_hash')
         const errorDesc = url.searchParams.get('error_description')
 
         if (errorDesc) {
@@ -47,34 +46,48 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
           return
         }
 
-        if (!hasCode) return
+        // Check URL hash for tokens first (common magic link behavior)
+        if (window.location.hash && window.location.hash.startsWith('#')) {
+          const hashParams = new URLSearchParams(window.location.hash.slice(1))
+          const access_token = hashParams.get('access_token')
+          const refresh_token = hashParams.get('refresh_token')
 
-        // First attempt: let Supabase handle it automatically via exchangeCodeForSession
-        const code = url.searchParams.get('code') || url.searchParams.get('token_hash') || ''
-        if (!code) return
-
-        const { data: exData, error: exErr } = await supabase.auth.exchangeCodeForSession(code)
-        if (exErr) {
-          console.error('[AuthLoading] exchangeCodeForSession error:', exErr)
-          // Fallback: verifyOtp for email link flows
-          const { error: verifyErr } = await supabase.auth.verifyOtp({
-            token_hash: code,
-            type: 'email'
-          })
-          if (verifyErr) {
-            console.error('[AuthLoading] verifyOtp fallback error:', verifyErr)
-            return
+          if (access_token && refresh_token) {
+            const { error: setErr } = await supabase.auth.setSession({ access_token, refresh_token })
+            if (setErr) {
+              console.error('[AuthLoading] setSession error:', setErr)
+            } else {
+              // Clean hash after successful session set
+              window.history.replaceState({}, document.title, '/auth-loading')
+              const { data: { session } } = await supabase.auth.getSession()
+              if (session?.user?.id) {
+                router.replace(`/auth-loading?userId=${session.user.id}&isNew=false`)
+                return
+              }
+            }
           }
         }
 
-        // Clean URL after processing
-        window.history.replaceState({}, document.title, '/auth-loading')
+        // If no hash tokens, check for PKCE/OTP code or token_hash in query
+        const code = url.searchParams.get('code') || url.searchParams.get('token_hash')
+        if (code) {
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
+          if (exErr) {
+            console.error('[AuthLoading] exchangeCodeForSession error:', exErr)
+            // Fallback: verifyOtp for email link flows
+            const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: code, type: 'email' })
+            if (verifyErr) {
+              console.error('[AuthLoading] verifyOtp fallback error:', verifyErr)
+              return
+            }
+          }
 
-        // Ensure session exists and derive userId
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user?.id) {
-          // Route with userId so downstream logic can fetch profile and route appropriately
-          router.replace(`/auth-loading?userId=${session.user.id}&isNew=false`)
+          // Clean query params after processing
+          window.history.replaceState({}, document.title, '/auth-loading')
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.user?.id) {
+            router.replace(`/auth-loading?userId=${session.user.id}&isNew=false`)
+          }
         }
       } catch (err) {
         console.error('[AuthLoading] Error processing magic link:', err)
@@ -82,7 +95,7 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
     }
 
     // Kick off code exchange immediately on mount
-    tryExchangeEmailLink()
+    tryEstablishSessionFromMagicLink()
 
     // Handle mobile login
     if (isMobileLogin && userId) {
