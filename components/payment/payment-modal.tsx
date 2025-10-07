@@ -11,7 +11,7 @@ interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
   item: {
-    type: "plan" | "superlike" | "highlight"
+    type: "plan" | "super_likes" | "highlights"
     name: string
     price: number
     description: string
@@ -101,6 +101,7 @@ export default function PaymentModal({ isOpen, onClose, item, onSuccess }: Payme
         name: "DharmaSaathi",
         description: item.description,
         image: "/logo.png",
+        callback_url: typeof window !== 'undefined' ? `${window.location.origin}/api/payments/callback` : undefined,
         prefill: {
           name: "",
           email: "",
@@ -122,7 +123,7 @@ export default function PaymentModal({ isOpen, onClose, item, onSuccess }: Payme
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                order_id: order.id,
+                order_id: response.razorpay_order_id,
                 payment_id: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
                 item_type: item.type,

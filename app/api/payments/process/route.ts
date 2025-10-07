@@ -8,6 +8,23 @@ export async function POST(request: NextRequest) {
   try {
     const { user_id, item_type, item_name, amount, count, payment_id, order_id } = await request.json()
 
+    // Idempotency: if this payment_id already recorded as completed, short-circuit
+    try {
+      const { data: existingTxn } = await supabase
+        .from("transactions")
+        .select("id, status")
+        .eq("razorpay_payment_id", payment_id)
+        .single()
+      if (existingTxn && existingTxn.status === "completed") {
+        return NextResponse.json({
+          success: true,
+          message: "Payment already processed",
+          item_type,
+          item_name,
+        })
+      }
+    } catch {}
+
     // Record the transaction
     const { error: transactionError } = await supabase.from("transactions").insert({
       user_id,
