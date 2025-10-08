@@ -172,7 +172,6 @@ export function useAuth() {
 
     try {
       logger.log('[useAuth] refreshProfile()');
-      setAuthState(prev => ({ ...prev, loading: true }))
       logger.time('[useAuth] refreshProfile.getCurrentProfile');
       const profile = await userService.getCurrentProfile(authState.user.id)
       logger.timeEnd('[useAuth] refreshProfile.getCurrentProfile');
@@ -180,14 +179,12 @@ export function useAuth() {
       setAuthState(prev => ({
         ...prev,
         profile,
-        loading: false,
         error: null
       }))
     } catch (error) {
       logger.error('[useAuth] Profile refresh error:', error)
       setAuthState(prev => ({
         ...prev,
-        loading: false,
         error: 'Failed to refresh profile'
       }))
     }

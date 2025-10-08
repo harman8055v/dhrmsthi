@@ -249,8 +249,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
 
     let { error } = await supabase
       .from('users')
-      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false })
-      .single();
+      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false, returning: 'minimal' });
 
     // Duplicate phone constraint? retry without phone key so we still create/update the row
     if (error && error.code === '23505' && error.message?.includes('phone')) {
@@ -258,8 +257,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       const { phone: _p, ...withoutPhone } = payload as any;
       ({ error } = await supabase
         .from('users')
-        .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false })
-        .single());
+        .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false, returning: 'minimal' }));
     }
 
     if (error) {

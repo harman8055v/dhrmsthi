@@ -82,7 +82,7 @@ export default function StorePage() {
   }
 
   const handlePaymentSuccess = () => {
-    // Refresh profile data so credits/status update instantly
+    // Refresh profile in background to avoid keeping page in loading state
     refreshProfile()
   }
 
@@ -114,9 +114,25 @@ export default function StorePage() {
     return () => clearTimeout(timer)
   }, [])
 
+  // Refresh profile when user returns focus or tab becomes visible (post-payment)
+  useEffect(() => {
+    const onFocus = () => {
+      refreshProfile()
+    }
+    const onVisibility = () => {
+      if (!document.hidden) refreshProfile()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [refreshProfile])
+
   // Removed local Supabase fetch – data comes from context
 
-  if (loading) {
+  if (loading && !profile) {
     return <>{require("./loading").default()}</>;
   }
 
