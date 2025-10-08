@@ -85,12 +85,21 @@ serve(async (req) => {
     .from("users")
     .select("id, email, phone, first_name, verification_status, email_notified_at, wati_notified_at, review_notified")
     .not("verification_status", "is", null)
+    .order("id", { ascending: true })
     .limit(batch);
   if (targetStatuses && targetStatuses.length > 0) {
     q = q.in("verification_status", targetStatuses);
   }
-  // Provider-specific pending filter: need at least one pending channel
-  // Apply post-filter in memory to keep SQL simple across providers
+  // Provider-specific pending filter at SQL level to ensure progress across runs
+  if (scope === "pending") {
+    if (wantSendgrid && wantWati) {
+      q = q.or("and(email_notified_at.is.null,email.not.is.null),and(wati_notified_at.is.null,phone.not.is.null)");
+    } else if (wantSendgrid) {
+      q = q.is("email_notified_at", null).not("email", "is", null);
+    } else if (wantWati) {
+      q = q.is("wati_notified_at", null).not("phone", "is", null);
+    }
+  }
   const { data: users } = await q;
   const filtered = (users || []).filter(u => {
     const hasEmail = !!u.email;
@@ -100,15 +109,10 @@ serve(async (req) => {
       if (wantSendgrid) return hasEmail;
       if (wantWati) return hasPhone;
       return false;
-    } else {
-      const emailPending = wantSendgrid ? (!u.email_notified_at && hasEmail) : false;
-      const watiPending = wantWati ? (!u.wati_notified_at && hasPhone) : false;
-      if (wantSendgrid && wantWati) return emailPending || watiPending;
-      if (wantSendgrid) return emailPending;
-      if (wantWati) return watiPending;
-      return false;
     }
-  }).slice(0, batch);
+    // scope === "pending" already SQL-filtered
+    return true;
+  });
   if (!filtered.length) return new Response(JSON.stringify({ notified: 0 }), { status: 200 });
 
   let count = 0;

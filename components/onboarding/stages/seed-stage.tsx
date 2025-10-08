@@ -135,6 +135,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       const data = await res.json()
       if (!res.ok) {
         setLocalError(data.error || 'Invalid OTP. Please try again.')
+        setVerifying(false) // Reset loading state on error
         return
       }
       // Mark as verified and proceed
@@ -181,6 +182,7 @@ export default function SeedStage({ formData, onChange, onNext, isLoading, user,
       onNext(verificationData)
     } catch (error) {
       setLocalError('Failed to verify OTP. Please try again.')
+      console.error('OTP verification error:', error)
     } finally {
       setVerifying(false)
     }

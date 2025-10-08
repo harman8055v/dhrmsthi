@@ -32,7 +32,21 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
   const [progress, setProgress] = useState(0)
   const [currentMessage, setCurrentMessage] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
   const router = useRouter()
+  
+  // Add loading timeout protection (30 seconds)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!isComplete) {
+        console.error('Auth loading timeout - redirecting to home')
+        setLoadingTimeout(true)
+        router.push("/")
+      }
+    }, 30000) // 30 second timeout
+    
+    return () => clearTimeout(timeout)
+  }, [isComplete, router])
 
   useEffect(() => {
     // 1) Try to establish session from magic link tokens or code in URL (email sign-in)

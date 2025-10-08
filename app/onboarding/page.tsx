@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { debugLog } from "@/lib/logger"
+import { getNextRoute, getMobileLoginData, cleanupAuthStorage, safeRedirect } from "@/lib/utils/routing"
 import OnboardingContainer from "@/components/onboarding/onboarding-container"
 import LoadingScreen from "@/components/onboarding/loading-screen"
 import type { User } from "@supabase/supabase-js"
@@ -16,6 +17,19 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  
+  // Add loading timeout protection (30 seconds)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.error('Onboarding page loading timeout')
+        setError("Loading timeout. Please refresh the page and try again.")
+        setLoading(false)
+      }
+    }, 30000) // 30 second timeout
+    
+    return () => clearTimeout(timeout)
+  }, [loading])
 
   useEffect(() => {
     async function getUser() {
@@ -53,7 +67,7 @@ export default function OnboardingPage() {
             // Check if already onboarded
             if (profileData.is_onboarded) {
               debugLog("Mobile login user already onboarded, redirecting to dashboard")
-              router.push("/dashboard")
+              safeRedirect(router, "/dashboard")
               return
             }
 
@@ -192,7 +206,7 @@ export default function OnboardingPage() {
           // If user has completed onboarding, redirect to dashboard
           if ((profileData as any)?.is_onboarded) {
             debugLog("Onboarding already completed, redirecting to dashboard")
-            router.push("/dashboard")
+            safeRedirect(router, "/dashboard")
             return
           }
 

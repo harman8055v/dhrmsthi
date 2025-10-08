@@ -239,9 +239,7 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
-    if (!localFormData.about_me.trim()) {
-      newErrors.about_me = "Please tell us about yourself"
-    }
+    // No validation for about_me - keeping it simple
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -251,6 +249,17 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
     e.preventDefault()
 
     if (!validateForm()) {
+      return
+    }
+
+    // Check if photos are still uploading
+    if (uploading) {
+      toast.error("Please wait for photos to finish uploading")
+      return
+    }
+
+    // Prevent double submission
+    if (isLoading) {
       return
     }
 
@@ -268,7 +277,10 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
       setSubmissionSuccess(true)
       toast.success("Profile created!")
     } catch (error) {
-      // You might want to set a local error state here if photo upload fails
+      // Show error to user
+      toast.error("Failed to save profile. Please try again.")
+      console.error("Profile submission error:", error)
+      setErrors({ submit: "Failed to save profile. Please check your connection and try again." })
     }
   }
 
@@ -295,18 +307,15 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
             onChange={handleChange}
             rows={4}
             placeholder="Share your spiritual journey, interests, and what makes you unique..."
-            className={`w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-1 focus:ring-primary ${
-              errors.about_me ? "border-red-300" : ""
-            }`}
+            className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
           />
-          {errors.about_me && <p className="text-red-500 text-sm">{errors.about_me}</p>}
         </div>
 
         {/* Favorite Spiritual Quote */}
         <div className="space-y-2">
           <label
             htmlFor="favorite_spiritual_quote"
-            className="block text-sm font-medium text-foreground flex items-center gap-2"
+            className="text-sm font-medium text-foreground flex items-center gap-2"
           >
             <Quote className="w-4 h-4 text-orange-500" />
             Favorite Spiritual Quote (Optional)
@@ -427,9 +436,9 @@ export default function FullBloomStage({ formData, onChange, onNext, isLoading, 
         </Dialog>
 
         {/* Display any server errors */}
-        {error && (
+        {(error || errors.submit) && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
+            <p className="text-red-700 text-sm">{error || errors.submit}</p>
           </div>
         )}
 

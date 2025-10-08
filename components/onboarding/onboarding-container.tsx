@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { debugLog } from "@/lib/logger"
+import { toast } from "sonner"
 import type { User } from "@supabase/supabase-js"
 import type { OnboardingData, OnboardingProfile } from "@/lib/types/onboarding"
 import { VALID_VALUES, validateEnumField } from "@/lib/types/onboarding"
@@ -75,41 +76,55 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     about_me: null,
   })
 
-  // Initialize form data from existing profile
+  // Initialize form data from existing profile and saved progress
   useEffect(() => {
     if (profile) {
+      // Try to load saved progress
+      const savedProgress = loadSavedProgress()
+      
+      // Merge saved progress with profile data (profile takes precedence)
       setFormData({
-        phone: user?.phone || profile.phone || '',
+        phone: user?.phone || profile.phone || savedProgress?.formData.phone || '',
         email_verified: !!user?.email_confirmed_at || profile.email_verified || false,
         mobile_verified: !!user?.phone_confirmed_at || profile.mobile_verified || false,
-        gender: profile.gender || null,
-        birthdate: profile.birthdate || null,
-        height_ft: profile.height_ft || null,
-        height_in: profile.height_in || null,
-        country_id: profile.country_id || null,
-        state_id: profile.state_id || null,
-        city_id: profile.city_id || null,
-        education: profile.education || null,
-        profession: profile.profession || null,
-        annual_income: profile.annual_income || null,
-        marital_status: profile.marital_status || null,
-        diet: profile.diet || null,
-        temple_visit_freq: profile.temple_visit_freq || null,
-        vanaprastha_interest: profile.vanaprastha_interest || null,
-        artha_vs_moksha: profile.artha_vs_moksha || null,
+        gender: profile.gender || savedProgress?.formData.gender || null,
+        birthdate: profile.birthdate || savedProgress?.formData.birthdate || null,
+        height_ft: profile.height_ft ?? savedProgress?.formData.height_ft ?? null,
+        height_in: profile.height_in ?? savedProgress?.formData.height_in ?? null,
+        country_id: profile.country_id || savedProgress?.formData.country_id || null,
+        state_id: profile.state_id || savedProgress?.formData.state_id || null,
+        city_id: profile.city_id || savedProgress?.formData.city_id || null,
+        education: profile.education || savedProgress?.formData.education || null,
+        profession: profile.profession || savedProgress?.formData.profession || null,
+        annual_income: profile.annual_income || savedProgress?.formData.annual_income || null,
+        marital_status: profile.marital_status || savedProgress?.formData.marital_status || null,
+        diet: profile.diet || savedProgress?.formData.diet || null,
+        temple_visit_freq: profile.temple_visit_freq || savedProgress?.formData.temple_visit_freq || null,
+        vanaprastha_interest: profile.vanaprastha_interest || savedProgress?.formData.vanaprastha_interest || null,
+        artha_vs_moksha: profile.artha_vs_moksha || savedProgress?.formData.artha_vs_moksha || null,
         spiritual_org: Array.isArray(profile.spiritual_org)
           ? profile.spiritual_org
           : profile.spiritual_org
             ? [profile.spiritual_org]
-            : [],
-        daily_practices: profile.daily_practices || [],
-        user_photos: profile.user_photos || [],
-        ideal_partner_notes: profile.ideal_partner_notes || null,
-        favorite_spiritual_quote: profile.favorite_spiritual_quote || null,
-        about_me: profile.about_me || null,
+            : savedProgress?.formData.spiritual_org || [],
+        daily_practices: profile.daily_practices || savedProgress?.formData.daily_practices || [],
+        user_photos: profile.user_photos || savedProgress?.formData.user_photos || [],
+        ideal_partner_notes: profile.ideal_partner_notes || savedProgress?.formData.ideal_partner_notes || null,
+        favorite_spiritual_quote: profile.favorite_spiritual_quote || savedProgress?.formData.favorite_spiritual_quote || null,
+        about_me: profile.about_me || savedProgress?.formData.about_me || null,
       })
 
-      // Determine current stage based on completed data
+      // Check if we have a saved stage that's further along
+      if (savedProgress?.stage) {
+        // Only use saved stage if it's valid for current data state
+        const savedStage = savedProgress.stage
+        if (savedStage > 1 && (user?.phone_confirmed_at || profile.mobile_verified)) {
+          setStage(Math.min(savedStage, 5))
+          return
+        }
+      }
+
+      // Otherwise determine current stage based on completed data
       if (!user?.phone_confirmed_at && !profile.mobile_verified) {
         setStage(1)
       } else if (!profile.gender || !profile.birthdate || !profile.height_ft || !profile.height_in) {
@@ -124,27 +139,139 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
     }
   }, [profile, user])
 
+  // Load saved progress from localStorage
+  const loadSavedProgress = (): { stage: number; formData: Partial<OnboardingData> } | null => {
+    if (typeof window === "undefined") return null
+    
+    try {
+      const saved = localStorage.getItem("onboardingProgress")
+      if (!saved) return null
+      
+      const data = JSON.parse(saved)
+      // Check if saved data is not too old (24 hours)
+      if (data.timestamp && Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+        return { stage: data.stage || 1, formData: data.formData || {} }
+      }
+      
+      // Clear old saved data
+      localStorage.removeItem("onboardingProgress")
+    } catch (error) {
+      console.error("Error loading saved progress:", error)
+    }
+    
+    return null
+  }
+
+  // Save progress to localStorage
+  const saveProgress = () => {
+    if (typeof window === "undefined") return
+    
+    try {
+      const progressData = {
+        stage,
+        formData,
+        timestamp: Date.now(),
+        userId: user?.id || profile?.id
+      }
+      localStorage.setItem("onboardingProgress", JSON.stringify(progressData))
+    } catch (error) {
+      console.error("Error saving progress:", error)
+    }
+  }
+
+  // Save progress whenever stage or form data changes
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      saveProgress()
+    }, 1000) // Debounce for 1 second
+    
+    return () => clearTimeout(debounceTimer)
+  }, [stage, formData])
+
+  // Clear saved progress after successful submission
+  const clearSavedProgress = () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("onboardingProgress")
+      } catch (error) {
+        console.error("Error clearing saved progress:", error)
+      }
+    }
+  }
+
   const handleFormChange = (updates: Partial<OnboardingData>) => {
     setFormData((prev: OnboardingData) => ({ ...prev, ...updates }))
     setError(null) // Clear any previous errors
   }
 
+  // Comprehensive validation before submission
+  const validateAllRequiredFields = (data: OnboardingData): string | null => {
+    // Check core required fields
+    if (!data.mobile_verified) {
+      return "Mobile number must be verified before submission"
+    }
+    
+    // Personal info
+    if (!data.gender || !data.birthdate || data.height_ft === null || data.height_in === null) {
+      return "Please complete all personal information (gender, birthdate, height)"
+    }
+    
+    // Location
+    if (!data.country_id || !data.state_id || !data.city_id) {
+      return "Please select your location (country, state, and city)"
+    }
+    
+    // Professional info
+    if (!data.education || !data.profession) {
+      return "Please complete your professional information"
+    }
+    
+    // Spiritual preferences
+    if (!data.diet) {
+      return "Please select your dietary preference"
+    }
+    
+    // About section - now optional
+    // No validation for about_me - keeping it simple
+    
+    // Photos
+    if (!data.user_photos || data.user_photos.length < 3) {
+      return "Please upload at least 3 photos"
+    }
+    
+    return null
+  }
+
   // Replace the complex submitUserProfile function with the simpler handleSubmit
   const handleSubmit = async (values: any = null) => {
-    if (didSubmit) return;
-    setDidSubmit(true);
-
-    // Pull the latest auth user (OTP verify may have produced a new session)
-    const {
-      data: { user: freshUser },
-      error: authErr,
-    } = await supabase.auth.getUser()
-
-    if (authErr || !freshUser) {
-      setDidSubmit(false)
-      setError('Missing auth user – please refresh and try again')
+    // Double check if already submitting
+    if (didSubmit || isLoading) {
+      console.warn('Submission already in progress, ignoring duplicate request');
+      return;
+    }
+    
+    // Validate all required fields before submission
+    const validationError = validateAllRequiredFields(values || formData)
+    if (validationError) {
+      setError(validationError)
+      toast.error(validationError)
       return
     }
+    
+    setDidSubmit(true);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Pull the latest auth user (OTP verify may have produced a new session)
+      const {
+        data: { user: freshUser },
+        error: authErr,
+      } = await supabase.auth.getUser()
+
+      if (authErr || !freshUser) {
+        throw new Error('Missing auth user – please refresh and try again')
+      }
 
     // Prefer passed-in values (from mergedFormData) but fall back to current state
     const source = values ?? formData
@@ -249,7 +376,7 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
 
     let { error } = await supabase
       .from('users')
-      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false, returning: 'minimal' });
+      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false });
 
     // Duplicate phone constraint? retry without phone key so we still create/update the row
     if (error && error.code === '23505' && error.message?.includes('phone')) {
@@ -257,13 +384,11 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
       const { phone: _p, ...withoutPhone } = payload as any;
       ({ error } = await supabase
         .from('users')
-        .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false, returning: 'minimal' }));
+        .upsert(withoutPhone, { onConflict: 'id', ignoreDuplicates: false }));
     }
 
     if (error) {
-      setDidSubmit(false);
-      setError(error.message);
-      return;
+      throw new Error(error.message);
     }
     // After successful upsert, process referral code if present (non-blocking)
     try {
@@ -290,8 +415,21 @@ export default function OnboardingContainer({ user, profile, setProfile }: Onboa
         }
       }
     } catch (referralError) {
+      console.error('Referral code processing error:', referralError);
     }
+    
+    // Successfully submitted, clear saved progress and redirect to welcome
+    clearSavedProgress();
     router.replace('/onboarding/welcome');
+    
+    } catch (error: any) {
+      // Handle submission errors
+      console.error('Profile submission error:', error);
+      setError(error.message || 'An unexpected error occurred. Please try again.');
+      setDidSubmit(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Fetch current user profile using user ID
