@@ -142,6 +142,9 @@ export default function StorePage() {
     return null
   }
 
+  // Determine current subscription status
+  const currentStatus = (profile?.account_status || "drishti").toLowerCase()
+
   // Plan pricing based on billing cycle
   const planPricing = {
     sparsh: {
@@ -256,11 +259,27 @@ export default function StorePage() {
           <div className="mt-4 mb-8">
             <div className="mx-auto max-w-2xl rounded-xl bg-white shadow-lg border border-gray-100 p-7 flex flex-col items-center relative" style={{borderBottom: '4px solid #e6c200'}}>
               <p className="text-sm text-gray-500 mb-3 text-center">Enhance your journey with premium features</p>
-              <div className="flex flex-wrap justify-center gap-2 text-xs mb-4">
-                {/* Only show Super Likes count for plans that have access */}
-                {profile?.account_status && ['sangam', 'samarpan'].includes(profile.account_status) && (
-                  <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Super Likes: <span className="text-orange-600 font-semibold">{profile?.super_likes_count || 0}</span></div>
+              <div className="text-base font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                {currentStatus === "samarpan" ? (
+                  <>
+                    <Diamond className="w-4 h-4 text-yellow-600" /> Current Plan: Samarpan
+                  </>
+                ) : currentStatus === "sangam" ? (
+                  <>
+                    <Crown className="w-4 h-4 text-yellow-600" /> Current Plan: Sangam
+                  </>
+                ) : currentStatus === "sparsh" ? (
+                  <>
+                    <Crown className="w-4 h-4 text-blue-600" /> Current Plan: Sparsh
+                  </>
+                ) : (
+                  <>
+                    <span className="w-4 h-4 text-gray-600">👁️</span> Current Plan: Drishti
+                  </>
                 )}
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 text-xs mb-4">
+                <div className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200 text-gray-800 font-medium">Super Likes: <span className="text-orange-600 font-semibold">{profile?.super_likes_count ?? 0}</span></div>
 
                 {profile?.account_status === "sparsh" && (
                   <div className="bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1 font-medium">
@@ -415,11 +434,13 @@ export default function StorePage() {
                         <Button
                           onClick={() => openPricingPopup('sparsh')}
                           className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                          disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
+                          disabled={["sparsh", "sangam", "samarpan"].includes(currentStatus)}
                         >
-                          {["sangam", "samarpan"].includes(profile?.account_status || "")
-                            ? "Already Premium"
-                            : "View Pricing"}
+                          {currentStatus === "sparsh"
+                            ? "Already Subscribed"
+                            : ["sangam", "samarpan"].includes(currentStatus)
+                              ? "Already Premium"
+                              : "View Pricing"}
                         </Button>
                       </CardContent>
                     </Card>
@@ -464,11 +485,13 @@ export default function StorePage() {
                         <Button
                           onClick={() => openPricingPopup('sangam')}
                           className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                          disabled={["sangam", "samarpan"].includes(profile?.account_status || "")}
+                          disabled={["sangam", "samarpan"].includes(currentStatus)}
                         >
-                          {["sangam", "samarpan"].includes(profile?.account_status || "")
-                            ? "Already Premium"
-                            : "View Pricing"}
+                          {currentStatus === "sangam"
+                            ? "Already Subscribed"
+                            : currentStatus === "samarpan"
+                              ? "Already Premium"
+                              : "View Pricing"}
                         </Button>
                       </CardContent>
                     </Card>
@@ -510,11 +533,9 @@ export default function StorePage() {
                         <Button
                           onClick={() => openPricingPopup('samarpan')}
                           className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
-                          disabled={profile?.account_status === "samarpan"}
+                          disabled={currentStatus === "samarpan"}
                         >
-                          {profile?.account_status === "samarpan"
-                            ? "Current Plan"
-                            : "View Pricing"}
+                          {currentStatus === "samarpan" ? "Already Subscribed" : "View Pricing"}
                         </Button>
                       </CardContent>
                     </Card>

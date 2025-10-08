@@ -21,7 +21,10 @@ import {
   ChevronRight,
   User,
   Ruler,
-  Calendar,
+    Calendar,
+    Crown,
+    Diamond,
+    Star,
 } from "lucide-react"
 import MobileNav from "@/components/dashboard/mobile-nav"
 import ProfileImageUploader from "@/components/dashboard/profile-image-uploader"
@@ -69,6 +72,8 @@ export default function ProfilePage() {
   if (loading || !profile) {
     return <>{require("./loading").default()}</>
   }
+
+  const currentStatus = (profile?.account_status || "drishti").toLowerCase()
 
   const calculateAge = (birthdate: string) => {
     if (!birthdate) return "N/A"
@@ -138,6 +143,30 @@ export default function ProfilePage() {
                     <span>{profile.city.name}, {profile.state.name}</span>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Membership & Super Likes */}
+            <Card className="rounded-xl shadow mb-4">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-gray-800 font-medium">
+                  {currentStatus === "samarpan" ? (
+                    <Diamond className="w-5 h-5 text-yellow-600" />
+                  ) : currentStatus === "sangam" ? (
+                    <Crown className="w-5 h-5 text-yellow-600" />
+                  ) : currentStatus === "sparsh" ? (
+                    <Crown className="w-5 h-5 text-blue-600" />
+                  ) : (
+                    <span className="w-5 h-5">👁️</span>
+                  )}
+                  <span>
+                    Current Plan: {currentStatus === "samarpan" ? "Samarpan" : currentStatus === "sangam" ? "Sangam" : currentStatus === "sparsh" ? "Sparsh" : "Drishti"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-800 font-semibold">
+                  <Star className="w-5 h-5 text-orange-500" />
+                  <span>Super Likes: {profile?.super_likes_count ?? 0}</span>
+                </div>
               </CardContent>
             </Card>
 
