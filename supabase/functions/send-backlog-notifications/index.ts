@@ -1,5 +1,5 @@
-// Deno Edge Function: one-time backlog notifier
-// Sends notifications for users processed during backlog that haven't been notified yet.
+// Deno Edge Function: bulk notifications dispatcher
+// Sends WATI and/or SendGrid messages to users. Supports pending-only or all users.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,9 +12,8 @@ const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY") || "";
 const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL") || "";
 const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
 
-const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "profile_verified";
-const WATI_TPL_MORE_INFO = Deno.env.get("WATI_TPL_MORE_INFO") || "profile_needs_more_info";
-const WATI_TPL_REJECTED = Deno.env.get("WATI_TPL_REJECTED") || "profile_rejected";
+const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "verified_update";
+const WATI_TPL_UNVERIFIED = Deno.env.get("WATI_TPL_UNVERIFIED") || "unverified_update";
 
 const SG_TPL_VERIFIED = Deno.env.get("SG_TPL_VERIFIED")!;
 const SG_TPL_MORE_INFO = Deno.env.get("SG_TPL_MORE_INFO")!;
@@ -41,12 +40,12 @@ async function notifyWATI(phone: string | null | undefined, template: string, na
       body: JSON.stringify(body)
     });
     if (!r.ok) return false;
-    // optional: attempt to parse and check result/success
+    // Require explicit success indicators
     try {
       const data = await r.json();
       if (data && (data.result === true || data.success === true || typeof data.messageId !== "undefined")) return true;
     } catch {}
-    return true; // WATI often returns 200 without those fields
+    return false;
   } catch {
     return false;
   }
@@ -72,9 +71,10 @@ async function notifySendGrid(email: string | null | undefined, templateId: stri
 }
 
 serve(async (req) => {
-  const { statuses, limit, dryRun, providers } = await (async () => {
+  const { statuses, limit, dryRun, providers, audience } = await (async () => {
     try { return await req.json(); } catch { return {}; }
   })();
+  const scope = audience === "all" ? "all" : "pending";
   const allowed = ["verified","pending","rejected"] as const;
   const targetStatuses = Array.isArray(statuses) ? statuses.filter((s: string) => (allowed as readonly string[]).includes(s)) : null;
   const batch = typeof limit === "number" && limit > 0 && limit <= 500 ? limit : 200;
@@ -93,14 +93,21 @@ serve(async (req) => {
   // Apply post-filter in memory to keep SQL simple across providers
   const { data: users } = await q;
   const filtered = (users || []).filter(u => {
-    const emailPending = wantSendgrid ? (!u.email_notified_at && !!u.email) : false;
-    const watiPending = wantWati ? (!u.wati_notified_at && !!u.phone) : false;
-    // If both providers requested, accept if either is pending
-    // If only one requested, require that one pending
-    if (wantSendgrid && wantWati) return emailPending || watiPending;
-    if (wantSendgrid) return emailPending;
-    if (wantWati) return watiPending;
-    return false;
+    const hasEmail = !!u.email;
+    const hasPhone = !!u.phone;
+    if (scope === "all") {
+      if (wantSendgrid && wantWati) return hasEmail || hasPhone;
+      if (wantSendgrid) return hasEmail;
+      if (wantWati) return hasPhone;
+      return false;
+    } else {
+      const emailPending = wantSendgrid ? (!u.email_notified_at && hasEmail) : false;
+      const watiPending = wantWati ? (!u.wati_notified_at && hasPhone) : false;
+      if (wantSendgrid && wantWati) return emailPending || watiPending;
+      if (wantSendgrid) return emailPending;
+      if (wantWati) return watiPending;
+      return false;
+    }
   }).slice(0, batch);
   if (!filtered.length) return new Response(JSON.stringify({ notified: 0 }), { status: 200 });
 
@@ -116,10 +123,10 @@ serve(async (req) => {
         if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_VERIFIED, name) || false;
         if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_VERIFIED, name) || false;
       } else if (u.verification_status === "pending") {
-        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_MORE_INFO, name) || false;
+        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_UNVERIFIED, name) || false;
         if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_MORE_INFO, name) || false;
       } else { // rejected
-        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_REJECTED, name) || false;
+        if (wantWati) watiSent = await notifyWATI(u.phone, WATI_TPL_UNVERIFIED, name) || false;
         if (wantSendgrid) emailSent = await notifySendGrid(u.email, SG_TPL_REJECTED, name) || false;
       }
       if (emailSent) sgCount++;
@@ -137,7 +144,7 @@ serve(async (req) => {
     count++;
   }
 
-  return new Response(JSON.stringify({ notified: count, watiSent: watiCount, sendgridSent: sgCount, filtered: targetStatuses || "all", providers: providers || "both", limit: batch, dryRun: !!dryRun, providersConfigured: { wati: !!(WATI_API_ENDPOINT && WATI_TOKEN), sendgrid: !!(SENDGRID_API_KEY && SENDGRID_FROM_EMAIL) } }), { status: 200 });
+  return new Response(JSON.stringify({ notified: count, watiSent: watiCount, sendgridSent: sgCount, filtered: targetStatuses || "all", providers: providers || "both", audience: scope, limit: batch, dryRun: !!dryRun, providersConfigured: { wati: !!(WATI_API_ENDPOINT && WATI_TOKEN), sendgrid: !!(SENDGRID_API_KEY && SENDGRID_FROM_EMAIL) } }), { status: 200 });
 });
 
 

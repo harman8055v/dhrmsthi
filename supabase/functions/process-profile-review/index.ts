@@ -14,8 +14,8 @@ const SENDGRID_FROM_EMAIL = Deno.env.get("SENDGRID_FROM_EMAIL")!;
 const SENDGRID_REPLY_TO_EMAIL = Deno.env.get("SENDGRID_REPLY_TO_EMAIL") || "verification@dharmasaathi.com";
 
 // New template names
-const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "ds_verified";
-const WATI_TPL_UNVERIFIED = Deno.env.get("WATI_TPL_UNVERIFIED") || "ds_unverified";
+const WATI_TPL_VERIFIED = Deno.env.get("WATI_TPL_VERIFIED") || "verified_update";
+const WATI_TPL_UNVERIFIED = Deno.env.get("WATI_TPL_UNVERIFIED") || "unverified_update";
 
 const SG_TPL_VERIFIED = Deno.env.get("SG_TPL_VERIFIED")!;
 const SG_TPL_MORE_INFO = Deno.env.get("SG_TPL_MORE_INFO")!;
