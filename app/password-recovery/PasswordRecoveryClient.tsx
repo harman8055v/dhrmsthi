@@ -28,9 +28,10 @@ export default function PasswordRecoveryClient() {
     setJustSent(false)
     setLoading(true)
     try {
+      const resetRedirectUrl = `${window.location.origin}/reset-password`;
       const { error } = await supabase.auth.resetPasswordForEmail(
         email,
-        { redirectTo: `https://dharmasaathi.com/reset-password` }
+        { redirectTo: resetRedirectUrl }
       )
       if (error) throw error
       setSent(true)
@@ -76,10 +77,11 @@ export default function PasswordRecoveryClient() {
                     setMagicJustSent(false)
                     setMagicLoading(true)
                     try {
+                      const redirectUrl = `${window.location.origin}/auth-loading`;
                       const { error } = await supabase.auth.signInWithOtp({
                         email: magicEmail,
                         options: {
-                          emailRedirectTo: `https://dharmasaathi.com/auth-loading`,
+                          emailRedirectTo: redirectUrl,
                         },
                       })
                       if (error) throw error

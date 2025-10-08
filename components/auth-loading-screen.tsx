@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { supabase } from "@/lib/supabase"
-import { Shield, Users, CheckCircle, Lock } from "lucide-react"
+import { Shield, Users, CheckCircle, Lock, AlertTriangle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface AuthLoadingScreenProps {
   userId?: string
@@ -33,20 +34,21 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
   const [currentMessage, setCurrentMessage] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
   const [loadingTimeout, setLoadingTimeout] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const router = useRouter()
   
   // Add loading timeout protection (30 seconds)
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (!isComplete) {
-        console.error('Auth loading timeout - redirecting to home')
+        console.error('Auth loading timeout')
         setLoadingTimeout(true)
-        router.push("/")
+        setErrorMessage('Authentication timeout. Please try again.')
       }
     }, 30000) // 30 second timeout
     
     return () => clearTimeout(timeout)
-  }, [isComplete, router])
+  }, [isComplete])
 
   useEffect(() => {
     // 1) Try to establish session from magic link tokens or code in URL (email sign-in)
@@ -54,6 +56,11 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
       try {
         const url = new URL(window.location.href)
         const errorDesc = url.searchParams.get('error_description')
+        
+        // Debug logging
+        console.log('[AuthLoading] Current URL:', window.location.href)
+        console.log('[AuthLoading] URL hash:', window.location.hash)
+        console.log('[AuthLoading] URL search params:', url.search)
 
         if (errorDesc) {
           console.error('[AuthLoading] Magic link error:', errorDesc)
@@ -114,6 +121,26 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
 
     // Kick off code exchange immediately on mount
     tryEstablishSessionFromMagicLink()
+    
+    // Check if we have no auth parameters at all
+    const checkNoAuthParams = () => {
+      const url = new URL(window.location.href)
+      const hasHash = window.location.hash && window.location.hash.length > 1
+      const hasCode = url.searchParams.get('code')
+      const hasTokenHash = url.searchParams.get('token_hash')
+      const hasUserId = url.searchParams.get('userId')
+      
+      if (!hasHash && !hasCode && !hasTokenHash && !hasUserId) {
+        console.error('[AuthLoading] No auth parameters found in URL')
+        console.error('[AuthLoading] This might indicate a redirect configuration issue')
+        // Show error message to user
+        setLoadingTimeout(true)
+        setErrorMessage('Invalid authentication link. Please request a new magic link.')
+      }
+    }
+    
+    // Add a small delay to ensure URL is fully loaded
+    setTimeout(checkNoAuthParams, 100)
 
     // Handle mobile login
     if (isMobileLogin && userId) {
@@ -265,8 +292,9 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
         </div>
 
         {/* Loading Animation */}
-        <div className="mb-8">
-          <div className="relative w-20 h-20 mx-auto mb-6">
+        {!loadingTimeout && !errorMessage && (
+          <div className="mb-8">
+            <div className="relative w-20 h-20 mx-auto mb-6">
             {/* Outer ring */}
             <div className="absolute inset-0 border-4 border-orange-200 rounded-full"></div>
             {/* Middle ring */}
@@ -289,23 +317,28 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
           </div>
           <p className="text-sm text-gray-600 mb-2">{progress}% Complete</p>
         </div>
+        )}
 
         {/* Inspirational Message */}
-        <div className="mb-8 h-16 flex items-center justify-center">
-          <p className="text-lg font-medium text-gray-700 loading-fade-in px-4">
-            {inspirationalMessages[currentMessage]}
-          </p>
-        </div>
+        {!loadingTimeout && !errorMessage && (
+          <div className="mb-8 h-16 flex items-center justify-center">
+            <p className="text-lg font-medium text-gray-700 loading-fade-in px-4">
+              {inspirationalMessages[currentMessage]}
+            </p>
+          </div>
+        )}
 
         {/* Processing Message */}
-        <div className="mb-8">
-          <p className="text-gray-600 mb-2">Please wait while we process your account</p>
-          <div className="flex justify-center space-x-1">
-            <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce-dot"></div>
-            <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce-dot animation-delay-150"></div>
-            <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce-dot animation-delay-300"></div>
+        {!loadingTimeout && !errorMessage && (
+          <div className="mb-8">
+            <p className="text-gray-600 mb-2">Please wait while we process your account</p>
+            <div className="flex justify-center space-x-1">
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce-dot"></div>
+              <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce-dot animation-delay-150"></div>
+              <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce-dot animation-delay-300"></div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Trust Elements */}
         <div className="grid grid-cols-2 gap-4 mb-8">
@@ -322,8 +355,25 @@ export default function AuthLoadingScreen({ userId, isNewUser, isMobileLogin }: 
           ))}
         </div>
 
+        {/* Error State */}
+        {(loadingTimeout || errorMessage) && (
+          <div className="loading-fade-in">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <p className="text-red-600 font-medium mb-2">{errorMessage || 'Something went wrong'}</p>
+            <p className="text-sm text-gray-600 mb-4">Please try again or contact support if the issue persists.</p>
+            <Button 
+              onClick={() => router.push('/')}
+              className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white"
+            >
+              Go to Homepage
+            </Button>
+          </div>
+        )}
+
         {/* Success State */}
-        {isComplete && (
+        {isComplete && !loadingTimeout && !errorMessage && (
           <div className="loading-fade-in">
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-6 h-6 text-green-600" />

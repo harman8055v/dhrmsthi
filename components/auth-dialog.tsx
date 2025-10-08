@@ -197,9 +197,10 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = "login" }: A
                 setResetJustSent(false);
                 setLoading(true);
                 try {
+                  const resetRedirectUrl = `${window.location.origin}/reset-password`;
                   const { data, error } = await supabase.auth.resetPasswordForEmail(
                     resetEmail,
-                    { redirectTo: `https://dharmasaathi.com/reset-password` }
+                    { redirectTo: resetRedirectUrl }
                   );
                   if (error) throw error;
                   setResetSent(true);
